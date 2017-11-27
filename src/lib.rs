@@ -58,21 +58,21 @@ named!(parse_identifier_like(&str) -> Token, switch!(alpha,
 
 named!(ethernet_separator(&str) -> char, one_of!(":.-"));
 
-named!(byte(&str) -> u8, map_res!(take!(2), |digits| u8::from_str_radix(digits, 16)));
+named!(hex_byte(&str) -> u8, map_res!(take!(2), |digits| u8::from_str_radix(digits, 16)));
 
-named!(two_bytes(&str) -> [u8; 2], do_parse!(
-    b1: byte >>
+named!(hex_byte_pair(&str) -> [u8; 2], do_parse!(
+    b1: hex_byte >>
     opt!(ethernet_separator) >>
-    b2: byte >>
+    b2: hex_byte >>
     ([b1, b2])
 ));
 
 named!(parse_ethernet_addr(&str) -> [u8; 6], do_parse!(
-    w1: two_bytes >>
+    w1: hex_byte_pair >>
     ethernet_separator >>
-    w2: two_bytes >>
+    w2: hex_byte_pair >>
     ethernet_separator >>
-    w3: two_bytes >>
+    w3: hex_byte_pair >>
     ([w1[0], w1[1], w2[0], w2[1], w3[0], w3[1]])
 ));
 
