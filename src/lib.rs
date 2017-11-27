@@ -23,6 +23,7 @@ pub enum Token<'a> {
     Dot,
     Operator(Operator),
     Unsigned(u64),
+    EthernetAddr([u8; 6]),
 }
 
 named!(parse_unsigned(&str) -> u64, alt!(
@@ -53,6 +54,26 @@ named!(parse_identifier_like(&str) -> Token, switch!(alpha,
     "matches" => value!(Token::Operator(Operator::Matches)) |
     "bitwise_and" => value!(Token::Operator(Operator::BitwiseAnd)) |
     other => value!(Token::Identifier(other))
+));
+
+named!(ethernet_separator(&str) -> char, one_of!(":.-"));
+
+named!(byte(&str) -> u8, map_res!(take!(2), |digits| u8::from_str_radix(digits, 16)));
+
+named!(two_bytes(&str) -> [u8; 2], do_parse!(
+    b1: byte >>
+    opt!(ethernet_separator) >>
+    b2: byte >>
+    ([b1, b2])
+));
+
+named!(parse_ethernet_addr(&str) -> [u8; 6], do_parse!(
+    w1: two_bytes >>
+    ethernet_separator >>
+    w2: two_bytes >>
+    ethernet_separator >>
+    w3: two_bytes >>
+    ([w1[0], w1[1], w2[0], w2[1], w3[0], w3[1]])
 ));
 
 #[cfg(test)]
@@ -102,6 +123,30 @@ mod tests {
                 "123",
                 error_position!(ErrorKind::Alpha, "123")
             ))
+        );
+    }
+
+    #[test]
+    fn test_ethernet_addr() {
+        assert_eq!(
+            parse_ethernet_addr("12:34:56:78:90:ab"),
+            IResult::Done("", [0x12, 0x34, 0x56, 0x78, 0x90, 0xab])
+        );
+        assert_eq!(
+            parse_ethernet_addr("12.34.56.78.90.ab"),
+            IResult::Done("", [0x12, 0x34, 0x56, 0x78, 0x90, 0xab])
+        );
+        assert_eq!(
+            parse_ethernet_addr("12.34:56.78-90ab"),
+            IResult::Done("", [0x12, 0x34, 0x56, 0x78, 0x90, 0xab])
+        );
+        assert_eq!(
+            parse_ethernet_addr("12:34:56:7g:90:ab"),
+            IResult::Error(error_position!(ErrorKind::MapRes, "7g:90:ab"))
+        );
+        assert_eq!(
+            parse_ethernet_addr("12:34f:56:78:90:ab"),
+            IResult::Error(error_position!(ErrorKind::OneOf, "f:56:78:90:ab"))
         );
     }
 }
