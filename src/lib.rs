@@ -76,6 +76,19 @@ named!(parse_ethernet_addr(&str) -> [u8; 6], do_parse!(
     ([w1[0], w1[1], w2[0], w2[1], w3[0], w3[1]])
 ));
 
+named!(dec_byte(&str) -> u8, map_res!(digit, u8::from_str));
+
+named!(parse_ipv4(&str) -> [u8; 4], do_parse!(
+    b1: dec_byte >>
+    char!('.') >>
+    b2: dec_byte >>
+    char!('.') >>
+    b3: dec_byte >>
+    char!('.') >>
+    b4: dec_byte >>
+    ([b1, b2, b3, b4])
+));
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +161,11 @@ mod tests {
             parse_ethernet_addr("12:34f:56:78:90:ab"),
             IResult::Error(error_position!(ErrorKind::OneOf, "f:56:78:90:ab"))
         );
+    }
+
+    #[test]
+    fn test_ipv4() {
+        assert_eq!(parse_ipv4("12.34.56.78"), IResult::Done("", [12, 34, 56, 78]));
+        assert_eq!(parse_ipv4("12.34.56.789"), IResult::Error(error_position!(ErrorKind::MapRes, "789")));
     }
 }
