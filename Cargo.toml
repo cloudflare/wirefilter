@@ -1,0 +1,7 @@
+[package]
+authors = ["Ingvar Stepanyan <me@rreverser.com>"]
+name = "wirefilter"
+version = "0.1.0"
+
+[dependencies]
+nom = { version = "3.2.1", features = ["verbose-errors"] }
