@@ -18,12 +18,9 @@ pub enum Operator {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Token<'a> {
+pub enum IdentifierLike<'a> {
     Identifier(&'a str),
-    Dot,
     Operator(Operator),
-    Unsigned(u64),
-    EthernetAddr([u8; 6]),
 }
 
 named!(parse_unsigned(&str) -> u64, alt!(
@@ -43,17 +40,17 @@ named!(parse_operator(&str) -> Operator, alt!(
     value!(Operator::BitwiseAnd, tag!("&"))
 ));
 
-named!(parse_identifier_like(&str) -> Token, switch!(alpha,
-    "eq" => value!(Token::Operator(Operator::Equal)) |
-    "ne" => value!(Token::Operator(Operator::NotEqual)) |
-    "gt" => value!(Token::Operator(Operator::GreaterThan)) |
-    "lt" => value!(Token::Operator(Operator::LessThan)) |
-    "ge" => value!(Token::Operator(Operator::GreaterThanEqual)) |
-    "le" => value!(Token::Operator(Operator::LessThanEqual)) |
-    "contains" => value!(Token::Operator(Operator::Contains)) |
-    "matches" => value!(Token::Operator(Operator::Matches)) |
-    "bitwise_and" => value!(Token::Operator(Operator::BitwiseAnd)) |
-    other => value!(Token::Identifier(other))
+named!(parse_identifier_like(&str) -> IdentifierLike, switch!(alpha,
+    "eq" => value!(IdentifierLike::Operator(Operator::Equal)) |
+    "ne" => value!(IdentifierLike::Operator(Operator::NotEqual)) |
+    "gt" => value!(IdentifierLike::Operator(Operator::GreaterThan)) |
+    "lt" => value!(IdentifierLike::Operator(Operator::LessThan)) |
+    "ge" => value!(IdentifierLike::Operator(Operator::GreaterThanEqual)) |
+    "le" => value!(IdentifierLike::Operator(Operator::LessThanEqual)) |
+    "contains" => value!(IdentifierLike::Operator(Operator::Contains)) |
+    "matches" => value!(IdentifierLike::Operator(Operator::Matches)) |
+    "bitwise_and" => value!(IdentifierLike::Operator(Operator::BitwiseAnd)) |
+    other => value!(IdentifierLike::Identifier(other))
 ));
 
 named!(ethernet_separator(&str) -> char, one_of!(":.-"));
@@ -119,15 +116,15 @@ mod tests {
     fn test_identifier() {
         assert_eq!(
             parse_identifier_like("xyz1"),
-            IResult::Done("1", Token::Identifier("xyz"))
+            IResult::Done("1", IdentifierLike::Identifier("xyz"))
         );
         assert_eq!(
             parse_identifier_like("containst"),
-            IResult::Done("", Token::Identifier("containst"))
+            IResult::Done("", IdentifierLike::Identifier("containst"))
         );
         assert_eq!(
             parse_identifier_like("contains t"),
-            IResult::Done(" t", Token::Operator(Operator::Contains))
+            IResult::Done(" t", IdentifierLike::Operator(Operator::Contains))
         );
         assert_eq!(
             parse_identifier_like("123"),
@@ -165,7 +162,13 @@ mod tests {
 
     #[test]
     fn test_ipv4() {
-        assert_eq!(parse_ipv4("12.34.56.78"), IResult::Done("", [12, 34, 56, 78]));
-        assert_eq!(parse_ipv4("12.34.56.789"), IResult::Error(error_position!(ErrorKind::MapRes, "789")));
+        assert_eq!(
+            parse_ipv4("12.34.56.78"),
+            IResult::Done("", [12, 34, 56, 78])
+        );
+        assert_eq!(
+            parse_ipv4("12.34.56.789"),
+            IResult::Error(error_position!(ErrorKind::MapRes, "789"))
+        );
     }
 }
