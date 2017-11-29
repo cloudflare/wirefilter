@@ -46,14 +46,14 @@ fn test_unsigned() {
 }
 
 #[test]
-fn test_operator() {
-    assert_ok!("~1", Operator::Matches, "1");
-    assert_ok!(">=2", Operator::GreaterThanEqual, "2");
-    assert_ok!("<2", Operator::LessThan, "2");
-    assert_ok!("matches x", Operator::Matches, " x");
-    assert_ok!("containst", Operator::Contains, "t");
-    assert_err!(Operator::parse("xyz"), Alt, "xyz");
-    assert_incomplete!(Operator::parse("cont"), 8);
+fn test_comparison_operator() {
+    assert_ok!("~1", ComparisonOp::Matches, "1");
+    assert_ok!(">=2", ComparisonOp::GreaterThanEqual, "2");
+    assert_ok!("<2", ComparisonOp::LessThan, "2");
+    assert_ok!("matches x", ComparisonOp::Matches, " x");
+    assert_ok!("containst", ComparisonOp::Contains, "t");
+    assert_err!(ComparisonOp::parse("xyz"), Alt, "xyz");
+    assert_incomplete!(ComparisonOp::parse("cont"), 8);
 }
 
 #[test]

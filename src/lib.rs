@@ -11,7 +11,7 @@ pub trait Parse<'a>: Sized {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Operator {
+pub enum ComparisonOp {
     Equal,
     NotEqual,
     GreaterThan,
@@ -23,17 +23,17 @@ pub enum Operator {
     BitwiseAnd,
 }
 
-impl<'a> Parse<'a> for Operator {
+impl<'a> Parse<'a> for ComparisonOp {
     named!(parse(&str) -> Self, alt!(
-        value!(Operator::Equal, alt!(tag!("==") | tag!("eq"))) |
-        value!(Operator::NotEqual, alt!(tag!("!=") | tag!("ne"))) |
-        value!(Operator::GreaterThanEqual, alt!(tag!(">=") | tag!("ge"))) |
-        value!(Operator::LessThanEqual, alt!(tag!("<=") | tag!("le"))) |
-        value!(Operator::GreaterThan, alt!(tag!(">") | tag!("gt"))) |
-        value!(Operator::LessThan, alt!(tag!("<") | tag!("lt"))) |
-        value!(Operator::Matches, alt!(tag!("~") | tag!("matches"))) |
-        value!(Operator::BitwiseAnd, alt!(tag!("&") | tag!("bitwise_and"))) |
-        value!(Operator::Contains, tag!("contains"))
+        value!(ComparisonOp::Equal, alt!(tag!("==") | tag!("eq"))) |
+        value!(ComparisonOp::NotEqual, alt!(tag!("!=") | tag!("ne"))) |
+        value!(ComparisonOp::GreaterThanEqual, alt!(tag!(">=") | tag!("ge"))) |
+        value!(ComparisonOp::LessThanEqual, alt!(tag!("<=") | tag!("le"))) |
+        value!(ComparisonOp::GreaterThan, alt!(tag!(">") | tag!("gt"))) |
+        value!(ComparisonOp::LessThan, alt!(tag!("<") | tag!("lt"))) |
+        value!(ComparisonOp::Matches, alt!(tag!("~") | tag!("matches"))) |
+        value!(ComparisonOp::BitwiseAnd, alt!(tag!("&") | tag!("bitwise_and"))) |
+        value!(ComparisonOp::Contains, tag!("contains"))
     ));
 }
 
