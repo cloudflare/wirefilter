@@ -2,6 +2,7 @@
 extern crate nom;
 
 use nom::*;
+use std::fmt;
 use std::str::FromStr;
 use std::borrow::Cow;
 use std::net::Ipv4Addr;
@@ -49,8 +50,14 @@ impl<'a> Parse<'a> for u64 {
     ));
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Field<'a>(pub &'a str);
+
+impl<'a> fmt::Debug for Field<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(self.0)
+    }
+}
 
 impl<'a> Parse<'a> for Field<'a> {
     named!(
