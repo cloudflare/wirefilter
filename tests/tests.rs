@@ -49,27 +49,28 @@ fn test_operator() {
     assert_ok!(parse_operator("~1"), Operator::Matches, "1");
     assert_ok!(parse_operator(">=2"), Operator::GreaterThanEqual, "2");
     assert_ok!(parse_operator("<2"), Operator::LessThan, "2");
+    assert_ok!(parse_operator("matches x"), Operator::Matches, " x");
+    assert_ok!(parse_operator("containst"), Operator::Contains, "t");
     assert_err!(parse_operator("xyz"), Alt, "xyz");
+    assert_incomplete!(parse_operator("cont"), 8);
 }
 
 #[test]
-fn test_identifier() {
+fn test_path() {
     assert_ok!(
-        parse_identifier_like("xyz1"),
-        IdentifierLike::Identifier("xyz"),
+        parse_path("xyz1"),
+        "xyz",
         "1"
     );
     assert_ok!(
-        parse_identifier_like("containst"),
-        IdentifierLike::Identifier("containst"),
-        ""
+        parse_path("containst;"),
+        "containst",
+        ";"
     );
-    assert_ok!(
-        parse_identifier_like("contains t"),
-        IdentifierLike::Operator(Operator::Contains),
-        " t"
-    );
-    assert_err!(parse_identifier_like("123"), Switch, "123", Alpha, "123");
+    assert_ok!(parse_path("xyz.abc1"), "xyz.abc", "1");
+    assert_ok!(parse_path("xyz.;"), "xyz", ".;");
+    assert_err!(parse_path("."), Alpha, ".");
+    assert_err!(parse_path("123"), Alpha, "123");
 }
 
 #[test]
