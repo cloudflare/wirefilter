@@ -4,6 +4,7 @@ extern crate nom;
 use nom::*;
 use std::str::FromStr;
 use std::borrow::Cow;
+use std::ops;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Operator {
@@ -91,4 +92,55 @@ named!(pub parse_string(&str) -> Cow<str>, do_parse!(
     }) >>
     char!('"') >>
     (res)
+));
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Range {
+    pub from: usize,
+    pub to: Option<usize>,
+}
+
+impl Range {
+    pub fn apply<'a, T>(&self, target: &'a T) -> &'a T
+    where
+        T: 'a
+            + ops::Index<ops::Range<usize>, Output = T>
+            + ops::Index<ops::RangeFrom<usize>, Output = T>,
+    {
+        if let Some(to) = self.to {
+            &target[self.from..to]
+        } else {
+            &target[self.from..]
+        }
+    }
+}
+
+named!(index(&str) -> usize, map_res!(digit, usize::from_str));
+
+named!(range(&str) -> Range, alt!(
+    map!(separated_pair!(index, char!(':'), opt!(index)), |(start, len)| Range {
+        from: start,
+        to: len.map(|len| start + len)
+    }) |
+    map!(verify!(
+        separated_pair!(index, char!('-'), index),
+        |(start, end)| end >= start
+    ), |(start, end)| Range {
+        from: start,
+        to: Some(end)
+    }) |
+    map!(preceded!(char!(':'), index), |end| Range {
+        from: 0,
+        to: Some(end)
+    }) |
+    map!(index, |index| Range {
+        from: index,
+        to: Some(index + 1)
+    })
+));
+
+named!(pub parse_substring(&str) -> Vec<Range>, delimited!(
+    char!('['),
+    separated_nonempty_list!(char!(','), range),
+    char!(']')
 ));

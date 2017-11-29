@@ -57,16 +57,8 @@ fn test_operator() {
 
 #[test]
 fn test_path() {
-    assert_ok!(
-        parse_path("xyz1"),
-        "xyz",
-        "1"
-    );
-    assert_ok!(
-        parse_path("containst;"),
-        "containst",
-        ";"
-    );
+    assert_ok!(parse_path("xyz1"), "xyz", "1");
+    assert_ok!(parse_path("containst;"), "containst", ";");
     assert_ok!(parse_path("xyz.abc1"), "xyz.abc", "1");
     assert_ok!(parse_path("xyz.;"), "xyz", ".;");
     assert_err!(parse_path("."), Alpha, ".");
@@ -117,4 +109,57 @@ fn test_string() {
         ";"
     );
     assert_incomplete!(parse_string("\"hello"), 7);
+}
+
+#[test]
+fn test_substring() {
+    assert_ok!(
+        parse_substring("[1];"),
+        vec![
+            Range {
+                from: 1,
+                to: Some(2),
+            },
+        ],
+        ";"
+    );
+    assert_ok!(
+        parse_substring("[0:3];"),
+        vec![
+            Range {
+                from: 0,
+                to: Some(3),
+            },
+        ],
+        ";"
+    );
+    assert_ok!(
+        parse_substring("[1,:2,3-4,7:,9:10];"),
+        vec![
+            Range {
+                from: 1,
+                to: Some(2),
+            },
+            Range {
+                from: 0,
+                to: Some(2),
+            },
+            Range {
+                from: 3,
+                to: Some(4),
+            },
+            Range { from: 7, to: None },
+            Range {
+                from: 9,
+                to: Some(19),
+            },
+        ],
+        ";"
+    );
+    assert_err!(parse_substring("[1-]"), Char, "-]");
+    assert_err!(parse_substring("[-9]"), Alt, "-9]");
+    assert_err!(parse_substring("[:]"), Alt, ":]");
+    assert_err!(parse_substring("[-]"), Alt, "-]");
+    assert_err!(parse_substring("[]"), Alt, "]");
+    assert_err!(parse_substring("[5-4]"), Char, "-4]");
 }
