@@ -4,7 +4,6 @@ extern crate nom;
 use nom::*;
 use std::str::FromStr;
 use std::borrow::Cow;
-use std::ops;
 use std::net::Ipv4Addr;
 
 pub trait Parse<'a>: Sized {
@@ -122,26 +121,11 @@ impl<'a> Parse<'a> for Cow<'a, str> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Range {
-    pub from: usize,
-    pub to: Option<usize>,
+    pub from: isize,
+    pub to: Option<isize>,
 }
 
-impl Range {
-    pub fn apply<'a, T>(&self, target: &'a T) -> &'a T
-    where
-        T: 'a
-            + ops::Index<ops::Range<usize>, Output = T>
-            + ops::Index<ops::RangeFrom<usize>, Output = T>,
-    {
-        if let Some(to) = self.to {
-            &target[self.from..to]
-        } else {
-            &target[self.from..]
-        }
-    }
-}
-
-named!(index(&str) -> usize, map_res!(digit, usize::from_str));
+named!(index(&str) -> isize, map_res!(digit, isize::from_str));
 
 impl<'a> Parse<'a> for Range {
     named!(parse(&str) -> Self, alt!(
@@ -149,12 +133,9 @@ impl<'a> Parse<'a> for Range {
             from: start,
             to: len.map(|len| start + len)
         }) |
-        map!(verify!(
-            separated_pair!(index, char!('-'), index),
-            |(start, end)| end >= start
-        ), |(start, end)| Range {
+        map!(separated_pair!(index, char!('-'), index), |(start, end)| Range {
             from: start,
-            to: Some(end)
+            to: Some(end + 1)
         }) |
         map!(preceded!(char!(':'), index), |end| Range {
             from: 0,

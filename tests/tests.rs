@@ -143,7 +143,7 @@ fn test_substring() {
             },
             Range {
                 from: 3,
-                to: Some(4),
+                to: Some(5),
             },
             Range { from: 7, to: None },
             Range {
@@ -158,5 +158,4 @@ fn test_substring() {
     assert_err!(Ranges::parse("[:]"), Alt, ":]");
     assert_err!(Ranges::parse("[-]"), Alt, "-]");
     assert_err!(Ranges::parse("[]"), Alt, "]");
-    assert_err!(Ranges::parse("[5-4]"), Char, "-4]");
 }
