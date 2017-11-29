@@ -157,3 +157,29 @@ impl<'a> Parse<'a> for Ranges {
         char!(']')
     ));
 }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Value<'a> {
+    Unsigned(u64),
+    String(Cow<'a, str>),
+    Field(Field<'a>),
+    EthernetAddr(EthernetAddr),
+    Ipv4Addr(Ipv4Addr),
+    Substring(Box<Value<'a>>, Ranges),
+}
+
+named!(simple_value(&str) -> Value, alt!(
+    map!(Parse::parse, Value::Ipv4Addr) |
+    map!(Parse::parse, Value::EthernetAddr) |
+    map!(Parse::parse, Value::Unsigned) |
+    map!(Parse::parse, Value::String) |
+    map!(Parse::parse, Value::Field)
+));
+
+impl<'a> Parse<'a> for Value<'a> {
+    named!(parse(&'a str) -> Self, do_parse!(
+        first: simple_value >>
+        result: fold_many0!(Ranges::parse, first, |acc, ranges| Value::Substring(Box::new(acc), ranges)) >>
+        (result)
+    ));
+}

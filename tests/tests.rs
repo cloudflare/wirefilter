@@ -159,3 +159,54 @@ fn test_substring() {
     assert_err!(Ranges::parse("[-]"), Alt, "-]");
     assert_err!(Ranges::parse("[]"), Alt, "]");
 }
+
+#[test]
+fn test_value() {
+    assert_ok!("0x7F;", Value::Unsigned(127), ";");
+    assert_ok!("127;", Value::Unsigned(127), ";");
+    assert_ok!(
+        "127.0.0.1;",
+        Value::Ipv4Addr(Ipv4Addr::new(127, 0, 0, 1)),
+        ";"
+    );
+    assert_ok!("abc.def;", Value::Field(Field("abc.def")), ";");
+    assert_ok!(
+        "12:34:56:78:90:ab;",
+        Value::EthernetAddr(EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab])),
+        ";"
+    );
+    assert_ok!("\"xyz\";", Value::String(Cow::Borrowed("xyz")), ";");
+    assert_ok!(
+        "abc.def[12:34];",
+        Value::Substring(
+            Box::new(Value::Field(Field("abc.def"))),
+            vec![
+                Range {
+                    from: 12,
+                    to: Some(46),
+                },
+            ]
+        ),
+        ";"
+    );
+    assert_ok!(
+        "\"test\"[10,12][20:];",
+        Value::Substring(
+            Box::new(Value::Substring(
+                Box::new(Value::String(Cow::Borrowed("test"))),
+                vec![
+                    Range {
+                        from: 10,
+                        to: Some(11),
+                    },
+                    Range {
+                        from: 12,
+                        to: Some(13),
+                    },
+                ]
+            )),
+            vec![Range { from: 20, to: None }]
+        ),
+        ";"
+    );
+}
