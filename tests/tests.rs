@@ -4,11 +4,12 @@ extern crate wirefilter;
 extern crate nom;
 
 use std::borrow::Cow;
+use std::net::Ipv4Addr;
 use wirefilter::*;
 
 macro_rules! assert_ok {
     ($expr:expr, $out:expr, $rest:expr) => {
-        assert_eq!($expr, nom::IResult::Done($rest, $out));
+        assert_eq!(Parse::parse($expr), nom::IResult::Done($rest, $out));
     };
 }
 
@@ -38,53 +39,53 @@ macro_rules! assert_incomplete {
 
 #[test]
 fn test_unsigned() {
-    assert_ok!(parse_unsigned("0x1f5+"), 501, "+");
-    assert_ok!(parse_unsigned("0123;"), 83, ";");
-    assert_ok!(parse_unsigned("78!"), 78, "!");
-    assert_ok!(parse_unsigned("0xefg"), 239, "g");
+    assert_ok!("0x1f5+", 501u64, "+");
+    assert_ok!("0123;", 83u64, ";");
+    assert_ok!("78!", 78u64, "!");
+    assert_ok!("0xefg", 239u64, "g");
 }
 
 #[test]
 fn test_operator() {
-    assert_ok!(parse_operator("~1"), Operator::Matches, "1");
-    assert_ok!(parse_operator(">=2"), Operator::GreaterThanEqual, "2");
-    assert_ok!(parse_operator("<2"), Operator::LessThan, "2");
-    assert_ok!(parse_operator("matches x"), Operator::Matches, " x");
-    assert_ok!(parse_operator("containst"), Operator::Contains, "t");
-    assert_err!(parse_operator("xyz"), Alt, "xyz");
-    assert_incomplete!(parse_operator("cont"), 8);
+    assert_ok!("~1", Operator::Matches, "1");
+    assert_ok!(">=2", Operator::GreaterThanEqual, "2");
+    assert_ok!("<2", Operator::LessThan, "2");
+    assert_ok!("matches x", Operator::Matches, " x");
+    assert_ok!("containst", Operator::Contains, "t");
+    assert_err!(Operator::parse("xyz"), Alt, "xyz");
+    assert_incomplete!(Operator::parse("cont"), 8);
 }
 
 #[test]
-fn test_path() {
-    assert_ok!(parse_path("xyz1"), "xyz", "1");
-    assert_ok!(parse_path("containst;"), "containst", ";");
-    assert_ok!(parse_path("xyz.abc1"), "xyz.abc", "1");
-    assert_ok!(parse_path("xyz.;"), "xyz", ".;");
-    assert_err!(parse_path("."), Alpha, ".");
-    assert_err!(parse_path("123"), Alpha, "123");
+fn test_field() {
+    assert_ok!("xyz1", Field("xyz"), "1");
+    assert_ok!("containst;", Field("containst"), ";");
+    assert_ok!("xyz.abc1", Field("xyz.abc"), "1");
+    assert_ok!("xyz.;", Field("xyz"), ".;");
+    assert_err!(Field::parse("."), Alpha, ".");
+    assert_err!(Field::parse("123"), Alpha, "123");
 }
 
 #[test]
 fn test_ethernet_addr() {
     assert_ok!(
-        parse_ethernet_addr("12:34:56:78:90:abc"),
-        [0x12, 0x34, 0x56, 0x78, 0x90, 0xab],
+        "12:34:56:78:90:abc",
+        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
         "c"
     );
     assert_ok!(
-        parse_ethernet_addr("12.34.56.78.90.abc"),
-        [0x12, 0x34, 0x56, 0x78, 0x90, 0xab],
+        "12.34.56.78.90.abc",
+        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
         "c"
     );
     assert_ok!(
-        parse_ethernet_addr("12.34:56.78-90abc"),
-        [0x12, 0x34, 0x56, 0x78, 0x90, 0xab],
+        "12.34:56.78-90abc",
+        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
         "c"
     );
-    assert_err!(parse_ethernet_addr("12:34:56:7g:90:ab"), MapRes, "7g:90:ab");
+    assert_err!(EthernetAddr::parse("12:34:56:7g:90:ab"), MapRes, "7g:90:ab");
     assert_err!(
-        parse_ethernet_addr("12:34f:56:78:90:ab"),
+        EthernetAddr::parse("12:34f:56:78:90:ab"),
         OneOf,
         "f:56:78:90:ab"
     );
@@ -92,29 +93,25 @@ fn test_ethernet_addr() {
 
 #[test]
 fn test_ipv4() {
-    assert_ok!(parse_ipv4("12.34.56.78;"), [12, 34, 56, 78], ";");
-    assert_err!(parse_ipv4("12.34.56.789"), MapRes, "789");
+    assert_ok!("12.34.56.78;", Ipv4Addr::new(12, 34, 56, 78), ";");
+    assert_err!(Ipv4Addr::parse("12.34.56.789"), MapRes, "789");
 }
 
 #[test]
 fn test_string() {
+    assert_ok!(r#""hello, world";"#, Cow::Borrowed("hello, world"), ";");
     assert_ok!(
-        parse_string(r#""hello, world";"#),
-        Cow::Borrowed("hello, world"),
-        ";"
-    );
-    assert_ok!(
-        parse_string(r#""esca\x0a\ped\042";"#),
+        r#""esca\x0a\ped\042";"#,
         Cow::Owned(String::from("esca\nped\"")),
         ";"
     );
-    assert_incomplete!(parse_string("\"hello"), 7);
+    assert_incomplete!(Cow::parse("\"hello"), 7);
 }
 
 #[test]
 fn test_substring() {
     assert_ok!(
-        parse_substring("[1];"),
+        "[1];",
         vec![
             Range {
                 from: 1,
@@ -124,7 +121,7 @@ fn test_substring() {
         ";"
     );
     assert_ok!(
-        parse_substring("[0:3];"),
+        "[0:3];",
         vec![
             Range {
                 from: 0,
@@ -134,7 +131,7 @@ fn test_substring() {
         ";"
     );
     assert_ok!(
-        parse_substring("[1,:2,3-4,7:,9:10];"),
+        "[1,:2,3-4,7:,9:10];",
         vec![
             Range {
                 from: 1,
@@ -156,10 +153,10 @@ fn test_substring() {
         ],
         ";"
     );
-    assert_err!(parse_substring("[1-]"), Char, "-]");
-    assert_err!(parse_substring("[-9]"), Alt, "-9]");
-    assert_err!(parse_substring("[:]"), Alt, ":]");
-    assert_err!(parse_substring("[-]"), Alt, "-]");
-    assert_err!(parse_substring("[]"), Alt, "]");
-    assert_err!(parse_substring("[5-4]"), Char, "-4]");
+    assert_err!(Ranges::parse("[1-]"), Char, "-]");
+    assert_err!(Ranges::parse("[-9]"), Alt, "-9]");
+    assert_err!(Ranges::parse("[:]"), Alt, ":]");
+    assert_err!(Ranges::parse("[-]"), Alt, "-]");
+    assert_err!(Ranges::parse("[]"), Alt, "]");
+    assert_err!(Ranges::parse("[5-4]"), Char, "-4]");
 }
