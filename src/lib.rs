@@ -245,9 +245,8 @@ named!(simple_filter(&str) -> Filter, ws!(alt!(
             do_parse!(
                 tag!("in") >>
                 char!('{') >>
-                values: many1!(parse) >>
-                char!('}') >>
-                (Filter::In(first, values))
+                values: many_till!(ws!(parse), tag!("}")) >>
+                (Filter::In(first, values.0))
             )
         ) >>
         (res)
