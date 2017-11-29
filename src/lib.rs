@@ -183,3 +183,25 @@ impl<'a> Parse<'a> for Value<'a> {
         (result)
     ));
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CombiningOp {
+    And,
+    Or,
+    Xor,
+}
+
+impl<'a> Parse<'a> for CombiningOp {
+    named!(parse(&str) -> Self, alt!(
+        value!(CombiningOp::And, alt!(tag!("&&") | tag!("and"))) |
+        value!(CombiningOp::Or, alt!(tag!("||") | tag!("or"))) |
+        value!(CombiningOp::Xor, alt!(tag!("^^") | tag!("xor")))
+    ));
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct NotOp;
+
+impl<'a> Parse<'a> for NotOp {
+    named!(parse(&str) -> Self, value!(NotOp, alt!(tag!("!") | tag!("not"))));
+}

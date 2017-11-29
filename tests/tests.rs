@@ -210,3 +210,18 @@ fn test_value() {
         ";"
     );
 }
+
+#[test]
+fn test_combining_op() {
+    assert_ok!("andx", CombiningOp::And, "x");
+    assert_ok!("or", CombiningOp::Or, "");
+    assert_err!(CombiningOp::parse("xot"), Alt, "xot");
+    assert_incomplete!(CombiningOp::parse("^"), 2);
+}
+
+#[test]
+fn test_not_op() {
+    assert_ok!("not", NotOp, "");
+    assert_ok!("!!", NotOp, "!");
+    assert_err!(NotOp::parse("nod"), Alt, "nod");
+}
