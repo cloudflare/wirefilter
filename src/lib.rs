@@ -283,7 +283,5 @@ named!(filter_or(&str) -> Filter, do_parse!(
 ));
 
 impl<'a> Parse<'a> for Filter<'a> {
-    fn parse(input: &'a str) -> IResult<&str, Self> {
-        filter_or(input)
-    }
+    named!(parse(&'a str) -> Self, call!(filter_or));
 }
