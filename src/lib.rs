@@ -10,6 +10,10 @@ pub trait Parse<'a>: Sized {
     fn parse(input: &'a str) -> IResult<&str, Self>;
 }
 
+fn parse<'a, T: Parse<'a>>(input: &'a str) -> IResult<&str, T> {
+    Parse::parse(input)
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ComparisonOp {
     Equal,
@@ -49,10 +53,13 @@ impl<'a> Parse<'a> for u64 {
 pub struct Field<'a>(pub &'a str);
 
 impl<'a> Parse<'a> for Field<'a> {
-    named!(parse(&'a str) -> Self, map!(
-        recognize!(separated_nonempty_list!(char!('.'), alpha)),
-        Field
-    ));
+    named!(
+        parse(&'a str) -> Self,
+        map!(
+            recognize!(separated_nonempty_list!(char!('.'), alpha)),
+            Field
+        )
+    );
 }
 
 named!(ethernet_separator(&str) -> char, one_of!(":.-"));
@@ -98,25 +105,28 @@ impl<'a> Parse<'a> for Ipv4Addr {
 named!(oct_byte(&str) -> u8, map_res!(take!(3), |digits| u8::from_str_radix(digits, 8)));
 
 impl<'a> Parse<'a> for Cow<'a, str> {
-    named!(parse(&'a str) -> Self, do_parse!(
-        char!('"') >>
-        unprefixed: map!(is_not!("\"\\"), Cow::Borrowed) >>
-        res: fold_many0!(preceded!(char!('\\'), tuple!(
-            alt!(
-                preceded!(char!('x'), map!(hex_byte, |b| b as char)) |
-                map!(oct_byte, |b| b as char) |
-                anychar
-            ),
-            map!(opt!(is_not!("\"\\")), Option::unwrap_or_default)
-        )), unprefixed, |acc: Cow<str>, (ch, rest)| {
-            let mut acc = acc.into_owned();
-            acc.push(ch);
-            acc.push_str(rest);
-            Cow::Owned(acc)
-        }) >>
-        char!('"') >>
-        (res)
-    ));
+    named!(
+        parse(&'a str) -> Self,
+        do_parse!(
+            char!('"') >>
+            unprefixed: map!(is_not!("\"\\"), Cow::Borrowed) >>
+            res: fold_many0!(preceded!(char!('\\'), tuple!(
+                alt!(
+                    preceded!(char!('x'), map!(hex_byte, |b| b as char)) |
+                    map!(oct_byte, |b| b as char) |
+                    anychar
+                ),
+                map!(opt!(is_not!("\"\\")), Option::unwrap_or_default)
+            )), unprefixed, |acc: Cow<str>, (ch, rest)| {
+                let mut acc = acc.into_owned();
+                acc.push(ch);
+                acc.push_str(rest);
+                Cow::Owned(acc)
+            }) >>
+            char!('"') >>
+            (res)
+        )
+    );
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -153,7 +163,7 @@ pub type Ranges = Vec<Range>;
 impl<'a> Parse<'a> for Ranges {
     named!(parse(&str) -> Self, delimited!(
         char!('['),
-        separated_nonempty_list!(char!(','), Range::parse),
+        separated_nonempty_list!(char!(','), parse),
         char!(']')
     ));
 }
@@ -169,19 +179,26 @@ pub enum Value<'a> {
 }
 
 named!(simple_value(&str) -> Value, alt!(
-    map!(Parse::parse, Value::Ipv4Addr) |
-    map!(Parse::parse, Value::EthernetAddr) |
-    map!(Parse::parse, Value::Unsigned) |
-    map!(Parse::parse, Value::String) |
-    map!(Parse::parse, Value::Field)
+    map!(parse, Value::Ipv4Addr) |
+    map!(parse, Value::EthernetAddr) |
+    map!(parse, Value::Unsigned) |
+    map!(parse, Value::String) |
+    map!(parse, Value::Field)
 ));
 
 impl<'a> Parse<'a> for Value<'a> {
-    named!(parse(&'a str) -> Self, do_parse!(
-        first: simple_value >>
-        result: fold_many0!(Ranges::parse, first, |acc, ranges| Value::Substring(Box::new(acc), ranges)) >>
-        (result)
-    ));
+    named!(
+        parse(&'a str) -> Self,
+        do_parse!(
+            first: simple_value >>
+            result: fold_many0!(
+                parse,
+                first,
+                |acc, ranges| Value::Substring(Box::new(acc), ranges)
+            ) >>
+            (result)
+        )
+    );
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -191,17 +208,75 @@ pub enum CombiningOp {
     Xor,
 }
 
-impl<'a> Parse<'a> for CombiningOp {
-    named!(parse(&str) -> Self, alt!(
-        value!(CombiningOp::And, alt!(tag!("&&") | tag!("and"))) |
-        value!(CombiningOp::Or, alt!(tag!("||") | tag!("or"))) |
-        value!(CombiningOp::Xor, alt!(tag!("^^") | tag!("xor")))
-    ));
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Filter<'a> {
+    Check(Field<'a>),
+    Compare(Value<'a>, ComparisonOp, Value<'a>),
+    Not(Box<Filter<'a>>),
+    Combine(Box<Filter<'a>>, CombiningOp, Box<Filter<'a>>),
+    In(Value<'a>, Vec<Value<'a>>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct NotOp;
+named!(simple_filter(&str) -> Filter, ws!(alt!(
+    delimited!(char!('+'), map!(parse, Filter::Check), char!('+')) |
+    preceded!(
+        alt!(tag!("!") | tag!("not")),
+        map!(simple_filter, |inner| Filter::Not(Box::new(inner)))
+    ) |
+    do_parse!(
+        first: parse >>
+        res: alt!(
+            do_parse!(
+                op: parse >>
+                second: parse >>
+                (Filter::Compare(
+                    /* https://github.com/Geal/nom/issues/626 */ Clone::clone(&first),
+                    op,
+                    second
+                ))
+            ) |
+            do_parse!(
+                tag!("in") >>
+                char!('{') >>
+                values: many1!(parse) >>
+                char!('}') >>
+                (Filter::In(first, values))
+            )
+        ) >>
+        (res)
+    ) |
+    delimited!(char!('('), parse, char!(')'))
+)));
 
-impl<'a> Parse<'a> for NotOp {
-    named!(parse(&str) -> Self, value!(NotOp, alt!(tag!("!") | tag!("not"))));
+named!(filter_and(&str) -> Filter, do_parse!(
+    first: simple_filter >>
+    res: fold_many0!(ws!(preceded!(
+        alt!(tag!("&&") | tag!("and")),
+        simple_filter
+    )), first, |acc, second| Filter::Combine(Box::new(acc), CombiningOp::And, Box::new(second))) >>
+    (res)
+));
+
+named!(filter_xor(&str) -> Filter, do_parse!(
+    first: filter_and >>
+    res: fold_many0!(ws!(preceded!(
+        alt!(tag!("^^") | tag!("xor")),
+        filter_and
+    )), first, |acc, second| Filter::Combine(Box::new(acc), CombiningOp::Xor, Box::new(second))) >>
+    (res)
+));
+
+named!(filter_or(&str) -> Filter, do_parse!(
+    first: filter_xor >>
+    res: fold_many0!(ws!(preceded!(
+        alt!(tag!("||") | tag!("or")),
+        filter_xor
+    )), first, |acc, second| Filter::Combine(Box::new(acc), CombiningOp::Or, Box::new(second))) >>
+    (res)
+));
+
+impl<'a> Parse<'a> for Filter<'a> {
+    fn parse(input: &'a str) -> IResult<&str, Self> {
+        filter_or(input)
+    }
 }

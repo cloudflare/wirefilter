@@ -212,16 +212,42 @@ fn test_value() {
 }
 
 #[test]
-fn test_combining_op() {
-    assert_ok!("andx", CombiningOp::And, "x");
-    assert_ok!("or", CombiningOp::Or, "");
-    assert_err!(CombiningOp::parse("xot"), Alt, "xot");
-    assert_incomplete!(CombiningOp::parse("^"), 2);
-}
-
-#[test]
-fn test_not_op() {
-    assert_ok!("not", NotOp, "");
-    assert_ok!("!!", NotOp, "!");
-    assert_err!(NotOp::parse("nod"), Alt, "nod");
+fn test_filter() {
+    assert_ok!(
+        "http.host contains \"t\"",
+        Filter::Compare(
+            Value::Field(Field("http.host")),
+            ComparisonOp::Contains,
+            Value::String(Cow::Borrowed("t"))
+        ),
+        ""
+    );
+    assert_ok!(
+        "port in { 80 443 };",
+        Filter::In(
+            Value::Field(Field("port")),
+            vec![Value::Unsigned(80), Value::Unsigned(443)]
+        ),
+        ";"
+    );
+    assert_ok!(
+        "not +x+ and (y == 1) or z in { 10 };",
+        Filter::Combine(
+            Box::new(Filter::Combine(
+                Box::new(Filter::Not(Box::new(Filter::Check(Field("x"))))),
+                CombiningOp::And,
+                Box::new(Filter::Compare(
+                    Value::Field(Field("y")),
+                    ComparisonOp::Equal,
+                    Value::Unsigned(1)
+                ))
+            )),
+            CombiningOp::Or,
+            Box::new(Filter::In(
+                Value::Field(Field("z")),
+                vec![Value::Unsigned(10)]
+            ))
+        ),
+        ";"
+    );
 }
