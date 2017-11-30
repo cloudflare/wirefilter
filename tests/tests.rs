@@ -190,22 +190,19 @@ fn test_value() {
         ";"
     );
     assert_ok!(
-        "\"test\"[10,12][20:];",
+        "\"test\"[10,12];",
         Value::Substring(
-            Box::new(Value::Substring(
-                Box::new(Value::String(Cow::Borrowed("test"))),
-                vec![
-                    Range {
-                        from: 10,
-                        to: Some(11),
-                    },
-                    Range {
-                        from: 12,
-                        to: Some(13),
-                    },
-                ]
-            )),
-            vec![Range { from: 20, to: None }]
+            Box::new(Value::String(Cow::Borrowed("test"))),
+            vec![
+                Range {
+                    from: 10,
+                    to: Some(11),
+                },
+                Range {
+                    from: 12,
+                    to: Some(13),
+                },
+            ]
         ),
         ";"
     );
