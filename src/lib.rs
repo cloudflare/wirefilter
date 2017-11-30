@@ -251,7 +251,7 @@ named!(simple_filter(&str) -> Filter, ws!(alt!(
         ) >>
         (res)
     ) |
-    delimited!(char!('('), parse, char!(')'))
+    delimited!(char!('('), filter_or, char!(')'))
 )));
 
 named!(filter_and(&str) -> Filter, do_parse!(
@@ -282,5 +282,5 @@ named!(filter_or(&str) -> Filter, do_parse!(
 ));
 
 impl<'a> Parse<'a> for Filter<'a> {
-    named!(parse(&'a str) -> Self, call!(filter_or));
+    named!(parse(&'a str) -> Self, terminated!(filter_or, eof!()));
 }

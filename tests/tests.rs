@@ -223,15 +223,15 @@ fn test_filter() {
         ""
     );
     assert_ok!(
-        "port in { 80 443 };",
+        "port in { 80 443 }",
         Filter::In(
             Value::Field(Field("port")),
             vec![Value::Unsigned(80), Value::Unsigned(443)]
         ),
-        ";"
+        ""
     );
     assert_ok!(
-        "not +x+ and (y == 1) or z in { 10 };",
+        "not +x+ and (y == 1) or z in { 10 }",
         Filter::Combine(
             Box::new(Filter::Combine(
                 Box::new(Filter::Not(Box::new(Filter::Check(Field("x"))))),
@@ -248,6 +248,6 @@ fn test_filter() {
                 vec![Value::Unsigned(10)]
             ))
         ),
-        ";"
+        ""
     );
 }
