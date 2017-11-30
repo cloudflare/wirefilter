@@ -15,6 +15,22 @@ fn parse<'a, T: Parse<'a>>(input: &'a str) -> IResult<&str, T> {
     Parse::parse(input)
 }
 
+macro_rules! err {
+    ($i:expr, $kind: expr) => {
+        IResult::Error(error_position!($kind, $i))
+    };
+}
+
+macro_rules! alt_switch {
+    ($i:expr, $($lhs_mac:ident ! ( $($lhs_arg:tt)* ) $(as $lhs_binding:pat)* => $rhs_mac:ident ! ( $($rhs_arg:tt)* ) |)+ _ => $def_mac:ident ! ( $($def_arg:tt)* )) => {{
+        $(if let IResult::Done(i, $($lhs_binding,)* ..) = $lhs_mac ! ( $i, $($lhs_arg)* ) {
+            $rhs_mac ! ( i, $($rhs_arg)* )
+        } else )+ {
+            $def_mac ! ( $i, $($def_arg)* )
+        }
+    }};
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ComparisonOp {
     Equal,
@@ -43,10 +59,13 @@ impl<'a> Parse<'a> for ComparisonOp {
 }
 
 impl<'a> Parse<'a> for u64 {
-    named!(parse(&str) -> Self, alt!(
-        preceded!(tag!("0x"), map_res!(hex_digit, |digits| u64::from_str_radix(digits, 16))) |
-        preceded!(tag!("0"), map_res!(oct_digit, |digits| u64::from_str_radix(digits, 8))) |
-        map_res!(digit, u64::from_str)
+    named!(parse(&str) -> Self, alt_switch!(
+        tag!("0x") => map_res!(hex_digit, |digits| u64::from_str_radix(digits, 16)) |
+        _ => map_res!(digit, |digits| u64::from_str_radix(digits, if digits.starts_with('0') {
+            8
+        } else {
+            10
+        }))
     ));
 }
 
@@ -224,34 +243,24 @@ pub enum Filter<'a> {
     In(Value<'a>, Vec<Value<'a>>),
 }
 
-named!(simple_filter(&str) -> Filter, ws!(alt!(
-    delimited!(char!('+'), map!(parse, Filter::Check), char!('+')) |
-    preceded!(
-        alt!(tag!("!") | tag!("not")),
-        map!(simple_filter, |inner| Filter::Not(Box::new(inner)))
+named!(simple_filter(&str) -> Filter, ws!(alt_switch!(
+    char!('+') => terminated!(map!(parse, Filter::Check), char!('+')) |
+    alt!(tag!("!") | tag!("not")) => map!(simple_filter, |inner| Filter::Not(Box::new(inner))) |
+    char!('(') => terminated!(filter_or, char!(')')) |
+    call!(parse) as first => alt_switch!(
+        ws!(parse) as op => map!(parse, |second| Filter::Compare(
+            /* https://github.com/Geal/nom/issues/626 */ Clone::clone(&first),
+            op,
+            second
+        )) |
+        ws!(tag!("in")) => do_parse!(
+            char!('{') >>
+            values: many_till!(ws!(parse), tag!("}")) >>
+            (Filter::In(first, values.0))
+        ) |
+        _ => err!(ErrorKind::Alt)
     ) |
-    do_parse!(
-        first: parse >>
-        res: alt!(
-            do_parse!(
-                op: parse >>
-                second: parse >>
-                (Filter::Compare(
-                    /* https://github.com/Geal/nom/issues/626 */ Clone::clone(&first),
-                    op,
-                    second
-                ))
-            ) |
-            do_parse!(
-                tag!("in") >>
-                char!('{') >>
-                values: many_till!(ws!(parse), tag!("}")) >>
-                (Filter::In(first, values.0))
-            )
-        ) >>
-        (res)
-    ) |
-    delimited!(char!('('), filter_or, char!(')'))
+    _ => err!(ErrorKind::Alt)
 )));
 
 named!(filter_and(&str) -> Filter, do_parse!(
