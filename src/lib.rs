@@ -197,13 +197,13 @@ impl<'a> Parse<'a> for Value<'a> {
     named!(
         parse(&'a str) -> Self,
         do_parse!(
-            first: simple_value >>
-            result: fold_many0!(
-                parse,
-                first,
-                |acc, ranges| Value::Substring(Box::new(acc), ranges)
-            ) >>
-            (result)
+            value: simple_value >>
+            ranges: opt!(call!(Ranges::parse)) >>
+            (if let Some(ranges) = ranges {
+                Value::Substring(Box::new(value), ranges)
+            } else {
+                value
+            })
         )
     );
 }
