@@ -66,15 +66,15 @@ pub use self::op::ComparisonOp;
 pub use self::spaces::Spaces;
 
 nested_enum!(Value<'a> {
-	IpAddr(::std::net::IpAddr),
-	Bytes(Vec<u8>),
-	Unsigned(u64),
-	Field(Field<'a>),
-	String(String),
+    IpAddr(::std::net::IpAddr),
+    Bytes(Vec<u8>),
+    Unsigned(u64),
+    Field(Field<'a>),
+    String(String),
 });
 
 nested_enum!(Token<'a> {
-	Spaces(Spaces),
-	ComparisonOp(ComparisonOp),
-	Value(Value<'a>),
+    Spaces(Spaces),
+    ComparisonOp(ComparisonOp),
+    Value(Value<'a>),
 });

@@ -10,60 +10,63 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
 
 #[macro_export]
 macro_rules! simple_enum {
-	($name:ident { $( $($s:tt)|+ => $item:ident, )+ }) => {
-		#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-		pub enum $name {
-			$($item,)+
-		}
+    ($name:ident { $( $($s:tt)|+ => $item:ident, )+ }) => {
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        pub enum $name {
+            $($item,)+
+        }
 
-		impl<'a> $crate::tokenizer::Lex<'a> for $name {
-			fn lex(input: &'a str) -> $crate::tokenizer::LexResult<'a, Self> {
-				static EXPECTED_LITERALS: &'static [&'static str] = &[
-					$($($s),+),+
-				];
+        impl<'a> $crate::tokenizer::Lex<'a> for $name {
+            fn lex(input: &'a str) -> $crate::tokenizer::LexResult<'a, Self> {
+                static EXPECTED_LITERALS: &'static [&'static str] = &[
+                    $($($s),+),+
+                ];
 
-				$($(if let Ok(input) = $crate::tokenizer::utils::expect(input, $s) {
-					Ok(($name::$item, input))
-				} else)+)+ {
-					Err(($crate::tokenizer::ErrorKind::Enum(stringify!($name), EXPECTED_LITERALS), input))
-				}
-			}
-		}
-	};
+                $($(if let Ok(input) = $crate::tokenizer::utils::expect(input, $s) {
+                    Ok(($name::$item, input))
+                } else)+)+ {
+                    Err((
+                        $crate::tokenizer::ErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
+                        input
+                    ))
+                }
+            }
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! nested_enum {
-	(!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
-		nested_enum!(!impl $input, $name::$item ($ty) <- $crate::tokenizer::Lex::lex)
-	};
+    (!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
+        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::tokenizer::Lex::lex)
+    };
 
-	(!impl $input:ident, $name:ident :: $item:ident <- $func:path) => {
-		$func($input).map(|(_, input)| ($name::$item, input))
-	};
+    (!impl $input:ident, $name:ident :: $item:ident <- $func:path) => {
+        $func($input).map(|(_, input)| ($name::$item, input))
+    };
 
-	(!impl $input:ident, $name:ident :: $item:ident ( $ty:ty ) <- $func:path) => {
-		$func($input).map(|(res, input)| ($name::$item(res), input))
-	};
+    (!impl $input:ident, $name:ident :: $item:ident ( $ty:ty ) <- $func:path) => {
+        $func($input).map(|(res, input)| ($name::$item(res), input))
+    };
 
-	($name:ident <'a> { $($item:ident $(( $ty:ty ))* $(<- $func:path)*,)+ }) => {
-		#[derive(Debug, PartialEq, Eq, Clone)]
-		pub enum $name<'a> {
-			$($item $(($ty))*,)+
-		}
+    ($name:ident <'a> { $($item:ident $(( $ty:ty ))* $(<- $func:path)*,)+ }) => {
+        #[derive(Debug, PartialEq, Eq, Clone)]
+        pub enum $name<'a> {
+            $($item $(($ty))*,)+
+        }
 
-		impl<'a> Lex<'a> for $name<'a> {
-			fn lex(input: &'a str) -> LexResult<'a, Self> {
-				$(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
-					Ok(res) => {
-						return Ok(res);
-					}
-					Err(_) => {}
-				};)+
-				Err((ErrorKind::Name(stringify!($name)), input))
-			}
-		}
-	};
+        impl<'a> Lex<'a> for $name<'a> {
+            fn lex(input: &'a str) -> LexResult<'a, Self> {
+                $(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
+                    Ok(res) => {
+                        return Ok(res);
+                    }
+                    Err(_) => {}
+                };)+
+                Err((ErrorKind::Name(stringify!($name)), input))
+            }
+        }
+    };
 }
 
 pub fn span<'a>(input: &'a str, rest: &'a str) -> (&'a str, &'a str) {
