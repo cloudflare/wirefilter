@@ -1,0 +1,24 @@
+use tokenizer::{Lex, LexResult};
+use tokenizer::utils::{expect, list, take_while};
+
+fn ident(input: &str) -> LexResult<&str> {
+    take_while(input, "alphabetic", char::is_alphabetic)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Field<'a> {
+    pub path: &'a str,
+}
+
+impl<'a> Field<'a> {
+    pub fn new(path: &'a str) -> Self {
+        Field { path }
+    }
+}
+
+impl<'a> Lex<'a> for Field<'a> {
+    fn lex(input: &'a str) -> LexResult<'a, Self> {
+        let (path, rest) = list(input, |input| expect(input, "."), ident)?;
+        Ok((Field::new(path), rest))
+    }
+}

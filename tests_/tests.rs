@@ -9,7 +9,7 @@ use wirefilter::*;
 
 macro_rules! assert_ok {
     ($expr:expr, $out:expr, $rest:expr) => {
-        assert_eq!(Parse::parse($expr), nom::IResult::Done($rest, $out));
+        assert_eq!(Parse::parse($expr), Ok(($rest, $out)));
     };
 }
 
@@ -23,17 +23,17 @@ macro_rules! assert_err {
     };
 
     ($expr:expr, $($tt:tt)+) => {
-        assert_eq!($expr, nom::IResult::Error(assert_err!(@error $($tt)+)));
+        assert_eq!($expr, Err(nom::Err::Error(assert_err!(@error $($tt)+))));
     };
 }
 
 macro_rules! assert_incomplete {
     ($expr: expr) => {
-        assert_eq!($expr, nom::IResult::Incomplete(nom::Needed::Unknown));
+        assert_eq!($expr, Err(nom::Err::Incomplete(nom::Needed::Unknown)));
     };
 
     ($expr: expr, $size: expr) => {
-        assert_eq!($expr, nom::IResult::Incomplete(nom::Needed::Size($size)));
+        assert_eq!($expr, Err(nom::Err::Incomplete(nom::Needed::Size($size))));
     };
 }
 
