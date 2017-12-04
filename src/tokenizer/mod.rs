@@ -62,7 +62,7 @@ mod spaces;
 mod string;
 
 pub use self::field::Field;
-pub use self::op::ComparisonOp;
+pub use self::op::{CombiningOp, ComparisonOp};
 pub use self::spaces::Spaces;
 
 nested_enum!(Value<'a> {
@@ -75,6 +75,7 @@ nested_enum!(Value<'a> {
 
 nested_enum!(Token<'a> {
     Spaces(Spaces),
+    CombiningOp(CombiningOp),
     ComparisonOp(ComparisonOp),
     Value(Value<'a>),
 });
