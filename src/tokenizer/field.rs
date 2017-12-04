@@ -1,13 +1,21 @@
 use tokenizer::{Lex, LexResult};
 use tokenizer::utils::{expect, list, take_while};
 
+use std::fmt;
+
 fn ident(input: &str) -> LexResult<&str> {
     take_while(input, "alphabetic", char::is_alphabetic)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Field<'a> {
     pub path: &'a str,
+}
+
+impl<'a> fmt::Debug for Field<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.path)
+    }
 }
 
 impl<'a> Field<'a> {
