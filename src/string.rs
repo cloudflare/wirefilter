@@ -1,5 +1,5 @@
-use tokenizer::{ErrorKind, Lex, LexResult};
-use tokenizer::utils::{expect, hex_byte, oct_byte};
+use {ErrorKind, Lex, LexResult};
+use utils::{expect, hex_byte, oct_byte};
 
 impl<'a> Lex<'a> for String {
     fn lex(input: &'a str) -> LexResult<'a, Self> {

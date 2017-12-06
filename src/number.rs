@@ -1,5 +1,5 @@
-use tokenizer::{ErrorKind, Lex, LexResult};
-use tokenizer::utils::{expect, take_while};
+use {ErrorKind, Lex, LexResult};
+use utils::{expect, take_while};
 
 use std::str::FromStr;
 
@@ -26,7 +26,7 @@ impl<'a> Lex<'a> for u64 {
 fn index(input: &str) -> LexResult<isize> {
     let (neg, input) = match expect(input, "-") {
         Ok(input) => (true, input),
-        Err(_) => (false, input)
+        Err(_) => (false, input),
     };
     let (digits, input) = take_while(input, "digit", |c| c.is_digit(10))?;
     match isize::from_str(digits) {
@@ -35,7 +35,7 @@ fn index(input: &str) -> LexResult<isize> {
                 res = -res;
             }
             Ok((res, input))
-        },
+        }
         Err(e) => Err((ErrorKind::ParseInt(e, 10), digits)),
     }
 }
@@ -56,7 +56,7 @@ impl<'a> Lex<'a> for Range {
         let (end, input) = if let Ok(input) = expect(input, ":") {
             match index(input) {
                 Ok((len, input)) => (Some(start + len), input),
-                Err(_) => (None, input)
+                Err(_) => (None, input),
             }
         } else if let Ok(input) = expect(input, "-") {
             let (end, input) = index(input)?;

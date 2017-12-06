@@ -1,5 +1,5 @@
-use tokenizer::{Lex, LexResult};
-use tokenizer::utils::{expect, list, take_while};
+use {Lex, LexResult};
+use utils::{expect, list, take_while};
 
 use std::fmt;
 

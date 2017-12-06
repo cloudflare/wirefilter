@@ -1,4 +1,4 @@
-use tokenizer::{ErrorKind, LexError, LexResult};
+use {ErrorKind, LexError, LexResult};
 
 pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
     if input.starts_with(s) {
@@ -16,17 +16,17 @@ macro_rules! simple_enum {
             $($item,)+
         }
 
-        impl<'a> $crate::tokenizer::Lex<'a> for $name {
-            fn lex(input: &'a str) -> $crate::tokenizer::LexResult<'a, Self> {
+        impl<'a> $crate::Lex<'a> for $name {
+            fn lex(input: &'a str) -> $crate::LexResult<'a, Self> {
                 static EXPECTED_LITERALS: &'static [&'static str] = &[
                     $($($s),+),+
                 ];
 
-                $($(if let Ok(input) = $crate::tokenizer::utils::expect(input, $s) {
+                $($(if let Ok(input) = $crate::utils::expect(input, $s) {
                     Ok(($name::$item, input))
                 } else)+)+ {
                     Err((
-                        $crate::tokenizer::ErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
+                        $crate::ErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
                         input
                     ))
                 }
@@ -38,7 +38,7 @@ macro_rules! simple_enum {
 #[macro_export]
 macro_rules! nested_enum {
     (!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
-        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::tokenizer::Lex::lex)
+        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::Lex::lex)
     };
 
     (!impl $input:ident, $name:ident :: $item:ident <- $func:path) => {
@@ -49,13 +49,13 @@ macro_rules! nested_enum {
         $func($input).map(|(res, input)| ($name::$item(res), input))
     };
 
-    ($name:ident <'a> { $($item:ident $(( $ty:ty ))* $(<- $func:path)*,)+ }) => {
-        #[derive(Debug, PartialEq, Eq, Clone)]
-        pub enum $name<'a> {
+    ($(# $attrs:tt)* $name:ident { $($item:ident $(( $ty:ty ))* $(<- $func:path)*,)+ }) => {
+        $(# $attrs)*
+        pub enum $name {
             $($item $(($ty))*,)+
         }
 
-        impl<'a> Lex<'a> for $name<'a> {
+        impl<'a> Lex<'a> for $name {
             fn lex(input: &'a str) -> LexResult<'a, Self> {
                 $(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
                     Ok(res) => {
@@ -69,8 +69,8 @@ macro_rules! nested_enum {
     };
 }
 
-pub fn span<'a>(input: &'a str, rest: &'a str) -> (&'a str, &'a str) {
-    (&input[..input.len() - rest.len()], rest)
+pub fn span<'a>(input: &'a str, rest: &'a str) -> &'a str {
+    &input[..input.len() - rest.len()]
 }
 
 pub fn take_while<'a, F: Fn(char) -> bool>(
@@ -85,7 +85,7 @@ pub fn take_while<'a, F: Fn(char) -> bool>(
             Some(c) if f(c) => {}
             _ => {
                 return if rest.len() != input.len() {
-                    Ok(span(input, rest))
+                    Ok((span(input, rest), rest))
                 } else {
                     Err((ErrorKind::CountMismatch(name, 0, 1), input))
                 };
@@ -116,7 +116,7 @@ pub fn list<
         };
         rest = item(rest)?.1;
     }
-    Ok(span(input, rest))
+    Ok((span(input, rest), rest))
 }
 
 pub fn take<'a>(input: &'a str, count: usize) -> LexResult<'a, &'a str> {
@@ -141,4 +141,11 @@ pub fn hex_byte(input: &str) -> LexResult<u8> {
 
 pub fn oct_byte(input: &str) -> LexResult<u8> {
     fixed_byte(input, 3, 8)
+}
+
+pub fn skip_spaces(input: &str) -> &str {
+    match take_while(input, "whitespace", char::is_whitespace) {
+        Ok((_, input)) => input,
+        Err(_) => input,
+    }
 }

@@ -1,5 +1,5 @@
-use tokenizer::{ErrorKind, Lex, LexResult};
-use tokenizer::utils::take_while;
+use {ErrorKind, Lex, LexResult};
+use utils::take_while;
 
 use std::str::FromStr;
 
