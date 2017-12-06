@@ -110,7 +110,7 @@ impl RhsValue {
 pub fn simple_filter<'a, C: Context<'a>>(input: &'a str, context: C) -> LexResult<'a, C::Filter> {
     let (field, rest) = Field::lex(input)?;
 
-    let rest = utils::skip_spaces(rest);
+    let rest = rest.trim_left();
 
     let lhs = context
         .get_field(field.path)
@@ -118,7 +118,7 @@ pub fn simple_filter<'a, C: Context<'a>>(input: &'a str, context: C) -> LexResul
 
     let (op, rest) = ComparisonOp::lex(rest)?;
 
-    let rest = utils::skip_spaces(rest);
+    let rest = rest.trim_left();
 
     let (rhs, rest) = RhsValue::lex(rest)?;
 
@@ -131,7 +131,7 @@ pub fn simple_filter<'a, C: Context<'a>>(input: &'a str, context: C) -> LexResul
         )
     })?;
 
-    let rest = utils::skip_spaces(rest);
+    let rest = rest.trim_left();
 
     Ok((filter, rest))
 }

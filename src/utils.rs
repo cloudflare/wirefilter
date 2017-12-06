@@ -142,10 +142,3 @@ pub fn hex_byte(input: &str) -> LexResult<u8> {
 pub fn oct_byte(input: &str) -> LexResult<u8> {
     fixed_byte(input, 3, 8)
 }
-
-pub fn skip_spaces(input: &str) -> &str {
-    match take_while(input, "whitespace", char::is_whitespace) {
-        Ok((_, input)) => input,
-        Err(_) => input,
-    }
-}
