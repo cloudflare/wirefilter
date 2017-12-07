@@ -7,7 +7,7 @@ impl<'a> Lex<'a> for Vec<u8> {
     fn lex(input: &'a str) -> LexResult<'a, Self> {
         let (chunk, rest) = take_while(input, "non-whitespace character", |c| !c.is_whitespace())?;
         chunk
-            .split(':')
+            .split(|c| c == ':' || c == '-' || c == '.')
             .map(|s| u8::from_str(s).map_err(|err| (ErrorKind::ParseInt(err, 10), s)))
             .collect::<Result<Vec<_>, _>>()
             .and_then(|res| {
