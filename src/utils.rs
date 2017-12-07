@@ -123,7 +123,7 @@ pub fn take<'a>(input: &'a str, count: usize) -> LexResult<'a, &'a str> {
     if input.len() >= count {
         Ok(input.split_at(count))
     } else {
-        Err((ErrorKind::Take(count), input))
+        Err((ErrorKind::CountMismatch("character", input.len(), count), input))
     }
 }
 

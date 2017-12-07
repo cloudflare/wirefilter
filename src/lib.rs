@@ -10,10 +10,6 @@ quick_error! {
             description(name)
             display("expected {}", name)
         }
-        Take(count: usize) {
-            description("more characters")
-            display("expected {} characters", count)
-        }
         Literal(s: &'static str) {
             description(s)
             display("expected literal {:?}", s)
