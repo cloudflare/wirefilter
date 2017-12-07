@@ -11,9 +11,9 @@ simple_enum!(ComparisonOp {
 });
 
 simple_enum!(CombiningOp {
-    "and" | "&&" => And,
     "or" | "||" => Or,
     "xor" | "^^" => Xor,
+    "and" | "&&" => And,
 });
 
 simple_enum!(UnaryOp {

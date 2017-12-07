@@ -49,5 +49,5 @@ fn main() {
 
     let context = AstContext::new(&s);
 
-    println!("{:#?}", wirefilter::simple_filter(&s, context));
+    println!("{:#?}", wirefilter::filter(&s, context));
 }

@@ -11,7 +11,7 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
 #[macro_export]
 macro_rules! simple_enum {
     ($name:ident { $( $($s:tt)|+ => $item:ident, )+ }) => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
         pub enum $name {
             $($item,)+
         }
