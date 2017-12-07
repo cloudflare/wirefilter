@@ -1,8 +1,6 @@
 use {ErrorKind, Lex, LexResult};
 use utils::take_while;
 
-use std::str::FromStr;
-
 impl<'a> Lex<'a> for Vec<u8> {
     fn lex(input: &'a str) -> LexResult<'a, Self> {
         let (chunk, rest) = take_while(input, "non-whitespace character", |c| !c.is_whitespace())?;
