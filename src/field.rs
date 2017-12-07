@@ -4,7 +4,7 @@ use utils::{expect, list, take_while};
 use std::fmt;
 
 fn ident(input: &str) -> LexResult<&str> {
-    take_while(input, "alphabetic", char::is_alphabetic)
+    take_while(input, "alphabetic character", char::is_alphabetic)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

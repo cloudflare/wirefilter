@@ -38,7 +38,7 @@ quick_error! {
         }
         CountMismatch(name: &'static str, actual: usize, expected: usize) {
             description("different count of items")
-            display("expected {} {} items, but found {}", expected, name, actual)
+            display("expected {} {}s, but found {}", expected, name, actual)
         }
         UnknownField {
             description("registered field")
