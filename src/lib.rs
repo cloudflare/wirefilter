@@ -83,7 +83,8 @@ use cidr::IpCidr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
-    IpAddr,
+    IpAddrV4,
+    IpAddrV6,
     Bytes,
     Unsigned,
     String,
@@ -99,7 +100,8 @@ nested_enum!(#[derive(Debug, Clone)] RhsValue {
 impl RhsValue {
     pub fn get_type(&self) -> Type {
         match *self {
-            RhsValue::IpCidr(_) => Type::IpAddr,
+            RhsValue::IpCidr(IpCidr::V4(_)) => Type::IpAddrV4,
+            RhsValue::IpCidr(IpCidr::V6(_)) => Type::IpAddrV6,
             RhsValue::Bytes(_) => Type::Bytes,
             RhsValue::Unsigned(_) => Type::Unsigned,
             RhsValue::String(_) => Type::String,
