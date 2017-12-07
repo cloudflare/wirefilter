@@ -30,6 +30,9 @@ impl<'i> Context<'i> for AstContext<'i> {
     }
 
     fn compare(self, lhs: Field, op: ComparisonOp, rhs: RhsValue) -> Result<Filter, Type> {
+        if lhs.path == "err" {
+            return Err(Type::Bytes);
+        }
         Ok(Filter::Compare(lhs, op, rhs))
     }
 
