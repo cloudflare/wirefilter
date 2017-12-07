@@ -54,14 +54,14 @@ impl<'i> Context<'i> for AstContext<'i> {
 }
 
 fn main() {
-    let s = args()
+    let filter = args()
         .nth(1)
         .expect("Expected an input as a command-line argument");
 
-    let context = AstContext::new(&s);
+    let context = AstContext::new(&filter);
 
-    match wirefilter::filter(&filter, &context) {
+    match wirefilter::filter(&filter, context) {
         Ok(res) => println!("{:#?}", res),
-        Err((err, input)) => panic!("{} in {:?}", err ,input)
+        Err((err, input)) => panic!("{} in {:?}", err, input),
     }
 }
