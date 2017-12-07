@@ -8,7 +8,7 @@ impl<'a> Lex<'a> for Vec<u8> {
         let (chunk, rest) = take_while(input, "non-whitespace character", |c| !c.is_whitespace())?;
         chunk
             .split(|c| c == ':' || c == '-' || c == '.')
-            .map(|s| u8::from_str(s).map_err(|err| (ErrorKind::ParseInt(err, 10), s)))
+            .map(|s| u8::from_str_radix(s, 16).map_err(|err| (ErrorKind::ParseInt(err, 16), s)))
             .collect::<Result<Vec<_>, _>>()
             .and_then(|res| {
                 if res.len() < 2 {
