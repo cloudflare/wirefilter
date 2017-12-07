@@ -55,15 +55,15 @@ macro_rules! nested_enum {
             $($item $(($ty))*,)+
         }
 
-        impl<'a> Lex<'a> for $name {
-            fn lex(input: &'a str) -> LexResult<'a, Self> {
+        impl<'a> $crate::Lex<'a> for $name {
+            fn lex(input: &'a str) -> $crate::LexResult<'a, Self> {
                 $(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
                     Ok(res) => {
                         return Ok(res);
                     }
                     Err(_) => {}
                 };)+
-                Err((ErrorKind::Name(stringify!($name)), input))
+                Err(($crate::ErrorKind::Name(stringify!($name)), input))
             }
         }
     };

@@ -60,5 +60,8 @@ fn main() {
 
     let context = AstContext::new(&s);
 
-    println!("{:#?}", wirefilter::filter(&s, context));
+    match wirefilter::filter(&filter, &context) {
+        Ok(res) => println!("{:#?}", res),
+        Err((err, input)) => panic!("{} in {:?}", err ,input)
+    }
 }

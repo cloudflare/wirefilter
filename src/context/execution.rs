@@ -7,13 +7,18 @@ use std::net::IpAddr;
 #[derive(Default)]
 pub struct ExecutionContext(HashMap<String, LhsValue>);
 
-#[derive(Debug, Clone)]
-pub enum LhsValue {
+impl ExecutionContext {
+    pub fn new(map: HashMap<String, LhsValue>) -> Self {
+        ExecutionContext(map)
+    }
+}
+
+nested_enum!(#[derive(Debug, Clone)] LhsValue {
     IpAddr(IpAddr),
     Bytes(Vec<u8>),
     Unsigned(u64),
     String(String),
-}
+});
 
 fn simple_op<T: Ord + Copy>(lhs: T, op: ComparisonOp, rhs: T) -> Option<bool> {
     range_op(lhs, op, rhs, rhs)

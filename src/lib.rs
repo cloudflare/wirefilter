@@ -77,7 +77,7 @@ mod string;
 pub use self::field::Field;
 pub use self::op::{CombiningOp, ComparisonOp, UnaryOp};
 pub use context::Context;
-pub use context::execution::ExecutionContext;
+pub use context::execution::*;
 
 use cidr::IpCidr;
 
