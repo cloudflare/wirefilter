@@ -17,7 +17,7 @@ impl<'i> AstContext<'i> {
 #[derive(Debug)]
 enum Filter<'i> {
     Compare(Field<'i>, ComparisonOp, RhsValue),
-    Combine(Box<Filter<'i>>, CombiningOp, Box<Filter<'i>>),
+    Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }
 
@@ -33,8 +33,16 @@ impl<'i> Context<'i> for AstContext<'i> {
         Ok(Filter::Compare(lhs, op, rhs))
     }
 
-    fn combine(self, lhs: Filter<'i>, op: CombiningOp, rhs: Filter<'i>) -> Filter<'i> {
-        Filter::Combine(Box::new(lhs), op, Box::new(rhs))
+    fn combine(self, mut lhs: Filter<'i>, op: CombiningOp, rhs: Filter<'i>) -> Filter<'i> {
+        match lhs {
+            Filter::Combine(lhs_op, ref mut filters) if op == lhs_op => {
+                filters.push(rhs);
+            }
+            _ => {
+                lhs = Filter::Combine(op, vec![lhs, rhs]);
+            }
+        }
+        lhs
     }
 
     fn unary(self, op: UnaryOp, arg: Filter) -> Filter {
