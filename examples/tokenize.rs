@@ -3,7 +3,9 @@ extern crate wirefilter;
 use std::env::args;
 use std::marker::PhantomData;
 
-use wirefilter::{CombiningOp, ComparisonOp, Context, Field, RhsValue, Type, UnaryOp};
+use wirefilter::op::{CombiningOp, ComparisonOp, UnaryOp};
+use wirefilter::Field;
+use wirefilter::filter::{RhsValue, Type};
 
 #[derive(Clone, Copy)]
 struct AstContext<'i>(PhantomData<&'i str>);
@@ -21,7 +23,7 @@ enum Filter<'i> {
     Unary(UnaryOp, Box<Filter<'i>>),
 }
 
-impl<'i> Context<'i> for AstContext<'i> {
+impl<'i> wirefilter::context::Context<'i> for AstContext<'i> {
     type LhsValue = Field<'i>;
     type Filter = Filter<'i>;
 

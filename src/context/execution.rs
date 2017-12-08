@@ -1,4 +1,5 @@
-use {CombiningOp, ComparisonOp, Context, MatchingOp, OrderingOp, RhsValue, Type, UnaryOp};
+use context::Context;
+use filter::{RhsValue, Type};
 
 use cidr::{Cidr, IpCidr};
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ nested_enum!(#[derive(Debug, Clone)] LhsValue {
     String(String),
 });
 
-fn simple_op<T: Ord + Copy>(lhs: T, op: OrderingOp, rhs: T) -> Option<bool> {
+fn simple_op<T: Ord + Copy>(lhs: T, op: ::op::OrderingOp, rhs: T) -> Option<bool> {
     range_op(lhs, op, rhs, rhs)
 }
 
@@ -33,27 +34,35 @@ extern "C" {
     ) -> *const u8;
 }
 
-fn bytes_op<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(lhs: T1, op: ComparisonOp, rhs: T2) -> Option<bool> {
+fn bytes_op<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(
+    lhs: T1,
+    op: ::op::ComparisonOp,
+    rhs: T2,
+) -> Option<bool> {
+    use op::ComparisonOp::*;
+
     let lhs = lhs.as_ref();
     let rhs = rhs.as_ref();
 
     match op {
-        ComparisonOp::Matching(MatchingOp::Contains) => Some(unsafe {
+        Matching(::op::MatchingOp::Contains) => Some(unsafe {
             !memmem(lhs.as_ptr(), lhs.len(), rhs.as_ptr(), rhs.len()).is_null()
         }),
-        ComparisonOp::Ordering(op) => simple_op(lhs, op, rhs),
+        Ordering(op) => simple_op(lhs, op, rhs),
         _ => None,
     }
 }
 
-fn range_op<T: Ord>(lhs: T, op: OrderingOp, rhs_first: T, rhs_last: T) -> Option<bool> {
+fn range_op<T: Ord>(lhs: T, op: ::op::OrderingOp, rhs_first: T, rhs_last: T) -> Option<bool> {
+    use op::OrderingOp::*;
+
     Some(match op {
-        OrderingOp::Equal => lhs >= rhs_first && lhs <= rhs_last,
-        OrderingOp::NotEqual => lhs < rhs_first || lhs > rhs_last,
-        OrderingOp::GreaterThanEqual => lhs >= rhs_last,
-        OrderingOp::LessThanEqual => lhs <= rhs_first,
-        OrderingOp::GreaterThan => lhs > rhs_last,
-        OrderingOp::LessThan => lhs < rhs_first,
+        Equal => lhs >= rhs_first && lhs <= rhs_last,
+        NotEqual => lhs < rhs_first || lhs > rhs_last,
+        GreaterThanEqual => lhs >= rhs_last,
+        LessThanEqual => lhs <= rhs_first,
+        GreaterThan => lhs > rhs_last,
+        LessThan => lhs < rhs_first,
     })
 }
 
@@ -65,8 +74,9 @@ impl<'i> Context<'i> for &'i ExecutionContext {
         self.0.get(path)
     }
 
-    fn compare(self, lhs: &LhsValue, op: ComparisonOp, rhs: RhsValue) -> Result<bool, Type> {
-        use ComparisonOp::*;
+    fn compare(self, lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Result<bool, Type> {
+        use op::ComparisonOp::*;
+        use op::MatchingOp;
 
         (match (lhs, op, rhs) {
             (
@@ -110,17 +120,21 @@ impl<'i> Context<'i> for &'i ExecutionContext {
         })
     }
 
-    fn combine(self, lhs: bool, op: CombiningOp, rhs: bool) -> bool {
+    fn combine(self, lhs: bool, op: ::op::CombiningOp, rhs: bool) -> bool {
+        use op::CombiningOp::*;
+
         match op {
-            CombiningOp::And => lhs && rhs,
-            CombiningOp::Or => lhs || rhs,
-            CombiningOp::Xor => lhs != rhs,
+            And => lhs && rhs,
+            Or => lhs || rhs,
+            Xor => lhs != rhs,
         }
     }
 
-    fn unary(self, op: UnaryOp, arg: bool) -> bool {
+    fn unary(self, op: ::op::UnaryOp, arg: bool) -> bool {
+        use op::UnaryOp::*;
+
         match op {
-            UnaryOp::Not => !arg,
+            Not => !arg,
         }
     }
 }

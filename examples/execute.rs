@@ -1,6 +1,7 @@
 extern crate wirefilter;
 
-use wirefilter::{ExecutionContext, LhsValue, ErrorKind, Lex};
+use wirefilter::{ErrorKind, Lex};
+use wirefilter::context::execution::{ExecutionContext, LhsValue};
 
 fn main() {
     let mut args = ::std::env::args().skip(1);
@@ -14,13 +15,15 @@ fn main() {
                 panic!("Could not find = in {:?}", arg);
             }));
 
-            let lhs_value = LhsValue::lex(&v[1..]).and_then(|(v, rest)| {
-                if rest.is_empty() {
-                    Ok(v)
-                } else {
-                    Err((ErrorKind::EOF, rest))
-                }
-            }).expect("Could not parse value");
+            let lhs_value = LhsValue::lex(&v[1..])
+                .and_then(|(v, rest)| {
+                    if rest.is_empty() {
+                        Ok(v)
+                    } else {
+                        Err((ErrorKind::EOF, rest))
+                    }
+                })
+                .expect("Could not parse value");
 
             (k.to_owned(), lhs_value)
         }).collect(),
@@ -28,6 +31,6 @@ fn main() {
 
     match wirefilter::filter(&filter, &context) {
         Ok(res) => println!("{:?}", res),
-        Err((err, input)) => panic!("{} in {:?}", err ,input)
+        Err((err, input)) => panic!("{} in {:?}", err, input),
     }
 }

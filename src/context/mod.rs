@@ -1,4 +1,5 @@
-use super::{CombiningOp, ComparisonOp, RhsValue, Type, UnaryOp};
+use filter::{RhsValue, Type};
+use op::{CombiningOp, ComparisonOp, UnaryOp};
 
 pub trait Context<'i>: Copy {
     type LhsValue;

@@ -32,7 +32,7 @@ impl<'a> Lex<'a> for IpCidr {
             let len = u8::from_str(digits).map_err(|e| (ErrorKind::ParseInt(e, 10), digits))?;
             (
                 IpCidr::new(addr, len).map_err(|e| (ErrorKind::ParseIp(e), span(input, rest)))?,
-                rest
+                rest,
             )
         } else {
             (IpCidr::new_host(addr), rest)
