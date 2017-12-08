@@ -1,8 +1,10 @@
 use context::{Context, Filter, RhsValue, Type};
+use op::OrderingOp;
 
 use cidr::{Cidr, IpCidr};
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::cmp::Ordering;
 
 #[derive(Default)]
 pub struct ExecutionContext(HashMap<String, LhsValue>);
@@ -19,10 +21,6 @@ nested_enum!(#[derive(Debug, Clone)] LhsValue {
     Unsigned(u64),
     String(String),
 });
-
-fn simple_op<T: Ord + Copy>(lhs: T, op: ::op::OrderingOp, rhs: T) -> Option<bool> {
-    range_op(lhs, op, rhs, rhs)
-}
 
 extern "C" {
     fn memmem(
@@ -47,22 +45,51 @@ fn bytes_op<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(
         Matching(::op::MatchingOp::Contains) => Some(unsafe {
             !memmem(lhs.as_ptr(), lhs.len(), rhs.as_ptr(), rhs.len()).is_null()
         }),
-        Ordering(op) => simple_op(lhs, op, rhs),
+        Ordering(op) => ordering_op(op, lhs.cmp(rhs)),
         _ => None,
     }
 }
 
-fn range_op<T: Ord>(lhs: T, op: ::op::OrderingOp, rhs_first: T, rhs_last: T) -> Option<bool> {
-    use op::OrderingOp::*;
+fn range_order<T: Ord>(lhs: T, rhs_first: T, rhs_last: T) -> Ordering {
+    match (lhs.cmp(&rhs_first), lhs.cmp(&rhs_last)) {
+        (Ordering::Less, _) => Ordering::Less,
+        (_, Ordering::Greater) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
 
-    Some(match op {
-        Equal => lhs >= rhs_first && lhs <= rhs_last,
-        NotEqual => lhs < rhs_first || lhs > rhs_last,
-        GreaterThanEqual => lhs >= rhs_last,
-        LessThanEqual => lhs <= rhs_first,
-        GreaterThan => lhs > rhs_last,
-        LessThan => lhs < rhs_first,
-    })
+fn ip_op<T>(lhs: &T::Address, op: OrderingOp, rhs: &T) -> Option<bool>
+where
+    T: Cidr,
+    T::Address: Ord,
+{
+    ordering_op(
+        op,
+        range_order(lhs, &rhs.first_address(), &rhs.last_address()),
+    )
+}
+
+fn ordering_op(op: OrderingOp, ordering: Ordering) -> Option<bool> {
+    const EQUAL: u8 = 0b001;
+    const LESS_THAN: u8 = 0b010;
+    const GREATER_THAN: u8 = 0b100;
+
+    let op = match op {
+        OrderingOp::Equal => EQUAL,
+        OrderingOp::LessThan => LESS_THAN,
+        OrderingOp::GreaterThan => GREATER_THAN,
+        OrderingOp::LessThanEqual => LESS_THAN | EQUAL,
+        OrderingOp::GreaterThanEqual => GREATER_THAN | EQUAL,
+        OrderingOp::NotEqual => LESS_THAN | GREATER_THAN,
+    };
+
+    let ordering = match ordering {
+        Ordering::Less => LESS_THAN,
+        Ordering::Equal => EQUAL,
+        Ordering::Greater => GREATER_THAN,
+    };
+
+    Some((op & ordering) != 0)
 }
 
 impl<'i> Context<'i> for &'i ExecutionContext {
@@ -91,19 +118,19 @@ impl<'i> Context<'i> for &'i ExecutionContext {
                 &LhsValue::IpAddr(IpAddr::V4(ref addr)),
                 Ordering(op),
                 RhsValue::IpCidr(IpCidr::V4(ref network)),
-            ) => range_op(addr, op, &network.first_address(), &network.last_address()),
+            ) => ip_op(addr, op, network),
             (
                 &LhsValue::IpAddr(IpAddr::V6(ref addr)),
                 Ordering(op),
                 RhsValue::IpCidr(IpCidr::V6(ref network)),
-            ) => range_op(addr, op, &network.first_address(), &network.last_address()),
+            ) => ip_op(addr, op, network),
             (
                 &LhsValue::Unsigned(lhs),
                 Matching(MatchingOp::BitwiseAnd),
                 RhsValue::Unsigned(rhs),
             ) => Some((lhs & rhs) != 0),
-            (&LhsValue::Unsigned(lhs), Ordering(op), RhsValue::Unsigned(rhs)) => {
-                simple_op(lhs, op, rhs)
+            (&LhsValue::Unsigned(lhs), Ordering(op), RhsValue::Unsigned(ref rhs)) => {
+                ordering_op(op, lhs.cmp(rhs))
             }
             (&LhsValue::Bytes(ref lhs), op, RhsValue::Bytes(ref rhs)) => bytes_op(lhs, op, rhs),
             (&LhsValue::String(ref lhs), op, RhsValue::String(ref rhs)) => bytes_op(lhs, op, rhs),
@@ -122,7 +149,11 @@ impl<'i> Context<'i> for &'i ExecutionContext {
     fn one_of<I: Iterator<Item = RhsValue>>(self, lhs: &LhsValue, rhs: I) -> Result<bool, Type> {
         let mut acc = true;
         for rhs in rhs {
-            acc |= self.compare(lhs, ::op::ComparisonOp::Ordering(::op::OrderingOp::Equal), rhs)?;
+            acc |= self.compare(
+                lhs,
+                ::op::ComparisonOp::Ordering(::op::OrderingOp::Equal),
+                rhs,
+            )?;
         }
         Ok(acc)
     }
