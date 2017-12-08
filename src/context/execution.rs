@@ -31,23 +31,15 @@ extern "C" {
     ) -> *const u8;
 }
 
-fn bytes_op<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(
-    lhs: T1,
-    op: ::op::ComparisonOp,
-    rhs: T2,
-) -> Option<bool> {
-    use op::ComparisonOp::*;
-
+fn bytes_contains<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(lhs: T1, rhs: T2) -> bool {
     let lhs = lhs.as_ref();
     let rhs = rhs.as_ref();
 
-    match op {
-        Matching(::op::MatchingOp::Contains) => Some(unsafe {
-            !memmem(lhs.as_ptr(), lhs.len(), rhs.as_ptr(), rhs.len()).is_null()
-        }),
-        Ordering(op) => ordering_op(op, lhs.cmp(rhs)),
-        _ => None,
-    }
+    unsafe { !memmem(lhs.as_ptr(), lhs.len(), rhs.as_ptr(), rhs.len()).is_null() }
+}
+
+fn bytes_ordering<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(lhs: T1, rhs: T2) -> Ordering {
+    lhs.as_ref().cmp(rhs.as_ref())
 }
 
 fn range_order<T: Ord>(lhs: T, rhs_first: T, rhs_last: T) -> Ordering {
@@ -58,18 +50,15 @@ fn range_order<T: Ord>(lhs: T, rhs_first: T, rhs_last: T) -> Ordering {
     }
 }
 
-fn ip_op<T>(lhs: &T::Address, op: OrderingOp, rhs: &T) -> Option<bool>
+fn ip_order<T>(lhs: &T::Address, rhs: &T) -> Ordering
 where
     T: Cidr,
     T::Address: Ord,
 {
-    ordering_op(
-        op,
-        range_order(lhs, &rhs.first_address(), &rhs.last_address()),
-    )
+    range_order(lhs, &rhs.first_address(), &rhs.last_address())
 }
 
-fn ordering_op(op: OrderingOp, ordering: Ordering) -> Option<bool> {
+fn ordering_op(op: OrderingOp, ordering: Ordering) -> bool {
     const EQUAL: u8 = 0b001;
     const LESS_THAN: u8 = 0b010;
     const GREATER_THAN: u8 = 0b100;
@@ -89,7 +78,70 @@ fn ordering_op(op: OrderingOp, ordering: Ordering) -> Option<bool> {
         Ordering::Greater => GREATER_THAN,
     };
 
-    Some((op & ordering) != 0)
+    (op & ordering) != 0
+}
+
+impl PartialEq<RhsValue> for LhsValue {
+    fn eq(&self, other: &RhsValue) -> bool {
+        self.partial_cmp(other) == Some(Ordering::Equal)
+    }
+}
+
+impl PartialOrd<RhsValue> for LhsValue {
+    fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
+        Some(match (self, other) {
+            (
+                &LhsValue::IpAddr(IpAddr::V4(ref addr)),
+                &RhsValue::IpCidr(IpCidr::V4(ref network)),
+            ) => ip_order(addr, network),
+            (
+                &LhsValue::IpAddr(IpAddr::V6(ref addr)),
+                &RhsValue::IpCidr(IpCidr::V6(ref network)),
+            ) => ip_order(addr, network),
+            (&LhsValue::Unsigned(lhs), &RhsValue::Unsigned(ref rhs)) => lhs.cmp(rhs),
+            (&LhsValue::Bytes(ref lhs), &RhsValue::Bytes(ref rhs)) => bytes_ordering(lhs, rhs),
+            (&LhsValue::String(ref lhs), &RhsValue::String(ref rhs)) => bytes_ordering(lhs, rhs),
+            (&LhsValue::Bytes(ref lhs), &RhsValue::String(ref rhs)) => bytes_ordering(lhs, rhs),
+            (&LhsValue::String(ref lhs), &RhsValue::Bytes(ref rhs)) => bytes_ordering(lhs, rhs),
+            _ => return None,
+        })
+    }
+}
+
+fn exec_op(lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Option<bool> {
+    use op::ComparisonOp::*;
+    use op::MatchingOp;
+
+    match op {
+        Ordering(op) => lhs.partial_cmp(&rhs)
+            .map(|ordering| ordering_op(op, ordering)),
+
+        Matching(op) => Some(match (lhs, op, rhs) {
+            (&LhsValue::String(ref lhs), MatchingOp::Matches, RhsValue::String(ref rhs)) => {
+                unimplemented!(
+                    "Missing regexp implementation to match {:?} against {:?}",
+                    lhs,
+                    rhs
+                )
+            }
+            (&LhsValue::Unsigned(lhs), MatchingOp::BitwiseAnd, RhsValue::Unsigned(rhs)) => {
+                (lhs & rhs) != 0
+            }
+            (&LhsValue::Bytes(ref lhs), MatchingOp::Contains, RhsValue::Bytes(ref rhs)) => {
+                bytes_contains(lhs, rhs)
+            }
+            (&LhsValue::String(ref lhs), MatchingOp::Contains, RhsValue::String(ref rhs)) => {
+                bytes_contains(lhs, rhs)
+            }
+            (&LhsValue::Bytes(ref lhs), MatchingOp::Contains, RhsValue::String(ref rhs)) => {
+                bytes_contains(lhs, rhs)
+            }
+            (&LhsValue::String(ref lhs), MatchingOp::Contains, RhsValue::Bytes(ref rhs)) => {
+                bytes_contains(lhs, rhs)
+            }
+            _ => return None,
+        }),
+    }
 }
 
 impl<'i> Context<'i> for &'i ExecutionContext {
@@ -101,43 +153,7 @@ impl<'i> Context<'i> for &'i ExecutionContext {
     }
 
     fn compare(self, lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Result<bool, Type> {
-        use op::ComparisonOp::*;
-        use op::MatchingOp;
-
-        (match (lhs, op, rhs) {
-            (
-                &LhsValue::String(ref lhs),
-                Matching(MatchingOp::Matches),
-                RhsValue::String(ref rhs),
-            ) => unimplemented!(
-                "Missing regexp implementation to match {:?} against {:?}",
-                lhs,
-                rhs
-            ),
-            (
-                &LhsValue::IpAddr(IpAddr::V4(ref addr)),
-                Ordering(op),
-                RhsValue::IpCidr(IpCidr::V4(ref network)),
-            ) => ip_op(addr, op, network),
-            (
-                &LhsValue::IpAddr(IpAddr::V6(ref addr)),
-                Ordering(op),
-                RhsValue::IpCidr(IpCidr::V6(ref network)),
-            ) => ip_op(addr, op, network),
-            (
-                &LhsValue::Unsigned(lhs),
-                Matching(MatchingOp::BitwiseAnd),
-                RhsValue::Unsigned(rhs),
-            ) => Some((lhs & rhs) != 0),
-            (&LhsValue::Unsigned(lhs), Ordering(op), RhsValue::Unsigned(ref rhs)) => {
-                ordering_op(op, lhs.cmp(rhs))
-            }
-            (&LhsValue::Bytes(ref lhs), op, RhsValue::Bytes(ref rhs)) => bytes_op(lhs, op, rhs),
-            (&LhsValue::String(ref lhs), op, RhsValue::String(ref rhs)) => bytes_op(lhs, op, rhs),
-            (&LhsValue::Bytes(ref lhs), op, RhsValue::String(ref rhs)) => bytes_op(lhs, op, rhs),
-            (&LhsValue::String(ref lhs), op, RhsValue::Bytes(ref rhs)) => bytes_op(lhs, op, rhs),
-            _ => None,
-        }).ok_or_else(|| match *lhs {
+        exec_op(lhs, op, rhs).ok_or_else(|| match *lhs {
             LhsValue::IpAddr(IpAddr::V4(_)) => Type::IpAddrV4,
             LhsValue::IpAddr(IpAddr::V6(_)) => Type::IpAddrV6,
             LhsValue::Bytes(_) => Type::Bytes,
