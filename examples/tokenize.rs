@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use wirefilter::op::{CombiningOp, ComparisonOp, UnaryOp};
 use wirefilter::Field;
-use wirefilter::filter::{RhsValue, Type};
+use wirefilter::context::{RhsValue, Type};
 
 #[derive(Clone, Copy)]
 struct AstContext<'i>(PhantomData<&'i str>);

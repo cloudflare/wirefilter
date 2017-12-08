@@ -1,5 +1,4 @@
-use context::Context;
-use filter::{RhsValue, Type};
+use context::{Context, RhsValue, Type};
 
 use cidr::{Cidr, IpCidr};
 use std::collections::HashMap;

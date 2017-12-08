@@ -1,37 +1,8 @@
 use {ErrorKind, Field, Lex, LexError, LexResult};
 
-use cidr::IpCidr;
-use context::Context;
+use context::{Context, RhsValue};
 use op::{CombiningOp, ComparisonOp};
 use utils::{expect, span};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Type {
-    IpAddrV4,
-    IpAddrV6,
-    Bytes,
-    Unsigned,
-    String,
-}
-
-nested_enum!(#[derive(Debug, Clone)] RhsValue {
-    IpCidr(IpCidr),
-    Bytes(Vec<u8>),
-    Unsigned(u64),
-    String(String),
-});
-
-impl RhsValue {
-    pub fn get_type(&self) -> Type {
-        match *self {
-            RhsValue::IpCidr(IpCidr::V4(_)) => Type::IpAddrV4,
-            RhsValue::IpCidr(IpCidr::V6(_)) => Type::IpAddrV6,
-            RhsValue::Bytes(_) => Type::Bytes,
-            RhsValue::Unsigned(_) => Type::Unsigned,
-            RhsValue::String(_) => Type::String,
-        }
-    }
-}
 
 fn simple_filter<'a, C: Context<'a>>(input: &'a str, context: C) -> LexResult<'a, C::Filter> {
     if let Ok(input) = expect(input, "(") {

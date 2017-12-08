@@ -44,7 +44,7 @@ quick_error! {
             description("registered field")
             display("unknown field")
         }
-        Incomparable(lhs: filter::Type, op: op::ComparisonOp, rhs: filter::Type) {
+        Incomparable(lhs: context::Type, op: op::ComparisonOp, rhs: context::Type) {
             description("comparable types")
             display("cannot compare {:?} and {:?} with operator {:?}", lhs, rhs, op)
         }
