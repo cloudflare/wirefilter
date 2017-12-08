@@ -8,7 +8,6 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
     }
 }
 
-#[macro_export]
 macro_rules! simple_enum {
     ($name:ident { $( $($s:tt)|+ => $item:ident, )+ }) => {
         #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
@@ -35,7 +34,6 @@ macro_rules! simple_enum {
     };
 }
 
-#[macro_export]
 macro_rules! nested_enum {
     (!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
         nested_enum!(!impl $input, $name::$item ($ty) <- $crate::Lex::lex)
