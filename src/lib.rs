@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate quick_error;
 
+#[macro_use]
+extern crate bitflags;
+
 extern crate cidr;
 
 quick_error! {

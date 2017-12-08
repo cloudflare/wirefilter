@@ -1,10 +1,9 @@
 use context::{Context, Filter, RhsValue, Type};
-use op::OrderingOp;
 
 use cidr::{Cidr, IpCidr};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::cmp::Ordering;
 
 #[derive(Default)]
 pub struct ExecutionContext(HashMap<String, LhsValue>);
@@ -58,29 +57,6 @@ where
     range_order(lhs, &rhs.first_address(), &rhs.last_address())
 }
 
-fn ordering_op(op: OrderingOp, ordering: Ordering) -> bool {
-    const EQUAL: u8 = 0b001;
-    const LESS_THAN: u8 = 0b010;
-    const GREATER_THAN: u8 = 0b100;
-
-    let op = match op {
-        OrderingOp::Equal => EQUAL,
-        OrderingOp::LessThan => LESS_THAN,
-        OrderingOp::GreaterThan => GREATER_THAN,
-        OrderingOp::LessThanEqual => LESS_THAN | EQUAL,
-        OrderingOp::GreaterThanEqual => GREATER_THAN | EQUAL,
-        OrderingOp::NotEqual => LESS_THAN | GREATER_THAN,
-    };
-
-    let ordering = match ordering {
-        Ordering::Less => LESS_THAN,
-        Ordering::Equal => EQUAL,
-        Ordering::Greater => GREATER_THAN,
-    };
-
-    (op & ordering) != 0
-}
-
 impl PartialEq<RhsValue> for LhsValue {
     fn eq(&self, other: &RhsValue) -> bool {
         self.partial_cmp(other) == Some(Ordering::Equal)
@@ -114,7 +90,7 @@ fn exec_op(lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Option<bool
 
     match op {
         Ordering(op) => lhs.partial_cmp(&rhs)
-            .map(|ordering| ordering_op(op, ordering)),
+            .map(|ordering| op.contains(ordering.into())),
 
         Matching(op) => Some(match (lhs, op, rhs) {
             (&LhsValue::String(ref lhs), MatchingOp::Matches, RhsValue::String(ref rhs)) => {
@@ -167,7 +143,7 @@ impl<'i> Context<'i> for &'i ExecutionContext {
         for rhs in rhs {
             acc |= self.compare(
                 lhs,
-                ::op::ComparisonOp::Ordering(::op::OrderingOp::Equal),
+                ::op::ComparisonOp::Ordering(::op::OrderingMask::EQUAL),
                 rhs,
             )?;
         }
