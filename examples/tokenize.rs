@@ -19,6 +19,7 @@ impl<'i> AstContext<'i> {
 #[derive(Debug)]
 enum Filter<'i> {
     Compare(Field<'i>, ComparisonOp, RhsValue),
+    OneOf(Field<'i>, Vec<RhsValue>),
     Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }
@@ -36,6 +37,10 @@ impl<'i> wirefilter::context::Context<'i> for AstContext<'i> {
             return Err(Type::Bytes);
         }
         Ok(Filter::Compare(lhs, op, rhs))
+    }
+
+    fn one_of<I: Iterator<Item = RhsValue>>(self, lhs: Field, rhs: I) -> Result<Filter, Type> {
+        Ok(Filter::OneOf(lhs, rhs.collect()))
     }
 }
 

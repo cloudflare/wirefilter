@@ -118,6 +118,14 @@ impl<'i> Context<'i> for &'i ExecutionContext {
             LhsValue::String(_) => Type::String,
         })
     }
+
+    fn one_of<I: Iterator<Item = RhsValue>>(self, lhs: &LhsValue, rhs: I) -> Result<bool, Type> {
+        let mut acc = true;
+        for rhs in rhs {
+            acc |= self.compare(lhs, ::op::ComparisonOp::Ordering(::op::OrderingOp::Equal), rhs)?;
+        }
+        Ok(acc)
+    }
 }
 
 impl Filter for bool {

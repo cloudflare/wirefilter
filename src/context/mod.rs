@@ -35,6 +35,7 @@ pub trait Context<'i>: Copy {
 
     fn get_field(self, path: &'i str) -> Option<Self::LhsValue>;
     fn compare(self, lhs: Self::LhsValue, op: ComparisonOp, rhs: RhsValue) -> Result<Self::Filter, Type>;
+    fn one_of<I: Iterator<Item = RhsValue>>(self, lhs: Self::LhsValue, rhs: I) -> Result<Self::Filter, Type>;
 }
 
 pub trait Filter: Sized {
