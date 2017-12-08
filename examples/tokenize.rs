@@ -37,21 +37,23 @@ impl<'i> wirefilter::context::Context<'i> for AstContext<'i> {
         }
         Ok(Filter::Compare(lhs, op, rhs))
     }
+}
 
-    fn combine(self, mut lhs: Filter<'i>, op: CombiningOp, rhs: Filter<'i>) -> Filter<'i> {
-        match lhs {
-            Filter::Combine(lhs_op, ref mut filters) if op == lhs_op => {
-                filters.push(rhs);
+impl<'i> wirefilter::context::Filter for Filter<'i> {
+    fn combine(mut self, op: CombiningOp, other: Self) -> Self {
+        match self {
+            Filter::Combine(self_op, ref mut filters) if op == self_op => {
+                filters.push(other);
             }
             _ => {
-                lhs = Filter::Combine(op, vec![lhs, rhs]);
+                self = Filter::Combine(op, vec![self, other]);
             }
         }
-        lhs
+        self
     }
 
-    fn unary(self, op: UnaryOp, arg: Filter) -> Filter {
-        Filter::Unary(op, Box::new(arg))
+    fn unary(self, op: UnaryOp) -> Self {
+        Filter::Unary(op, Box::new(self))
     }
 }
 

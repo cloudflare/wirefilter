@@ -1,6 +1,6 @@
 use {ErrorKind, Field, Lex, LexError, LexResult};
 
-use context::{Context, RhsValue};
+use context::{Context, Filter, RhsValue};
 use op::{CombiningOp, ComparisonOp};
 use utils::{expect, span};
 
@@ -63,7 +63,7 @@ fn filter_prec<'a, C: Context<'a>>(
             }
             rhs = filter_prec(context, rhs.0, lookahead.0, lookahead)?;
         }
-        lhs = context.combine(lhs, op, rhs.0);
+        lhs = lhs.combine(op, rhs.0);
         if lookahead.0 < min_prec {
             // pretend we haven't seen an operator if its precedence is
             // outside of our limits

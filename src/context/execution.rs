@@ -1,4 +1,4 @@
-use context::{Context, RhsValue, Type};
+use context::{Context, Filter, RhsValue, Type};
 
 use cidr::{Cidr, IpCidr};
 use std::collections::HashMap;
@@ -118,22 +118,24 @@ impl<'i> Context<'i> for &'i ExecutionContext {
             LhsValue::String(_) => Type::String,
         })
     }
+}
 
-    fn combine(self, lhs: bool, op: ::op::CombiningOp, rhs: bool) -> bool {
+impl Filter for bool {
+    fn combine(self, op: ::op::CombiningOp, other: bool) -> bool {
         use op::CombiningOp::*;
 
         match op {
-            And => lhs && rhs,
-            Or => lhs || rhs,
-            Xor => lhs != rhs,
+            And => self && other,
+            Or => self || other,
+            Xor => self != other,
         }
     }
 
-    fn unary(self, op: ::op::UnaryOp, arg: bool) -> bool {
+    fn unary(self, op: ::op::UnaryOp) -> bool {
         use op::UnaryOp::*;
 
         match op {
-            Not => !arg,
+            Not => !self,
         }
     }
 }
