@@ -75,7 +75,7 @@ mod op;
 mod string;
 
 pub use self::field::Field;
-pub use self::op::{CombiningOp, ComparisonOp, UnaryOp};
+pub use self::op::*;
 pub use context::Context;
 pub use context::execution::*;
 
