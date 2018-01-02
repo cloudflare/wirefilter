@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use context::{Context, Filter, RhsValue, Type};
 
 use cidr::{Cidr, IpCidr};
@@ -14,32 +15,11 @@ impl ExecutionContext {
     }
 }
 
-nested_enum!(#[derive(Debug, Clone)] LhsValue {
+nested_enum!(#[derive(Debug)] LhsValue {
     IpAddr(IpAddr),
-    Bytes(Vec<u8>),
+    Bytes(Bytes),
     Unsigned(u64),
-    String(String),
 });
-
-extern "C" {
-    fn memmem(
-        haystack: *const u8,
-        haystack_len: usize,
-        needle: *const u8,
-        needle_len: usize,
-    ) -> *const u8;
-}
-
-fn bytes_contains<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(lhs: T1, rhs: T2) -> bool {
-    let lhs = lhs.as_ref();
-    let rhs = rhs.as_ref();
-
-    unsafe { !memmem(lhs.as_ptr(), lhs.len(), rhs.as_ptr(), rhs.len()).is_null() }
-}
-
-fn bytes_ordering<T1: AsRef<[u8]>, T2: AsRef<[u8]>>(lhs: T1, rhs: T2) -> Ordering {
-    lhs.as_ref().cmp(rhs.as_ref())
-}
 
 fn range_order<T: Ord>(lhs: T, rhs_first: T, rhs_last: T) -> Ordering {
     match (lhs.cmp(&rhs_first), lhs.cmp(&rhs_last)) {
@@ -75,10 +55,7 @@ impl PartialOrd<RhsValue> for LhsValue {
                 &RhsValue::IpCidr(IpCidr::V6(ref network)),
             ) => ip_order(addr, network),
             (&LhsValue::Unsigned(lhs), &RhsValue::Unsigned(ref rhs)) => lhs.cmp(rhs),
-            (&LhsValue::Bytes(ref lhs), &RhsValue::Bytes(ref rhs)) => bytes_ordering(lhs, rhs),
-            (&LhsValue::String(ref lhs), &RhsValue::String(ref rhs)) => bytes_ordering(lhs, rhs),
-            (&LhsValue::Bytes(ref lhs), &RhsValue::String(ref rhs)) => bytes_ordering(lhs, rhs),
-            (&LhsValue::String(ref lhs), &RhsValue::Bytes(ref rhs)) => bytes_ordering(lhs, rhs),
+            (&LhsValue::Bytes(ref lhs), &RhsValue::Bytes(ref rhs)) => lhs.cmp(rhs),
             _ => return None,
         })
     }
@@ -93,7 +70,7 @@ fn exec_op(lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Option<bool
             .map(|ordering| op.contains(ordering.into())),
 
         Matching(op) => Some(match (lhs, op, rhs) {
-            (&LhsValue::String(ref lhs), MatchingOp::Matches, RhsValue::String(ref rhs)) => {
+            (&LhsValue::Bytes(ref lhs), MatchingOp::Matches, RhsValue::Bytes(ref rhs)) => {
                 unimplemented!(
                     "Missing regexp implementation to match {:?} against {:?}",
                     lhs,
@@ -104,16 +81,7 @@ fn exec_op(lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Option<bool
                 (lhs & rhs) != 0
             }
             (&LhsValue::Bytes(ref lhs), MatchingOp::Contains, RhsValue::Bytes(ref rhs)) => {
-                bytes_contains(lhs, rhs)
-            }
-            (&LhsValue::String(ref lhs), MatchingOp::Contains, RhsValue::String(ref rhs)) => {
-                bytes_contains(lhs, rhs)
-            }
-            (&LhsValue::Bytes(ref lhs), MatchingOp::Contains, RhsValue::String(ref rhs)) => {
-                bytes_contains(lhs, rhs)
-            }
-            (&LhsValue::String(ref lhs), MatchingOp::Contains, RhsValue::Bytes(ref rhs)) => {
-                bytes_contains(lhs, rhs)
+                lhs.contains(rhs)
             }
             _ => return None,
         }),
@@ -132,9 +100,12 @@ impl<'i> Context<'i> for &'i ExecutionContext {
         exec_op(lhs, op, rhs).ok_or_else(|| match *lhs {
             LhsValue::IpAddr(IpAddr::V4(_)) => Type::IpAddrV4,
             LhsValue::IpAddr(IpAddr::V6(_)) => Type::IpAddrV6,
-            LhsValue::Bytes(_) => Type::Bytes,
+            LhsValue::Bytes(ref b) => if b.is_str() {
+                Type::String
+            } else {
+                Type::Bytes
+            },
             LhsValue::Unsigned(_) => Type::Unsigned,
-            LhsValue::String(_) => Type::String,
         })
     }
 

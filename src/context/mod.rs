@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use cidr::IpCidr;
 use op::{CombiningOp, ComparisonOp, UnaryOp};
 
@@ -10,11 +11,10 @@ pub enum Type {
     String,
 }
 
-nested_enum!(#[derive(Debug, Clone)] RhsValue {
+nested_enum!(#[derive(Debug)] RhsValue {
     IpCidr(IpCidr),
-    Bytes(Vec<u8>),
+    Bytes(Bytes),
     Unsigned(u64),
-    String(String),
 });
 
 impl RhsValue {
@@ -22,9 +22,12 @@ impl RhsValue {
         match *self {
             RhsValue::IpCidr(IpCidr::V4(_)) => Type::IpAddrV4,
             RhsValue::IpCidr(IpCidr::V6(_)) => Type::IpAddrV6,
-            RhsValue::Bytes(_) => Type::Bytes,
+            RhsValue::Bytes(ref b) => if b.is_str() {
+                Type::String
+            } else {
+                Type::Bytes
+            },
             RhsValue::Unsigned(_) => Type::Unsigned,
-            RhsValue::String(_) => Type::String,
         }
     }
 }

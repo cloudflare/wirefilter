@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
-use op::{CombiningOp, ComparisonOp, UnaryOp};
 use Field;
 use context::{RhsValue, Type};
+use op::{CombiningOp, ComparisonOp, UnaryOp};
 
 #[derive(Clone, Copy)]
 pub struct AstContext<'i>(PhantomData<&'i str>);
