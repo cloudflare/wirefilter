@@ -1,5 +1,5 @@
 use {Lex, LexResult};
-use utils::{expect, list, take_while};
+use utils::{expect, span, take_while};
 
 use std::fmt;
 
@@ -25,8 +25,15 @@ impl<'a> Field<'a> {
 }
 
 impl<'a> Lex<'a> for Field<'a> {
-    fn lex(input: &'a str) -> LexResult<'a, Self> {
-        let (path, rest) = list(input, |input| expect(input, "."), ident)?;
-        Ok((Field::new(path), rest))
+    fn lex(mut input: &'a str) -> LexResult<'a, Self> {
+        let initial_input = input;
+        loop {
+            input = ident(input)?.1;
+            match expect(input, ".") {
+                Ok(rest) => input = rest,
+                Err(_) => break,
+            };
+        }
+        Ok((Field::new(span(initial_input, input)), input))
     }
 }

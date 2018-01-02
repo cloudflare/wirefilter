@@ -92,31 +92,6 @@ pub fn take_while<'a, F: Fn(char) -> bool>(
     }
 }
 
-pub fn list<
-    'a,
-    T,
-    SP: Fn(&'a str) -> Result<&'a str, LexError<'a>>,
-    TP: Fn(&'a str) -> LexResult<'a, T>,
->(
-    input: &'a str,
-    sep: SP,
-    item: TP,
-) -> LexResult<'a, &'a str> {
-    let mut rest = item(input)?.1;
-    loop {
-        match sep(rest) {
-            Ok(after_sep) => {
-                rest = after_sep;
-            }
-            Err(_) => {
-                break;
-            }
-        };
-        rest = item(rest)?.1;
-    }
-    Ok((span(input, rest), rest))
-}
-
 pub fn take<'a>(input: &'a str, count: usize) -> LexResult<'a, &'a str> {
     if input.len() >= count {
         Ok(input.split_at(count))
