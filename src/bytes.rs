@@ -49,7 +49,13 @@ impl Debug for Bytes {
                 ::std::str::from_utf8_unchecked(&self.raw)
             }.fmt(f)
         } else {
-            self.raw.fmt(f)
+            for (i, b) in self.raw.iter().cloned().enumerate() {
+                if i != 0 {
+                    write!(f, ":")?;
+                }
+                write!(f, "{:02X}", b)?;
+            }
+            Ok(())
         }
     }
 }
