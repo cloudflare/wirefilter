@@ -2,6 +2,7 @@ use bytes::Bytes;
 use context::{Context, Filter, RhsValue, Type};
 
 use cidr::{Cidr, IpCidr};
+use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -71,11 +72,10 @@ fn exec_op(lhs: &LhsValue, op: ::op::ComparisonOp, rhs: RhsValue) -> Option<bool
 
         Matching(op) => Some(match (lhs, op, rhs) {
             (&LhsValue::Bytes(ref lhs), MatchingOp::Matches, RhsValue::Bytes(ref rhs)) => {
-                unimplemented!(
-                    "Missing regexp implementation to match {:?} against {:?}",
-                    lhs,
-                    rhs
-                )
+                match (lhs.as_str(), rhs.as_str()) {
+                    (Some(lhs), Some(rhs)) => Regex::new(rhs).unwrap().is_match(lhs),
+                    _ => return None,
+                }
             }
             (&LhsValue::Unsigned(lhs), MatchingOp::BitwiseAnd, RhsValue::Unsigned(rhs)) => {
                 (lhs & rhs) != 0

@@ -22,6 +22,14 @@ impl Bytes {
         self.is_str
     }
 
+    pub fn as_str(&self) -> Option<&str> {
+        if self.is_str {
+            Some(unsafe { ::std::str::from_utf8_unchecked(self) })
+        } else {
+            None
+        }
+    }
+
     pub fn contains(&self, rhs: &[u8]) -> bool {
         unsafe { !memmem(self.as_ptr(), self.len(), rhs.as_ptr(), rhs.len()).is_null() }
     }
@@ -44,10 +52,8 @@ impl From<Vec<u8>> for Bytes {
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if self.is_str {
-            unsafe {
-                ::std::str::from_utf8_unchecked(&self.raw)
-            }.fmt(f)
+        if let Some(s) = self.as_str() {
+            s.fmt(f)
         } else {
             for (i, b) in self.raw.iter().cloned().enumerate() {
                 if i != 0 {

@@ -6,6 +6,8 @@ extern crate bitflags;
 
 extern crate cidr;
 
+extern crate regex;
+
 quick_error! {
     #[derive(Debug)]
     pub enum ErrorKind {
