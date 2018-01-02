@@ -79,6 +79,8 @@ impl<'a> Lex<'a> for Bytes {
                         let input = iter.as_str();
                         let (b, input) = (if let Ok(input) = expect(input, "\"") {
                             Ok((b'"', input))
+                        } else if let Ok(input) = expect(input, "\\") {
+                            Ok((b'\\', input))
                         } else if let Ok(input) = expect(input, "x") {
                             hex_byte(input)
                         } else {
