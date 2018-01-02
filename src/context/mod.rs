@@ -52,4 +52,5 @@ pub trait Filter: Sized {
     fn unary(self, op: UnaryOp) -> Self;
 }
 
+pub mod ast;
 pub mod execution;
