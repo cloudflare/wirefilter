@@ -1,8 +1,9 @@
 use {ErrorKind, Lex, LexResult};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
-use utils::{expect, hex_byte, oct_byte, take_while};
+use utils::{expect, hex_byte, oct_byte};
 
+#[derive(PartialEq, Eq)]
 pub struct Bytes {
     is_str: bool,
     raw: Vec<u8>,
@@ -74,6 +75,12 @@ impl Deref for Bytes {
     }
 }
 
+simple_enum!(ByteSeparator {
+    ":" => Colon,
+    "-" => Dash,
+    "." => Dot,
+});
+
 impl<'a> Lex<'a> for Bytes {
     fn lex(input: &'a str) -> LexResult<'a, Self> {
         if let Ok(input) = expect(input, "\"") {
@@ -100,20 +107,63 @@ impl<'a> Lex<'a> for Bytes {
                 };
             }
         } else {
-            let (chunk, rest) =
-                take_while(input, "non-whitespace character", |c| !c.is_whitespace())?;
-            chunk
-                .split(|c| c == ':' || c == '-' || c == '.')
-                .map(|s| u8::from_str_radix(s, 16).map_err(|err| (ErrorKind::ParseInt(err, 16), s)))
-                .collect::<Result<Vec<_>, _>>()
-                .and_then(|res| {
-                    if res.len() < 2 {
-                        Err((ErrorKind::CountMismatch("byte", res.len(), 2), input))
-                    } else {
-                        Ok(res)
-                    }
-                })
-                .map(|res| (res.into(), rest))
+            let (b, input) = hex_byte(input)?;
+            let (_, mut input) = ByteSeparator::lex(input)?;
+            let mut res = vec![b];
+            loop {
+                let (b, rest) = hex_byte(input)?;
+                res.push(b);
+                input = rest;
+                if let Ok((_, rest)) = ByteSeparator::lex(input) {
+                    input = rest;
+                } else {
+                    break;
+                }
+            }
+            Ok((res.into(), input))
         }
     }
+}
+
+#[test]
+fn test() {
+    assert_ok!(
+        Bytes::lex("01:2e:f3-77.12;"),
+        Bytes::from(vec![0x01, 0x2E, 0xF3, 0x77, 0x12]),
+        ";"
+    );
+
+    assert_ok!(
+        Bytes::lex(r#""s\\t\"r\x0A\000t""#),
+        Bytes::from("s\\t\"r\n\0t".to_owned())
+    );
+
+    assert_err!(
+        Bytes::lex("01:4x;"),
+        ErrorKind::ParseInt(u8::from_str_radix("4x", 16).unwrap_err(), 16),
+        "4x"
+    );
+
+    assert_err!(
+        Bytes::lex("01;"),
+        ErrorKind::Enum("ByteSeparator", &[":", "-", "."]),
+        ";"
+    );
+
+    assert_ok!(
+        Bytes::lex("01:2f-34"),
+        Bytes::from(vec![0x01, 0x2F, 0x34])
+    );
+
+    assert_err!(
+        Bytes::lex("\"1"),
+        ErrorKind::EndingQuote,
+        "1"
+    );
+
+    assert_err!(
+        Bytes::lex(r#""\n""#),
+        ErrorKind::CharacterEscape,
+        "n\""
+    );
 }
