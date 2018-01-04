@@ -126,6 +126,18 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let input = input.trim_left();
 
+        if let Ok(input) = expect(input, "in") {
+            let input = input.trim_left();
+
+            let input = expect(input, "{")?.trim_left();
+
+            let (values, input) = RhsValues::lex(input, lhs_type)?;
+
+            let input = expect(input, "}")?.trim_left();
+
+            return Ok((Filter::OneOf(lhs, values), input));
+        }
+
         let (op, input) = ComparisonOp::lex(input)?;
 
         let (filter, input) = match (lhs_type, op) {

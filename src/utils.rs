@@ -1,4 +1,4 @@
-use {ErrorKind, LexError, LexResult};
+use {ErrorKind, LexError, LexResult, Lex};
 
 pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
     if input.starts_with(s) {
@@ -117,6 +117,22 @@ pub fn hex_byte(input: &str) -> LexResult<u8> {
 
 pub fn oct_byte(input: &str) -> LexResult<u8> {
     fixed_byte(input, 3, 8)
+}
+
+impl<'a, T: Lex<'a>> Lex<'a> for Vec<T> {
+    fn lex(mut input: &'a str) -> LexResult<Self> {
+        let mut res = Vec::new();
+        loop {
+            let (item, rest) = T::lex(input.trim_left())?;
+            res.push(item);
+            input = rest.trim_left();
+            if let Ok(rest) = expect(input, ",") {
+                input = rest.trim_left();
+            } else {
+                return Ok((res, input));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
