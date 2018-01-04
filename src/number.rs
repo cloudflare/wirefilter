@@ -67,3 +67,20 @@ impl<'a> Lex<'a> for Range {
         Ok((Range { start, end }, input))
     }
 }
+
+impl<'a> Lex<'a> for Vec<Range> {
+    fn lex(input: &str) -> LexResult<Self> {
+        let mut input = expect(input, "[")?;
+        let mut res = Vec::new();
+        loop {
+            let (range, rest) = Range::lex(input.trim_left())?;
+            res.push(range);
+            input = rest.trim_left();
+            if let Ok(rest) = expect(input, "]") {
+                return Ok((res, rest.trim_left()));
+            } else {
+                input = expect(input, ",")?;
+            }
+        }
+    }
+}
