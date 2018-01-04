@@ -201,6 +201,12 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     }
 }
 
+impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
+    pub fn execute<'i>(&'i self, _filter: &'i Filter<'i>) -> Result<bool, ()> {
+        unimplemented!()
+    }
+}
+
 #[derive(Debug)]
 pub enum Filter<'i> {
     Ordering(Field<'i>, OrderingMask, RhsValue),
