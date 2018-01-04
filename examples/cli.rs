@@ -1,6 +1,6 @@
 extern crate wirefilter;
 
-use wirefilter::filter::{ParsingContext, Type};
+use wirefilter::filter::{Context, Type};
 use std::iter::FromIterator;
 use std::cmp::max;
 
@@ -9,7 +9,15 @@ fn main() {
         .nth(1)
         .expect("Expected an input as a command-line argument");
 
-    let context = ParsingContext::from_iter(vec![("ip.v4", Type::IpAddrV4)]);
+    let context: Context<_, _> = [
+        ("ip.v4", Type::IpAddrV4),
+        ("ip.v6", Type::IpAddrV6),
+        ("str", Type::Bytes),
+        ("bytes", Type::Bytes),
+        ("unsigned", Type::Unsigned),
+    ].iter()
+        .cloned()
+        .collect();
 
     match context.parse(&filter) {
         Ok(res) => println!("{:#?}", res),

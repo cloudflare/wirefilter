@@ -1,7 +1,7 @@
 use {ErrorKind, Field, Lex, LexError, LexResult};
 use bytes::Bytes;
 use cidr::{Ipv4Cidr, Ipv6Cidr};
-use op::{BytesOp, CombiningOp, OrderingMask, UnaryOp, ComparisonOp};
+use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp};
 use op::UnsignedOp;
 use regex::bytes::Regex;
 use std::borrow::Borrow;
@@ -86,13 +86,13 @@ declare_types!(
     Unsigned(u64),
 );
 
-pub struct ParsingContext<K, T> {
+pub struct Context<K, T> {
     fields: HashMap<K, T>,
 }
 
-impl<K: Hash + Eq, T> FromIterator<(K, T)> for ParsingContext<K, T> {
+impl<K: Hash + Eq, T> FromIterator<(K, T)> for Context<K, T> {
     fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
-        ParsingContext {
+        Context {
             fields: HashMap::from_iter(iter),
         }
     }
@@ -105,7 +105,7 @@ fn combining_op(input: &str) -> (Option<CombiningOp>, &str) {
     }
 }
 
-impl<K: Borrow<str> + Hash + Eq, T: GetType> ParsingContext<K, T> {
+impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     fn simple_filter<'i>(&'i self, input: &'i str) -> LexResult<'i, Filter<'i>> {
         if let Ok(input) = expect(input, "(") {
             let input = input.trim_left();
@@ -200,8 +200,6 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> ParsingContext<K, T> {
         }
     }
 }
-
-pub type ExecutionContext = HashMap<String, LhsValue>;
 
 #[derive(Debug)]
 pub enum Filter<'i> {
