@@ -48,15 +48,19 @@ mod ordering {
 
 pub use self::ordering::OrderingMask;
 
-simple_enum!(MatchingOp {
-    "contains" => Contains,
-    "~" | "matches" => Matches,
+simple_enum!(UnsignedOp {
     "&" | "bitwise_and" => BitwiseAnd,
 });
 
+simple_enum!(BytesOp {
+    "contains" => Contains,
+    "~" | "matches" => Matches,
+});
+
 nested_enum!(#[derive(Debug, PartialEq, Eq, Clone, Copy)] ComparisonOp {
-    Ordering(OrderingMask),
-    Matching(MatchingOp),
+    Any(OrderingMask),
+    Unsigned(UnsignedOp),
+    Bytes(BytesOp),
 });
 
 simple_enum!(CombiningOp {

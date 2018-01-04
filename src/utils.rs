@@ -118,3 +118,21 @@ pub fn hex_byte(input: &str) -> LexResult<u8> {
 pub fn oct_byte(input: &str) -> LexResult<u8> {
     fixed_byte(input, 3, 8)
 }
+
+#[cfg(test)]
+macro_rules! assert_ok {
+    ($s:expr, $res:expr, $rest:expr) => {
+        assert_eq!($s, Ok(($res, $rest)))
+    };
+
+    ($s:expr, $res:expr) => {
+        assert_ok!($s, $res, "")
+    };
+}
+
+#[cfg(test)]
+macro_rules! assert_err {
+    ($s:expr, $kind:expr, $span:expr) => {
+        assert_eq!($s, Err(($kind, $span)))
+    };
+}

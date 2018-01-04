@@ -33,6 +33,11 @@ quick_error! {
             description("network")
             display("expected a valid IP network")
         }
+        ParseRegex(err: ::regex::Error) {
+            cause(err)
+            description("regex")
+            display("expected a valid regular expression")
+        }
         CharacterEscape {
             description("character escape")
             display("expected \", xHH or OOO after \\")
@@ -49,33 +54,15 @@ quick_error! {
             description("registered field")
             display("unknown field")
         }
-        Incomparable(lhs: context::Type, op: op::ComparisonOp, rhs: context::Type) {
-            description("comparable types")
-            display("cannot compare {:?} and {:?} with operator {:?}", lhs, rhs, op)
+        UnsupportedOp(lhs: ::filter::Type, op: op::ComparisonOp) {
+            description("valid operation")
+            display("cannot use operation {:?} on type {:?}", op, lhs)
         }
         EOF {
             description("end of input")
             display("unrecognised input")
         }
     }
-}
-
-#[cfg(test)]
-macro_rules! assert_ok {
-    ($s:expr, $res:expr, $rest:expr) => {
-        assert_eq!($s, Ok(($res, $rest)))
-    };
-
-    ($s:expr, $res:expr) => {
-        assert_ok!($s, $res, "")
-    };
-}
-
-#[cfg(test)]
-macro_rules! assert_err {
-    ($s:expr, $kind:expr, $span:expr) => {
-        assert_eq!($s, Err(($kind, $span)))
-    };
 }
 
 pub type LexError<'a> = (ErrorKind, &'a str);
@@ -89,7 +76,6 @@ pub trait Lex<'a>: Sized {
 #[macro_use]
 mod utils;
 
-pub mod context;
 mod bytes;
 mod field;
 pub mod filter;
@@ -100,4 +86,3 @@ pub mod op;
 pub use self::bytes::Bytes;
 pub use self::field::Field;
 pub use self::number::Range;
-pub use filter::filter;

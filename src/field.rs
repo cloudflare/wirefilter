@@ -4,10 +4,10 @@ use utils::{expect, span, take_while};
 use std::fmt;
 
 fn ident(input: &str) -> LexResult<&str> {
-    take_while(input, "alphabetic character", char::is_alphabetic)
+    take_while(input, "alphanumeric character", char::is_alphanumeric)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Field<'a> {
     pub path: &'a str,
 }
@@ -42,27 +42,19 @@ impl<'a> Lex<'a> for Field<'a> {
 fn test() {
     use super::ErrorKind;
 
-    assert_ok!(
-        Field::lex("x;"),
-        Field::new("x"),
-        ";"
-    );
+    assert_ok!(Field::lex("x;"), Field::new("x"), ";");
 
-    assert_ok!(
-        Field::lex("x.y.z-"),
-        Field::new("x.y.z"),
-        "-"
-    );
+    assert_ok!(Field::lex("x.y.z0-"), Field::new("x.y.z0"), "-");
 
     assert_err!(
         Field::lex("x..y"),
-        ErrorKind::CountMismatch("alphabetic character", 0, 1),
+        ErrorKind::CountMismatch("alphanumeric character", 0, 1),
         ".y"
     );
 
     assert_err!(
-        Field::lex("x.0"),
-        ErrorKind::CountMismatch("alphabetic character", 0, 1),
-        "0"
+        Field::lex("x.#"),
+        ErrorKind::CountMismatch("alphanumeric character", 0, 1),
+        "#"
     );
 }

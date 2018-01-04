@@ -1,7 +1,9 @@
 use {ErrorKind, Lex, LexResult};
+use regex::bytes::Regex;
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use utils::{expect, hex_byte, oct_byte};
+use utils::span;
 
 #[derive(PartialEq, Eq)]
 pub struct Bytes {
@@ -81,6 +83,32 @@ simple_enum!(ByteSeparator {
     "." => Dot,
 });
 
+impl<'a> Lex<'a> for Regex {
+    fn lex(input: &str) -> LexResult<Self> {
+        let input = expect(input, "\"")?;
+        let rest = {
+            let mut iter = input.chars();
+            loop {
+                match iter.next().ok_or_else(|| (ErrorKind::EndingQuote, input))? {
+                    '\\' => {
+                        iter.next();
+                    }
+                    '"' => {
+                        break;
+                    }
+                    _ => {}
+                };
+            }
+            iter.as_str()
+        };
+        let regex_str = span(input, rest);
+        match Regex::new(regex_str) {
+            Ok(regex) => Ok((regex, rest)),
+            Err(e) => Err((ErrorKind::ParseRegex(e), regex_str)),
+        }
+    }
+}
+
 impl<'a> Lex<'a> for Bytes {
     fn lex(input: &'a str) -> LexResult<'a, Self> {
         if let Ok(input) = expect(input, "\"") {
@@ -90,16 +118,14 @@ impl<'a> Lex<'a> for Bytes {
                 match iter.next().ok_or_else(|| (ErrorKind::EndingQuote, input))? {
                     '\\' => {
                         let input = iter.as_str();
-                        let (b, input) = (if let Ok(input) = expect(input, "\"") {
-                            Ok((b'"', input))
-                        } else if let Ok(input) = expect(input, "\\") {
-                            Ok((b'\\', input))
-                        } else if let Ok(input) = expect(input, "x") {
-                            hex_byte(input)
-                        } else {
-                            oct_byte(input).map_err(|_| (ErrorKind::CharacterEscape, input))
-                        })?;
-                        res.push(b as char);
+                        let c = iter.next().unwrap_or('\0');
+                        let (c, input) = match c {
+                            '"' | '\\' => (c, input),
+                            'x' => hex_byte(iter.as_str()).map(|(b, input)| (b as char, input))?,
+                            '0'...'7' => oct_byte(input).map(|(b, input)| (b as char, input))?,
+                            _ => return Err((ErrorKind::CharacterEscape, input)),
+                        };
+                        res.push(c);
                         iter = input.chars();
                     }
                     '"' => return Ok((res.into(), iter.as_str())),
@@ -150,20 +176,9 @@ fn test() {
         ";"
     );
 
-    assert_ok!(
-        Bytes::lex("01:2f-34"),
-        Bytes::from(vec![0x01, 0x2F, 0x34])
-    );
+    assert_ok!(Bytes::lex("01:2f-34"), Bytes::from(vec![0x01, 0x2F, 0x34]));
 
-    assert_err!(
-        Bytes::lex("\"1"),
-        ErrorKind::EndingQuote,
-        "1"
-    );
+    assert_err!(Bytes::lex("\"1"), ErrorKind::EndingQuote, "1");
 
-    assert_err!(
-        Bytes::lex(r#""\n""#),
-        ErrorKind::CharacterEscape,
-        "n\""
-    );
+    assert_err!(Bytes::lex(r#""\n""#), ErrorKind::CharacterEscape, "n\"");
 }
