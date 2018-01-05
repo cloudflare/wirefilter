@@ -1,9 +1,9 @@
-use {LexErrorKind, Lex, LexResult};
+use lex::{expect, hex_byte, oct_byte, span, Lex, LexErrorKind, LexResult};
 use regex::bytes::{Regex, RegexBuilder};
+
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
-use utils::{expect, hex_byte, oct_byte};
-use utils::span;
+use std::str;
 
 #[derive(PartialEq, Eq)]
 pub struct Bytes {
@@ -27,7 +27,7 @@ impl Bytes {
 
     pub fn as_str(&self) -> Option<&str> {
         if self.is_str {
-            Some(unsafe { ::std::str::from_utf8_unchecked(self) })
+            Some(unsafe { str::from_utf8_unchecked(self) })
         } else {
             None
         }
@@ -96,7 +96,9 @@ impl<'a> Lex<'a> for Regex {
             let mut iter = input.chars();
             loop {
                 let before_char = iter.as_str();
-                match iter.next().ok_or_else(|| (LexErrorKind::EndingQuote, input))? {
+                match iter.next()
+                    .ok_or_else(|| (LexErrorKind::EndingQuote, input))?
+                {
                     '\\' => {
                         iter.next();
                     }
@@ -120,7 +122,9 @@ impl<'a> Lex<'a> for Bytes {
             let mut res = String::new();
             let mut iter = input.chars();
             loop {
-                match iter.next().ok_or_else(|| (LexErrorKind::EndingQuote, input))? {
+                match iter.next()
+                    .ok_or_else(|| (LexErrorKind::EndingQuote, input))?
+                {
                     '\\' => {
                         let input = iter.as_str();
                         let c = iter.next().unwrap_or('\0');

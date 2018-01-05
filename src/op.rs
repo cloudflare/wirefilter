@@ -1,4 +1,6 @@
 mod ordering {
+    use lex::{Lex, LexResult};
+
     use std::cmp::Ordering;
 
     simple_enum!(OrderingOp {
@@ -28,8 +30,8 @@ mod ordering {
         }
     }
 
-    impl<'a> ::Lex<'a> for OrderingMask {
-        fn lex(input: &str) -> ::LexResult<Self> {
+    impl<'a> Lex<'a> for OrderingMask {
+        fn lex(input: &str) -> LexResult<Self> {
             let (op, input) = OrderingOp::lex(input)?;
             Ok((
                 match op {

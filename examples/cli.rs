@@ -2,10 +2,12 @@ extern crate wirefilter;
 
 use wirefilter::Context;
 use wirefilter::types::Type;
+
 use std::cmp::max;
+use std::env::args;
 
 fn main() {
-    let filter = ::std::env::args()
+    let filter = args()
         .nth(1)
         .expect("Expected an input as a command-line argument");
 

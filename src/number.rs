@@ -1,5 +1,4 @@
-use {LexErrorKind, Lex, LexResult};
-use utils::{expect, take_while};
+use lex::{expect, take_while, Lex, LexErrorKind, LexResult};
 
 use std::str::FromStr;
 

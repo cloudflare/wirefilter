@@ -1,11 +1,10 @@
-use {LexErrorKind, Field, Lex, LexError, LexResult};
 use bytes::Bytes;
 use cidr::Cidr;
-use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp};
-use op::UnsignedOp;
+use field::Field;
+use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
+use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp, UnsignedOp};
 use regex::bytes::Regex;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type, Typed};
-use utils::{expect, span};
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -87,7 +86,12 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
                     (Filter::Matches(lhs, rhs), input)
                 }
             },
-            (ty, op) => return Err((LexErrorKind::UnsupportedOp(ty, op), span(initial_input, input))),
+            (ty, op) => {
+                return Err((
+                    LexErrorKind::UnsupportedOp(ty, op),
+                    span(initial_input, input),
+                ))
+            }
         };
 
         Ok((filter, input.trim_left()))

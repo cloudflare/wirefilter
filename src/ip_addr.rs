@@ -1,8 +1,7 @@
-use {LexErrorKind, Lex, LexResult};
-use std::net::{Ipv4Addr, Ipv6Addr};
-use utils::{expect, span, take_while};
-
 use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr, NetworkParseError};
+use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
+
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
 impl<'a> Lex<'a> for Ipv4Addr {

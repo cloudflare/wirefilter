@@ -1,5 +1,4 @@
-use {Lex, LexResult};
-use utils::{expect, span, take_while};
+use lex::{expect, span, take_while, Lex, LexResult};
 
 use std::fmt;
 
@@ -40,7 +39,7 @@ impl<'a> Lex<'a> for Field<'a> {
 
 #[test]
 fn test() {
-    use super::LexErrorKind;
+    use lex::LexErrorKind;
 
     assert_ok!(Field::lex("x;"), Field::new("x"), ";");
 

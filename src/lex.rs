@@ -1,4 +1,74 @@
-use {LexErrorKind, Lex, LexError, LexResult};
+use cidr::NetworkParseError;
+use op::ComparisonOp;
+use regex::Error as RegexError;
+use types::Type;
+
+use std::num::ParseIntError;
+
+quick_error! {
+    #[derive(Debug, PartialEq)]
+    pub enum LexErrorKind {
+        Name(name: &'static str) {
+            description(name)
+            display("expected {}", name)
+        }
+        Literal(s: &'static str) {
+            description(s)
+            display("expected literal {:?}", s)
+        }
+        Enum(name: &'static str, variants: &'static [&'static str]) {
+            description(name)
+            display("expected {} starting with one of {:?}", name, variants)
+        }
+        ParseInt(err: ParseIntError, radix: u32) {
+            cause(err)
+            description("integer")
+            display("expected a valid integer in radix {}", radix)
+        }
+        ParseIp(err: NetworkParseError) {
+            cause(err)
+            description("network")
+            display("expected a valid IP network")
+        }
+        ParseRegex(err: RegexError) {
+            cause(err)
+            description("regex")
+            display("expected a valid regular expression")
+        }
+        CharacterEscape {
+            description("character escape")
+            display("expected \", xHH or OOO after \\")
+        }
+        EndingQuote {
+            description("ending quote")
+            display("expected to find an ending quote")
+        }
+        CountMismatch(name: &'static str, actual: usize, expected: usize) {
+            description("different count of items")
+            display("expected {} {}s, but found {}", expected, name, actual)
+        }
+        UnknownField {
+            description("registered field")
+            display("unknown field")
+        }
+        UnsupportedOp(lhs: Type, op: ComparisonOp) {
+            description("valid operation")
+            display("cannot use operation {:?} on type {:?}", op, lhs)
+        }
+        EOF {
+            description("end of input")
+            display("unrecognised input")
+        }
+    }
+}
+
+pub type LexError<'a> = (LexErrorKind, &'a str);
+
+pub type LexResult<'a, T> = Result<(T, &'a str), LexError<'a>>;
+
+pub trait Lex<'a>: Sized {
+    fn lex(input: &'a str) -> LexResult<'a, Self>;
+}
 
 pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
     if input.starts_with(s) {
@@ -15,17 +85,17 @@ macro_rules! simple_enum {
             $($item,)+
         }
 
-        impl<'a> $crate::Lex<'a> for $name {
-            fn lex(input: &'a str) -> $crate::LexResult<'a, Self> {
+        impl<'a> $crate::lex::Lex<'a> for $name {
+            fn lex(input: &'a str) -> $crate::lex::LexResult<'a, Self> {
                 static EXPECTED_LITERALS: &'static [&'static str] = &[
                     $($($s),+),+
                 ];
 
-                $($(if let Ok(input) = $crate::utils::expect(input, $s) {
+                $($(if let Ok(input) = $crate::lex::expect(input, $s) {
                     Ok(($name::$item, input))
                 } else)+)+ {
                     Err((
-                        $crate::LexErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
+                        $crate::lex::LexErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
                         input
                     ))
                 }
@@ -36,7 +106,7 @@ macro_rules! simple_enum {
 
 macro_rules! nested_enum {
     (!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
-        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::Lex::lex)
+        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::lex::Lex::lex)
     };
 
     (!impl $input:ident, $name:ident :: $item:ident <- $func:path) => {
@@ -53,15 +123,15 @@ macro_rules! nested_enum {
             $($item $(($ty))*,)+
         }
 
-        impl<'a> $crate::Lex<'a> for $name {
-            fn lex(input: &'a str) -> $crate::LexResult<'a, Self> {
+        impl<'a> $crate::lex::Lex<'a> for $name {
+            fn lex(input: &'a str) -> $crate::lex::LexResult<'a, Self> {
                 $(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
                     Ok(res) => {
                         return Ok(res);
                     }
                     Err(_) => {}
                 };)+
-                Err(($crate::LexErrorKind::Name(stringify!($name)), input))
+                Err(($crate::lex::LexErrorKind::Name(stringify!($name)), input))
             }
         }
     };

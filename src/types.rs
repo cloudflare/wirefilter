@@ -1,8 +1,9 @@
-use {Lex, LexResult};
 use bytes::Bytes;
 use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
+use lex::{Lex, LexResult};
 
 use std::cmp::Ordering;
+use std::fmt::{self, Debug, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 macro_rules! declare_types {
@@ -48,10 +49,10 @@ macro_rules! declare_types {
             }
         }
 
-        impl<$($name: ::std::fmt::Debug),*> ::std::fmt::Debug for Typed<$($name),*> {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        impl<$($name: Debug),*> Debug for Typed<$($name),*> {
+            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
                 match *self {
-                    $(Typed::$name(ref inner) => ::std::fmt::Debug::fmt(inner, f),)*
+                    $(Typed::$name(ref inner) => Debug::fmt(inner, f),)*
                 }
             }
         }
