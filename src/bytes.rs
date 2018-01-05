@@ -86,24 +86,23 @@ simple_enum!(ByteSeparator {
 impl<'a> Lex<'a> for Regex {
     fn lex(input: &str) -> LexResult<Self> {
         let input = expect(input, "\"")?;
-        let rest = {
+        let (regex_str, input) = {
             let mut iter = input.chars();
             loop {
+                let before_char = iter.as_str();
                 match iter.next().ok_or_else(|| (ErrorKind::EndingQuote, input))? {
                     '\\' => {
                         iter.next();
                     }
                     '"' => {
-                        break;
+                        break (span(input, before_char), iter.as_str());
                     }
                     _ => {}
                 };
             }
-            iter.as_str()
         };
-        let regex_str = span(input, rest);
         match Regex::new(regex_str) {
-            Ok(regex) => Ok((regex, rest)),
+            Ok(regex) => Ok((regex, input)),
             Err(e) => Err((ErrorKind::ParseRegex(e), regex_str)),
         }
     }
@@ -143,10 +142,9 @@ impl<'a> Lex<'a> for Bytes {
                 if let Ok((_, rest)) = ByteSeparator::lex(input) {
                     input = rest;
                 } else {
-                    break;
+                    return Ok((res.into(), input));
                 }
             }
-            Ok((res.into(), input))
         }
     }
 }

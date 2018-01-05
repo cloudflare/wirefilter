@@ -140,6 +140,8 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let (op, input) = ComparisonOp::lex(input)?;
 
+        let input = input.trim_left();
+
         let (filter, input) = match (lhs_type, op) {
             (_, ComparisonOp::Any(mask)) => {
                 let (rhs, input) = RhsValue::lex(input, lhs_type)?;

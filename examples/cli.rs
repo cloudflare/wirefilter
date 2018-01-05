@@ -1,7 +1,6 @@
 extern crate wirefilter;
 
 use wirefilter::filter::{Context, Type};
-use std::iter::FromIterator;
 use std::cmp::max;
 
 fn main() {
