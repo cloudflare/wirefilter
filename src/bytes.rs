@@ -1,5 +1,5 @@
 use {ErrorKind, Lex, LexResult};
-use regex::bytes::Regex;
+use regex::bytes::{Regex, RegexBuilder};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use utils::{expect, hex_byte, oct_byte};
@@ -101,7 +101,7 @@ impl<'a> Lex<'a> for Regex {
                 };
             }
         };
-        match Regex::new(regex_str) {
+        match RegexBuilder::new(regex_str).unicode(false).build() {
             Ok(regex) => Ok((regex, input)),
             Err(e) => Err((ErrorKind::ParseRegex(e), regex_str)),
         }
