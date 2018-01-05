@@ -1,3 +1,5 @@
+use cidr::Cidr;
+use std::cmp::Ordering;
 use {ErrorKind, Field, Lex, LexError, LexResult};
 use bytes::Bytes;
 use cidr::{Ipv4Cidr, Ipv6Cidr};
@@ -9,6 +11,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::ops::{BitAnd, BitOr, BitXor};
 use utils::{expect, span};
 
 macro_rules! declare_types {
@@ -215,9 +218,103 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     }
 }
 
+macro_rules! panic_type {
+    ($field:expr, $actual:expr, $expected:expr) => {
+        panic!(
+            "Field {:?} was previously registered with type {:?} but now contains {:?}",
+            $field,
+            $expected,
+            $actual
+        );
+    };
+}
+
+macro_rules! get_typed_field {
+    ($context:ident, $field:ident, Type :: $ty:ident) => {
+        match $context.get_field($field) {
+            &Typed::$ty(ref value) => value,
+            other => panic_type!($field, other.get_type(), Type::$ty)
+        }
+    };
+}
+
 impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
-    pub fn execute<'i>(&'i self, _filter: &'i Filter<'i>) -> Result<bool, ()> {
-        unimplemented!()
+    fn get_field(&self, field: Field) -> &LhsValue {
+        self.fields
+            .get(field.path)
+            .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
+    }
+
+    pub fn execute<'i>(&'i self, filter: &'i Filter<'i>) -> bool {
+        match *filter {
+            Filter::Ordering(field, mask, ref rhs) => {
+                let lhs = self.get_field(field);
+                mask.contains(
+                    lhs.partial_cmp(rhs)
+                        .unwrap_or_else(|| {
+                            panic_type!(field, lhs.get_type(), rhs.get_type());
+                        })
+                        .into(),
+                )
+            }
+            Filter::Unsigned(field, UnsignedOp::BitwiseAnd, rhs) => {
+                (get_typed_field!(self, field, Type::Unsigned) & rhs) == rhs
+            }
+            Filter::Contains(field, ref rhs) => {
+                get_typed_field!(self, field, Type::Bytes).contains(rhs)
+            }
+            Filter::Matches(field, ref regex) => {
+                regex.is_match(get_typed_field!(self, field, Type::Bytes))
+            }
+            Filter::Combine(op, ref filters) => {
+                let filters = filters.iter().map(|filter| self.execute(filter));
+                match op {
+                    CombiningOp::And => filters.fold(true, BitAnd::bitand),
+                    CombiningOp::Or => filters.fold(false, BitOr::bitor),
+                    CombiningOp::Xor => filters.fold(false, BitXor::bitxor),
+                }
+            }
+            Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
+            Filter::OneOf(..) => unimplemented!(),
+        }
+    }
+}
+
+fn compare_ip<C: Cidr>(addr: &C::Address, network: &C) -> Ordering
+where
+    C::Address: Copy + PartialOrd,
+{
+    if addr > &network.last_address() {
+        Ordering::Greater
+    } else if addr < &network.first_address() {
+        Ordering::Less
+    } else {
+        Ordering::Equal
+    }
+}
+
+impl PartialOrd<RhsValue> for LhsValue {
+    fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
+        Some(match (self, other) {
+            (&Typed::IpAddrV4(ref addr), &Typed::IpAddrV4(ref network)) => {
+                compare_ip(addr, network)
+            }
+            (&Typed::IpAddrV6(ref addr), &Typed::IpAddrV6(ref network)) => {
+                compare_ip(addr, network)
+            }
+            (&Typed::Bytes(ref lhs), &Typed::Bytes(ref rhs)) => lhs.cmp(rhs),
+            (&Typed::Unsigned(ref lhs), &Typed::Unsigned(ref rhs)) => lhs.cmp(rhs),
+            _ => return None,
+        })
+    }
+}
+
+impl PartialEq<RhsValue> for LhsValue {
+    fn eq(&self, other: &RhsValue) -> bool {
+        match self.partial_cmp(other) {
+            Some(Ordering::Equal) => true,
+            _ => false,
+        }
     }
 }
 
