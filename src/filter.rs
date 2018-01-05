@@ -343,3 +343,19 @@ pub enum Filter<'i> {
     Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }
+
+impl<'i> Filter<'i> {
+    pub fn uses(&self, field: Field<'i>) -> bool {
+        match *self {
+            Filter::Ordering(uses, ..)
+            | Filter::Unsigned(uses, ..)
+            | Filter::Contains(uses, ..)
+            | Filter::Matches(uses, ..)
+            | Filter::OneOf(uses, ..) => field == uses,
+
+            Filter::Combine(_, ref filters) => filters.iter().any(|filter| filter.uses(field)),
+
+            Filter::Unary(_, ref filter) => filter.uses(field),
+        }
+    }
+}
