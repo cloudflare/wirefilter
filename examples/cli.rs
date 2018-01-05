@@ -1,6 +1,6 @@
 extern crate wirefilter;
 
-use wirefilter::filter::Context;
+use wirefilter::Context;
 use wirefilter::types::Type;
 use std::cmp::max;
 

@@ -78,7 +78,7 @@ mod utils;
 
 mod bytes;
 mod field;
-pub mod filter;
+mod filter;
 mod ip_addr;
 mod number;
 pub mod op;
@@ -87,3 +87,4 @@ pub mod types;
 pub use self::bytes::Bytes;
 pub use self::field::Field;
 pub use self::number::Range;
+pub use self::filter::{Filter, Context};
