@@ -1,10 +1,10 @@
-use {ErrorKind, Lex, LexError, LexResult};
+use {LexErrorKind, Lex, LexError, LexResult};
 
 pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
     if input.starts_with(s) {
         Ok(&input[s.len()..])
     } else {
-        Err((ErrorKind::Literal(s), input))
+        Err((LexErrorKind::Literal(s), input))
     }
 }
 
@@ -25,7 +25,7 @@ macro_rules! simple_enum {
                     Ok(($name::$item, input))
                 } else)+)+ {
                     Err((
-                        $crate::ErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
+                        $crate::LexErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
                         input
                     ))
                 }
@@ -61,7 +61,7 @@ macro_rules! nested_enum {
                     }
                     Err(_) => {}
                 };)+
-                Err(($crate::ErrorKind::Name(stringify!($name)), input))
+                Err(($crate::LexErrorKind::Name(stringify!($name)), input))
             }
         }
     };
@@ -85,7 +85,7 @@ pub fn take_while<'a, F: Fn(char) -> bool>(
                 return if rest.len() != input.len() {
                     Ok((span(input, rest), rest))
                 } else {
-                    Err((ErrorKind::CountMismatch(name, 0, 1), input))
+                    Err((LexErrorKind::CountMismatch(name, 0, 1), input))
                 };
             }
         }
@@ -97,7 +97,7 @@ pub fn take<'a>(input: &'a str, count: usize) -> LexResult<'a, &'a str> {
         Ok(input.split_at(count))
     } else {
         Err((
-            ErrorKind::CountMismatch("character", input.len(), count),
+            LexErrorKind::CountMismatch("character", input.len(), count),
             input,
         ))
     }
@@ -107,7 +107,7 @@ fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
     let (digits, rest) = take(input, digits)?;
     match u8::from_str_radix(digits, radix) {
         Ok(b) => Ok((b, rest)),
-        Err(e) => Err((ErrorKind::ParseInt(e, radix), digits)),
+        Err(e) => Err((LexErrorKind::ParseInt(e, radix), digits)),
     }
 }
 

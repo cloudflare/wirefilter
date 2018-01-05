@@ -40,7 +40,7 @@ impl<'a> Lex<'a> for Field<'a> {
 
 #[test]
 fn test() {
-    use super::ErrorKind;
+    use super::LexErrorKind;
 
     assert_ok!(Field::lex("x;"), Field::new("x"), ";");
 
@@ -48,13 +48,13 @@ fn test() {
 
     assert_err!(
         Field::lex("x..y"),
-        ErrorKind::CountMismatch("alphanumeric character", 0, 1),
+        LexErrorKind::CountMismatch("alphanumeric character", 0, 1),
         ".y"
     );
 
     assert_err!(
         Field::lex("x.#"),
-        ErrorKind::CountMismatch("alphanumeric character", 0, 1),
+        LexErrorKind::CountMismatch("alphanumeric character", 0, 1),
         "#"
     );
 }

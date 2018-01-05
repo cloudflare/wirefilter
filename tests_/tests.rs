@@ -15,11 +15,11 @@ macro_rules! assert_ok {
 
 macro_rules! assert_err {
     (@error $code: ident, $rest: expr) => {
-        error_position!(nom::ErrorKind::$code, $rest)
+        error_position!(nom::LexErrorKind::$code, $rest)
     };
 
     (@error $code: ident, $rest: expr, $($tt:tt)+) => {
-        error_node_position!(nom::ErrorKind::$code, $rest, assert_err!(@error $($tt)+))
+        error_node_position!(nom::LexErrorKind::$code, $rest, assert_err!(@error $($tt)+))
     };
 
     ($expr:expr, $($tt:tt)+) => {

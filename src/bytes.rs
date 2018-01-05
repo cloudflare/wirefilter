@@ -1,4 +1,4 @@
-use {ErrorKind, Lex, LexResult};
+use {LexErrorKind, Lex, LexResult};
 use regex::bytes::{Regex, RegexBuilder};
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
@@ -96,7 +96,7 @@ impl<'a> Lex<'a> for Regex {
             let mut iter = input.chars();
             loop {
                 let before_char = iter.as_str();
-                match iter.next().ok_or_else(|| (ErrorKind::EndingQuote, input))? {
+                match iter.next().ok_or_else(|| (LexErrorKind::EndingQuote, input))? {
                     '\\' => {
                         iter.next();
                     }
@@ -109,7 +109,7 @@ impl<'a> Lex<'a> for Regex {
         };
         match RegexBuilder::new(regex_str).unicode(false).build() {
             Ok(regex) => Ok((regex, input)),
-            Err(e) => Err((ErrorKind::ParseRegex(e), regex_str)),
+            Err(e) => Err((LexErrorKind::ParseRegex(e), regex_str)),
         }
     }
 }
@@ -120,7 +120,7 @@ impl<'a> Lex<'a> for Bytes {
             let mut res = String::new();
             let mut iter = input.chars();
             loop {
-                match iter.next().ok_or_else(|| (ErrorKind::EndingQuote, input))? {
+                match iter.next().ok_or_else(|| (LexErrorKind::EndingQuote, input))? {
                     '\\' => {
                         let input = iter.as_str();
                         let c = iter.next().unwrap_or('\0');
@@ -137,7 +137,7 @@ impl<'a> Lex<'a> for Bytes {
                                 b as char
                             }
                             _ => {
-                                return Err((ErrorKind::CharacterEscape, input));
+                                return Err((LexErrorKind::CharacterEscape, input));
                             }
                         });
                     }
@@ -176,7 +176,7 @@ fn test() {
 
     assert_err!(
         Bytes::lex("01:4x;"),
-        ErrorKind::ParseInt(u8::from_str_radix("4x", 16).unwrap_err(), 16),
+        LexErrorKind::ParseInt(u8::from_str_radix("4x", 16).unwrap_err(), 16),
         "4x"
     );
 
@@ -184,7 +184,7 @@ fn test() {
 
     assert_ok!(Bytes::lex("01:2f-34"), Bytes::from(vec![0x01, 0x2F, 0x34]));
 
-    assert_err!(Bytes::lex("\"1"), ErrorKind::EndingQuote, "1");
+    assert_err!(Bytes::lex("\"1"), LexErrorKind::EndingQuote, "1");
 
-    assert_err!(Bytes::lex(r#""\n""#), ErrorKind::CharacterEscape, "n\"");
+    assert_err!(Bytes::lex(r#""\n""#), LexErrorKind::CharacterEscape, "n\"");
 }

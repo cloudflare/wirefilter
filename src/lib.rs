@@ -10,7 +10,7 @@ extern crate regex;
 
 quick_error! {
     #[derive(Debug, PartialEq)]
-    pub enum ErrorKind {
+    pub enum LexErrorKind {
         Name(name: &'static str) {
             description(name)
             display("expected {}", name)
@@ -65,7 +65,7 @@ quick_error! {
     }
 }
 
-pub type LexError<'a> = (ErrorKind, &'a str);
+pub type LexError<'a> = (LexErrorKind, &'a str);
 
 pub type LexResult<'a, T> = Result<(T, &'a str), LexError<'a>>;
 

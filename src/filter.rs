@@ -1,4 +1,4 @@
-use {ErrorKind, Field, Lex, LexError, LexResult};
+use {LexErrorKind, Field, Lex, LexError, LexResult};
 use bytes::Bytes;
 use cidr::Cidr;
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp};
@@ -47,7 +47,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let lhs_type = self.fields
             .get(lhs.path)
-            .ok_or_else(|| (ErrorKind::UnknownField, lhs.path))?
+            .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path))?
             .get_type();
 
         let input = input.trim_left();
@@ -87,7 +87,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
                     (Filter::Matches(lhs, rhs), input)
                 }
             },
-            (ty, op) => return Err((ErrorKind::UnsupportedOp(ty, op), span(initial_input, input))),
+            (ty, op) => return Err((LexErrorKind::UnsupportedOp(ty, op), span(initial_input, input))),
         };
 
         Ok((filter, input.trim_left()))
@@ -136,7 +136,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
         if input.is_empty() {
             Ok(res)
         } else {
-            Err((ErrorKind::EOF, input))
+            Err((LexErrorKind::EOF, input))
         }
     }
 }

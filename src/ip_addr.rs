@@ -1,4 +1,4 @@
-use {ErrorKind, Lex, LexResult};
+use {LexErrorKind, Lex, LexResult};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use utils::{expect, span, take_while};
 
@@ -14,7 +14,7 @@ impl<'a> Lex<'a> for Ipv4Addr {
         match Self::from_str(chunk) {
             Ok(ip_addr) => Ok((ip_addr, rest)),
             Err(err) => Err((
-                ErrorKind::ParseIp(NetworkParseError::AddrParseError(err)),
+                LexErrorKind::ParseIp(NetworkParseError::AddrParseError(err)),
                 chunk,
             )),
         }
@@ -30,7 +30,7 @@ impl<'a> Lex<'a> for Ipv6Addr {
         match Self::from_str(chunk) {
             Ok(ip_addr) => Ok((ip_addr, rest)),
             Err(err) => Err((
-                ErrorKind::ParseIp(NetworkParseError::AddrParseError(err)),
+                LexErrorKind::ParseIp(NetworkParseError::AddrParseError(err)),
                 chunk,
             )),
         }
@@ -47,9 +47,9 @@ where
 
     Ok(if let Ok(rest) = expect(rest, "/") {
         let (digits, rest) = take_while(rest, "digit", |c| c.is_digit(10))?;
-        let len = u8::from_str(digits).map_err(|e| (ErrorKind::ParseInt(e, 10), digits))?;
+        let len = u8::from_str(digits).map_err(|e| (LexErrorKind::ParseInt(e, 10), digits))?;
         (
-            C::new(addr, len).map_err(|e| (ErrorKind::ParseIp(e), span(input, rest)))?,
+            C::new(addr, len).map_err(|e| (LexErrorKind::ParseIp(e), span(input, rest)))?,
             rest,
         )
     } else {
