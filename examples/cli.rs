@@ -12,8 +12,7 @@ fn main() {
         .expect("Expected an input as a command-line argument");
 
     let context: Context<_, _> = [
-        ("ip.v4", Type::IpAddrV4),
-        ("ip.v6", Type::IpAddrV6),
+        ("ip", Type::Ip),
         ("str", Type::Bytes),
         ("bytes", Type::Bytes),
         ("unsigned", Type::Unsigned),

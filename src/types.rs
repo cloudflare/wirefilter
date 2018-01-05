@@ -1,10 +1,10 @@
 use bytes::Bytes;
-use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
+use cidr::{Cidr, IpCidr};
 use lex::{Lex, LexResult};
 
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
 macro_rules! declare_types {
     (@declare_rhs { $($prev:ty,)* } $name:ident ( $lhs_ty:ty | $rhs_ty:ty ), $($rest:tt)*) => {
@@ -74,34 +74,19 @@ macro_rules! declare_types {
     };
 }
 
-declare_types!(
-    IpAddrV4(Ipv4Addr | Ipv4Cidr),
-    IpAddrV6(Ipv6Addr | Ipv6Cidr),
-    Bytes(Bytes),
-    Unsigned(u64),
-);
-
-fn compare_ip<C: Cidr>(addr: &C::Address, network: &C) -> Ordering
-where
-    C::Address: Copy + PartialOrd,
-{
-    if addr > &network.last_address() {
-        Ordering::Greater
-    } else if addr < &network.first_address() {
-        Ordering::Less
-    } else {
-        Ordering::Equal
-    }
-}
+declare_types!(Ip(IpAddr | IpCidr), Bytes(Bytes), Unsigned(u64),);
 
 impl PartialOrd<RhsValue> for LhsValue {
     fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
         Some(match (self, other) {
-            (&Typed::IpAddrV4(ref addr), &Typed::IpAddrV4(ref network)) => {
-                compare_ip(addr, network)
-            }
-            (&Typed::IpAddrV6(ref addr), &Typed::IpAddrV6(ref network)) => {
-                compare_ip(addr, network)
+            (&Typed::Ip(ref addr), &Typed::Ip(ref network)) => {
+                if addr > &network.last_address() {
+                    Ordering::Greater
+                } else if addr < &network.first_address() {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
             }
             (&Typed::Bytes(ref lhs), &Typed::Bytes(ref rhs)) => lhs.cmp(rhs),
             (&Typed::Unsigned(ref lhs), &Typed::Unsigned(ref rhs)) => lhs.cmp(rhs),

@@ -203,13 +203,9 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
             }
             Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
             Filter::OneOf(field, ref values) => match *values {
-                Typed::IpAddrV4(ref networks) => networks
+                Typed::Ip(ref networks) => networks
                     .iter()
-                    .any(|network| network.contains(get_typed_field!(self, field, Type::IpAddrV4))),
-
-                Typed::IpAddrV6(ref networks) => networks
-                    .iter()
-                    .any(|network| network.contains(get_typed_field!(self, field, Type::IpAddrV6))),
+                    .any(|network| network.contains(get_typed_field!(self, field, Type::Ip))),
 
                 Typed::Bytes(ref values) => values
                     .iter()
