@@ -1,4 +1,4 @@
-use {ErrorKind, LexError, LexResult, Lex};
+use {ErrorKind, Lex, LexError, LexResult};
 
 pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
     if input.starts_with(s) {

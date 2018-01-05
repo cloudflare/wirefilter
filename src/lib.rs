@@ -54,7 +54,7 @@ quick_error! {
             description("registered field")
             display("unknown field")
         }
-        UnsupportedOp(lhs: ::filter::Type, op: op::ComparisonOp) {
+        UnsupportedOp(lhs: ::types::Type, op: op::ComparisonOp) {
             description("valid operation")
             display("cannot use operation {:?} on type {:?}", op, lhs)
         }
@@ -82,6 +82,7 @@ pub mod filter;
 mod ip_addr;
 mod number;
 pub mod op;
+pub mod types;
 
 pub use self::bytes::Bytes;
 pub use self::field::Field;

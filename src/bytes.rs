@@ -49,10 +49,7 @@ impl From<String> for Bytes {
 
 impl From<Box<[u8]>> for Bytes {
     fn from(raw: Box<[u8]>) -> Self {
-        Bytes {
-            is_str: false,
-            raw
-        }
+        Bytes { is_str: false, raw }
     }
 }
 
@@ -183,11 +180,7 @@ fn test() {
         "4x"
     );
 
-    assert_ok!(
-        Bytes::lex("01;"),
-        Bytes::from(vec![0x01]),
-        ";"
-    );
+    assert_ok!(Bytes::lex("01;"), Bytes::from(vec![0x01]), ";");
 
     assert_ok!(Bytes::lex("01:2f-34"), Bytes::from(vec![0x01, 0x2F, 0x34]));
 
