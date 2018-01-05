@@ -7,21 +7,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
 
 macro_rules! declare_types {
-    (@declare_rhs { $($prev:ty,)* } $name:ident ( $lhs_ty:ty | $rhs_ty:ty ), $($rest:tt)*) => {
-        declare_types!(@declare_rhs { $($prev,)* $rhs_ty, } $($rest)*);
-    };
-
-    (@declare_rhs { $($prev:ty,)* } $name:ident ( $ty:ty ), $($rest:tt)*) => {
-        declare_types!(@declare_rhs { $($prev,)* $ty, } $($rest)*);
-    };
-
-    (@declare_rhs { $($ty:ty,)* }) => {
-        pub type RhsValue = Typed<$($ty),*>;
-
-        pub type RhsValues = Typed<$(Vec<$ty>),*>;
-    };
-
-    ($($name:ident ( $lhs_ty:ty $(| $rhs_ty:ty)* ),)*) => {
+    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty) , )*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Type {
             $($name,)*
@@ -70,11 +56,17 @@ macro_rules! declare_types {
 
         pub type LhsValue = Typed<$($lhs_ty),*>;
 
-        declare_types!(@declare_rhs {} $($name ( $lhs_ty $(| $rhs_ty)* ),)*);
+        pub type RhsValue = Typed<$($rhs_ty),*>;
+
+        pub type RhsValues = Typed<$(Vec<$rhs_ty>),*>;
     };
 }
 
-declare_types!(Ip(IpAddr | IpCidr), Bytes(Bytes), Unsigned(u64),);
+declare_types!(
+    Ip(IpAddr | IpCidr),
+    Bytes(Bytes | Bytes),
+    Unsigned(u64 | u64),
+);
 
 impl PartialOrd<RhsValue> for LhsValue {
     fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
