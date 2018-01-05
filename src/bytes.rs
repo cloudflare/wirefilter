@@ -183,9 +183,9 @@ fn test() {
         "4x"
     );
 
-    assert_err!(
+    assert_ok!(
         Bytes::lex("01;"),
-        ErrorKind::Enum("ByteSeparator", &[":", "-", "."]),
+        Bytes::from(vec![0x01]),
         ";"
     );
 
