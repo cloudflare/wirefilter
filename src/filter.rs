@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::ops::{BitAnd, BitOr, BitXor};
 use utils::{expect, span};
 
 macro_rules! declare_types {
@@ -267,15 +266,31 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                 regex.is_match(get_typed_field!(self, field, Type::Bytes))
             }
             Filter::Combine(op, ref filters) => {
-                let filters = filters.iter().map(|filter| self.execute(filter));
+                let mut results = filters.iter().map(|filter| self.execute(filter));
                 match op {
-                    CombiningOp::And => filters.fold(true, BitAnd::bitand),
-                    CombiningOp::Or => filters.fold(false, BitOr::bitor),
-                    CombiningOp::Xor => filters.fold(false, BitXor::bitxor),
+                    CombiningOp::And => results.all(|res| res),
+                    CombiningOp::Or => results.any(|res| res),
+                    CombiningOp::Xor => results.fold(false, |acc, res| acc ^ res),
                 }
             }
             Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
-            Filter::OneOf(..) => unimplemented!(),
+            Filter::OneOf(field, ref values) => match *values {
+                Typed::IpAddrV4(ref networks) => networks
+                    .iter()
+                    .any(|network| network.contains(get_typed_field!(self, field, Type::IpAddrV4))),
+
+                Typed::IpAddrV6(ref networks) => networks
+                    .iter()
+                    .any(|network| network.contains(get_typed_field!(self, field, Type::IpAddrV6))),
+
+                Typed::Bytes(ref values) => values
+                    .iter()
+                    .any(|value| get_typed_field!(self, field, Type::Bytes) == value),
+
+                Typed::Unsigned(ref values) => values
+                    .iter()
+                    .any(|value| get_typed_field!(self, field, Type::Unsigned) == value),
+            },
         }
     }
 }
