@@ -118,7 +118,7 @@ impl<'a> Lex<'a> for Regex {
 }
 
 impl<'a> Lex<'a> for Bytes {
-    fn lex(input: &'a str) -> LexResult<'a, Self> {
+    fn lex(mut input: &'a str) -> LexResult<'a, Self> {
         if let Ok(input) = expect(input, "\"") {
             let mut res = String::new();
             let mut iter = input.chars();
@@ -149,9 +149,7 @@ impl<'a> Lex<'a> for Bytes {
                 };
             }
         } else {
-            let (b, input) = hex_byte(input)?;
-            let (_, mut input) = ByteSeparator::lex(input)?;
-            let mut res = vec![b];
+            let mut res = Vec::new();
             loop {
                 let (b, rest) = hex_byte(input)?;
                 res.push(b);
