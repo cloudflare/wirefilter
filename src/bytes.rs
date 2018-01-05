@@ -8,7 +8,7 @@ use utils::span;
 #[derive(PartialEq, Eq)]
 pub struct Bytes {
     is_str: bool,
-    raw: Vec<u8>,
+    raw: Box<[u8]>,
 }
 
 extern "C" {
@@ -42,14 +42,23 @@ impl From<String> for Bytes {
     fn from(src: String) -> Self {
         Bytes {
             is_str: true,
-            raw: src.into_bytes(),
+            raw: src.into_bytes().into_boxed_slice(),
+        }
+    }
+}
+
+impl From<Box<[u8]>> for Bytes {
+    fn from(raw: Box<[u8]>) -> Self {
+        Bytes {
+            is_str: false,
+            raw
         }
     }
 }
 
 impl From<Vec<u8>> for Bytes {
     fn from(raw: Vec<u8>) -> Self {
-        Bytes { is_str: false, raw }
+        Self::from(raw.into_boxed_slice())
     }
 }
 
@@ -118,14 +127,22 @@ impl<'a> Lex<'a> for Bytes {
                     '\\' => {
                         let input = iter.as_str();
                         let c = iter.next().unwrap_or('\0');
-                        let (c, input) = match c {
-                            '"' | '\\' => (c, input),
-                            'x' => hex_byte(iter.as_str()).map(|(b, input)| (b as char, input))?,
-                            '0'...'7' => oct_byte(input).map(|(b, input)| (b as char, input))?,
-                            _ => return Err((ErrorKind::CharacterEscape, input)),
-                        };
-                        res.push(c);
-                        iter = input.chars();
+                        res.push(match c {
+                            '"' | '\\' => c,
+                            'x' => {
+                                let (b, input) = hex_byte(iter.as_str())?;
+                                iter = input.chars();
+                                b as char
+                            }
+                            '0'...'7' => {
+                                let (b, input) = oct_byte(input)?;
+                                iter = input.chars();
+                                b as char
+                            }
+                            _ => {
+                                return Err((ErrorKind::CharacterEscape, input));
+                            }
+                        });
                     }
                     '"' => return Ok((res.into(), iter.as_str())),
                     c => res.push(c),
