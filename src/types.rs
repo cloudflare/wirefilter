@@ -1,3 +1,4 @@
+use lex::expect;
 use bytes::Bytes;
 use cidr::{Cidr, IpCidr};
 use lex::{Lex, LexResult};
@@ -6,8 +7,43 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
 
+fn lex_rhs_values<'a, T: Lex<'a>>(input: &'a str) -> LexResult<Vec<T>> {
+    let mut input = expect(input, "{")?.trim_left();
+    let mut res = Vec::new();
+    loop {
+        let (item, rest) = T::lex(input)?;
+        res.push(item);
+        input = rest.trim_left();
+        if let Ok(input) = expect(input, "}") {
+            return Ok((res, input.trim_left()));
+        }
+    }
+}
+
 macro_rules! declare_types {
-    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty) , )*) => {
+    (@enum $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
+        pub enum $name {
+            $($variant($ty),)*
+        }
+
+        impl GetType for $name {
+            fn get_type(&self) -> Type {
+                match *self {
+                    $($name::$variant(_) => Type::$variant,)*
+                }
+            }
+        }
+
+        impl Debug for $name {
+            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+                match *self {
+                    $($name::$variant(ref inner) => Debug::fmt(inner, f),)*
+                }
+            }
+        }
+    };
+
+    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty ) , )*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Type {
             $($name,)*
@@ -23,42 +59,39 @@ macro_rules! declare_types {
             }
         }
 
-        pub enum Typed<$($name),*> {
-            $($name($name),)*
-        }
+        declare_types!(@enum LhsValue {
+            $($name($lhs_ty),)*
+        });
 
-        impl<$($name),*> GetType for Typed<$($name),*> {
-            fn get_type(&self) -> Type {
-                match *self {
-                    $(Typed::$name(_) => Type::$name,)*
-                }
-            }
-        }
+        declare_types!(@enum RhsValue {
+            $($name($rhs_ty),)*
+        });
 
-        impl<$($name: Debug),*> Debug for Typed<$($name),*> {
-            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-                match *self {
-                    $(Typed::$name(ref inner) => Debug::fmt(inner, f),)*
-                }
-            }
-        }
+        declare_types!(@enum RhsValues {
+            $($name(Vec<$rhs_ty>),)*
+        });
 
-        impl<'a $(, $name: Lex<'a>)*> Typed<$($name),*> {
-            pub fn lex(input: &'a str, ty: Type) -> LexResult<Self> {
+        impl RhsValue {
+            pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
-                        let (value, input) = $name::lex(input)?;
-                        (Typed::$name(value), input)
+                        let (value, input) = <$rhs_ty>::lex(input)?;
+                        (RhsValue::$name(value), input)
                     })*
                 })
             }
         }
 
-        pub type LhsValue = Typed<$($lhs_ty),*>;
-
-        pub type RhsValue = Typed<$($rhs_ty),*>;
-
-        pub type RhsValues = Typed<$(Vec<$rhs_ty>),*>;
+        impl RhsValues {
+            pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
+                Ok(match ty {
+                    $(Type::$name => {
+                        let (values, input) = lex_rhs_values(input)?;
+                        (RhsValues::$name(values), input)
+                    })*
+                })
+            }
+        }
     };
 }
 
@@ -71,7 +104,7 @@ declare_types!(
 impl PartialOrd<RhsValue> for LhsValue {
     fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
         Some(match (self, other) {
-            (&Typed::Ip(ref addr), &Typed::Ip(ref network)) => {
+            (&LhsValue::Ip(ref addr), &RhsValue::Ip(ref network)) => {
                 if addr > &network.last_address() {
                     Ordering::Greater
                 } else if addr < &network.first_address() {
@@ -80,8 +113,8 @@ impl PartialOrd<RhsValue> for LhsValue {
                     Ordering::Equal
                 }
             }
-            (&Typed::Bytes(ref lhs), &Typed::Bytes(ref rhs)) => lhs.cmp(rhs),
-            (&Typed::Unsigned(ref lhs), &Typed::Unsigned(ref rhs)) => lhs.cmp(rhs),
+            (&LhsValue::Bytes(ref lhs), &RhsValue::Bytes(ref rhs)) => lhs.cmp(rhs),
+            (&LhsValue::Unsigned(ref lhs), &RhsValue::Unsigned(ref rhs)) => lhs.cmp(rhs),
             _ => return None,
         })
     }

@@ -4,7 +4,7 @@ use field::Field;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp, UnsignedOp};
 use regex::bytes::Regex;
-use types::{GetType, LhsValue, RhsValue, RhsValues, Type, Typed};
+use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -53,13 +53,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         if let Ok(input) = expect(input, "in") {
             let input = input.trim_left();
-
-            let input = expect(input, "{")?.trim_left();
-
             let (values, input) = RhsValues::lex(input, lhs_type)?;
-
-            let input = expect(input, "}")?.trim_left();
-
             return Ok((Filter::OneOf(lhs, values), input));
         }
 
@@ -159,7 +153,7 @@ macro_rules! panic_type {
 macro_rules! get_typed_field {
     ($context:ident, $field:ident, Type :: $ty:ident) => {
         match $context.get_field($field) {
-            &Typed::$ty(ref value) => value,
+            &LhsValue::$ty(ref value) => value,
             other => panic_type!($field, other.get_type(), Type::$ty)
         }
     };
@@ -203,15 +197,15 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
             }
             Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
             Filter::OneOf(field, ref values) => match *values {
-                Typed::Ip(ref networks) => networks
+                RhsValues::Ip(ref networks) => networks
                     .iter()
                     .any(|network| network.contains(get_typed_field!(self, field, Type::Ip))),
 
-                Typed::Bytes(ref values) => values
+                RhsValues::Bytes(ref values) => values
                     .iter()
                     .any(|value| get_typed_field!(self, field, Type::Bytes) == value),
 
-                Typed::Unsigned(ref values) => values
+                RhsValues::Unsigned(ref values) => values
                     .iter()
                     .any(|value| get_typed_field!(self, field, Type::Unsigned) == value),
             },
