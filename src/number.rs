@@ -69,7 +69,7 @@ impl<'a> Lex<'a> for Range {
 
 impl<'a> Lex<'a> for Vec<Range> {
     fn lex(input: &'a str) -> LexResult<Self> {
-        let mut input = expect(input, "[");
+        let mut input = expect(input, "[")?;
         let mut res = Vec::new();
         loop {
             let (item, rest) = Range::lex(input)?;
