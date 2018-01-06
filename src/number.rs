@@ -67,12 +67,12 @@ impl<'a> Lex<'a> for Range {
     }
 }
 
-impl<'a, T: Lex<'a>> Lex<'a> for Vec<Range> {
+impl<'a> Lex<'a> for Vec<Range> {
     fn lex(input: &'a str) -> LexResult<Self> {
         let mut input = expect(input, "[");
         let mut res = Vec::new();
         loop {
-            let (item, rest) = T::lex(input)?;
+            let (item, rest) = Range::lex(input)?;
             res.push(item);
             if let Ok(rest) = expect(rest.trim_left(), ",") {
                 input = rest.trim_left();
