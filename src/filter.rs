@@ -4,6 +4,8 @@ use field::Field;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp, UnsignedOp};
 use regex::bytes::Regex;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
 use std::borrow::Borrow;
@@ -213,13 +215,25 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
     }
 }
 
-#[derive(Debug)]
+fn serialize_regex<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
+    regex.as_str().serialize(ser)
+}
+
+fn deserialize_regex<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
+    let src = Deserialize::deserialize(de)?;
+    Regex::new(src).map_err(D::Error::custom)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Filter<'i> {
-    Ordering(Field<'i>, OrderingMask, RhsValue),
-    Unsigned(Field<'i>, UnsignedOp, u64),
-    Contains(Field<'i>, Bytes),
-    Matches(Field<'i>, Regex),
-    OneOf(Field<'i>, RhsValues),
+    Ordering(#[serde(borrow)] Field<'i>, OrderingMask, RhsValue),
+    Unsigned(#[serde(borrow)] Field<'i>, UnsignedOp, u64),
+    Contains(#[serde(borrow)] Field<'i>, Bytes),
+    Matches(
+        #[serde(borrow)] Field<'i>,
+        #[serde(serialize_with = "serialize_regex", deserialize_with = "deserialize_regex")] Regex,
+    ),
+    OneOf(#[serde(borrow)] Field<'i>, RhsValues),
     Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }

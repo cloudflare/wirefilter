@@ -6,7 +6,7 @@ fn ident(input: &str) -> LexResult<&str> {
     take_while(input, "alphanumeric character", char::is_alphanumeric)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Field<'a> {
     pub path: &'a str,
 }

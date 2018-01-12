@@ -5,7 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use std::str;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bytes {
     is_str: bool,
     raw: Box<[u8]>,

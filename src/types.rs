@@ -1,7 +1,7 @@
-use lex::expect;
 use bytes::Bytes;
-use cidr::{Cidr, IpCidr};
+use ip_addr::IpCidr;
 use lex::{Lex, LexResult};
+use lex::expect;
 
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
@@ -22,6 +22,7 @@ fn lex_rhs_values<'a, T: Lex<'a>>(input: &'a str) -> LexResult<Vec<T>> {
 
 macro_rules! declare_types {
     (@enum $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
+        #[derive(Serialize, Deserialize)]
         pub enum $name {
             $($variant($ty),)*
         }
@@ -71,6 +72,26 @@ macro_rules! declare_types {
             $($name(Vec<$rhs_ty>),)*
         });
 
+        impl PartialOrd<RhsValue> for LhsValue {
+            fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
+                match (self, other) {
+                    $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => {
+                        lhs.partial_cmp(rhs)
+                    },)*
+                    _ => None,
+                }
+            }
+        }
+
+        impl PartialEq<RhsValue> for LhsValue {
+            fn eq(&self, other: &RhsValue) -> bool {
+                match (self, other) {
+                    $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => lhs == rhs,)*
+                    _ => false,
+                }
+            }
+        }
+
         impl RhsValue {
             pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
@@ -86,8 +107,8 @@ macro_rules! declare_types {
             pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
-                        let (values, input) = lex_rhs_values(input)?;
-                        (RhsValues::$name(values), input)
+                        let (value, input) = lex_rhs_values(input)?;
+                        (RhsValues::$name(value), input)
                     })*
                 })
             }
@@ -100,31 +121,3 @@ declare_types!(
     Bytes(Bytes | Bytes),
     Unsigned(u64 | u64),
 );
-
-impl PartialOrd<RhsValue> for LhsValue {
-    fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
-        Some(match (self, other) {
-            (&LhsValue::Ip(ref addr), &RhsValue::Ip(ref network)) => {
-                if addr > &network.last_address() {
-                    Ordering::Greater
-                } else if addr < &network.first_address() {
-                    Ordering::Less
-                } else {
-                    Ordering::Equal
-                }
-            }
-            (&LhsValue::Bytes(ref lhs), &RhsValue::Bytes(ref rhs)) => lhs.cmp(rhs),
-            (&LhsValue::Unsigned(ref lhs), &RhsValue::Unsigned(ref rhs)) => lhs.cmp(rhs),
-            _ => return None,
-        })
-    }
-}
-
-impl PartialEq<RhsValue> for LhsValue {
-    fn eq(&self, other: &RhsValue) -> bool {
-        match self.partial_cmp(other) {
-            Some(Ordering::Equal) => true,
-            _ => false,
-        }
-    }
-}

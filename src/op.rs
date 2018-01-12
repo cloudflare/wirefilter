@@ -13,6 +13,7 @@ mod ordering {
     });
 
     bitflags! {
+        #[derive(Serialize, Deserialize)]
         pub struct OrderingMask: u8 {
             const LESS = 0b001;
             const GREATER = 0b010;
