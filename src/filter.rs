@@ -53,44 +53,48 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let input = input.trim_left();
 
-        if let Ok(input) = expect(input, "in") {
+        let (op, input) = if let Ok(input) = expect(input, "in") {
             let input = input.trim_left();
+
             let (values, input) = RhsValues::lex(input, lhs_type)?;
-            return Ok((Filter::OneOf(lhs, values), input));
-        }
 
-        let (op, input) = ComparisonOp::lex(input)?;
+            (FilterOp::OneOf(values), input)
+        } else {
+            let (op, input) = ComparisonOp::lex(input)?;
 
-        let input = input.trim_left();
+            let input = input.trim_left();
 
-        let (filter, input) = match (lhs_type, op) {
-            (_, ComparisonOp::Any(mask)) => {
-                let (rhs, input) = RhsValue::lex(input, lhs_type)?;
-                (Filter::Ordering(lhs, mask, rhs), input)
-            }
-            (Type::Unsigned, ComparisonOp::Unsigned(op)) => {
-                let (rhs, input) = u64::lex(input)?;
-                (Filter::Unsigned(lhs, op, rhs), input)
-            }
-            (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
-                BytesOp::Contains => {
-                    let (rhs, input) = Bytes::lex(input)?;
-                    (Filter::Contains(lhs, rhs), input)
+            let (filter, input) = match (lhs_type, op) {
+                (_, ComparisonOp::Any(mask)) => {
+                    let (rhs, input) = RhsValue::lex(input, lhs_type)?;
+                    (FilterOp::Ordering(mask, rhs), input)
                 }
-                BytesOp::Matches => {
-                    let (rhs, input) = Regex::lex(input)?;
-                    (Filter::Matches(lhs, rhs), input)
+                (Type::Unsigned, ComparisonOp::Unsigned(op)) => {
+                    let (rhs, input) = u64::lex(input)?;
+                    (FilterOp::Unsigned(op, rhs), input)
                 }
-            },
-            (ty, op) => {
-                return Err((
-                    LexErrorKind::UnsupportedOp(ty, op),
-                    span(initial_input, input),
-                ))
-            }
+                (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
+                    BytesOp::Contains => {
+                        let (rhs, input) = Bytes::lex(input)?;
+                        (FilterOp::Contains(rhs), input)
+                    }
+                    BytesOp::Matches => {
+                        let (rhs, input) = Regex::lex(input)?;
+                        (FilterOp::Matches(rhs), input)
+                    }
+                },
+                (ty, op) => {
+                    return Err((
+                        LexErrorKind::UnsupportedOp(ty, op),
+                        span(initial_input, input),
+                    ))
+                }
+            };
+
+            (filter, input.trim_left())
         };
 
-        Ok((filter, input.trim_left()))
+        Ok((Filter::Op(lhs, op), input))
     }
 
     fn filter_prec<'i>(
@@ -152,9 +156,9 @@ macro_rules! panic_type {
     };
 }
 
-macro_rules! get_typed_field {
-    ($context:ident, $field:ident, Type :: $ty:ident) => {
-        match $context.get_field($field) {
+macro_rules! cast_field {
+    ($field:ident, $lhs:ident, $ty:ident) => {
+        match $lhs {
             &LhsValue::$ty(ref value) => value,
             other => panic_type!($field, other.get_type(), Type::$ty)
         }
@@ -170,24 +174,37 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
 
     pub fn execute<'i>(&'i self, filter: &'i Filter<'i>) -> bool {
         match *filter {
-            Filter::Ordering(field, mask, ref rhs) => {
+            Filter::Op(field, ref op) => {
                 let lhs = self.get_field(field);
-                mask.contains(
-                    lhs.partial_cmp(rhs)
-                        .unwrap_or_else(|| {
-                            panic_type!(field, lhs.get_type(), rhs.get_type());
-                        })
-                        .into(),
-                )
-            }
-            Filter::Unsigned(field, UnsignedOp::BitwiseAnd, rhs) => {
-                (get_typed_field!(self, field, Type::Unsigned) & rhs) == rhs
-            }
-            Filter::Contains(field, ref rhs) => {
-                get_typed_field!(self, field, Type::Bytes).contains(rhs)
-            }
-            Filter::Matches(field, ref regex) => {
-                regex.is_match(get_typed_field!(self, field, Type::Bytes))
+
+                match *op {
+                    FilterOp::Ordering(mask, ref rhs) => mask.contains(
+                        lhs.partial_cmp(rhs)
+                            .unwrap_or_else(|| {
+                                panic_type!(field, lhs.get_type(), rhs.get_type());
+                            })
+                            .into(),
+                    ),
+                    FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
+                        cast_field!(field, lhs, Unsigned) & rhs == rhs
+                    }
+                    FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
+                    FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
+                    FilterOp::OneOf(ref values) => match *values {
+                        RhsValues::Ip(ref networks) => {
+                            let lhs = cast_field!(field, lhs, Ip);
+                            networks.iter().any(|network| network.contains(lhs))
+                        }
+                        RhsValues::Bytes(ref values) => {
+                            let lhs = cast_field!(field, lhs, Bytes);
+                            values.iter().any(|value| lhs == value)
+                        }
+                        RhsValues::Unsigned(ref values) => {
+                            let lhs = cast_field!(field, lhs, Unsigned);
+                            values.iter().any(|value| lhs == value)
+                        }
+                    },
+                }
             }
             Filter::Combine(op, ref filters) => {
                 let mut results = filters.iter().map(|filter| self.execute(filter));
@@ -198,19 +215,6 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                 }
             }
             Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
-            Filter::OneOf(field, ref values) => match *values {
-                RhsValues::Ip(ref networks) => networks
-                    .iter()
-                    .any(|network| network.contains(get_typed_field!(self, field, Type::Ip))),
-
-                RhsValues::Bytes(ref values) => values
-                    .iter()
-                    .any(|value| get_typed_field!(self, field, Type::Bytes) == value),
-
-                RhsValues::Unsigned(ref values) => values
-                    .iter()
-                    .any(|value| get_typed_field!(self, field, Type::Unsigned) == value),
-            },
         }
     }
 }
@@ -225,15 +229,21 @@ fn deserialize_regex<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Filter<'i> {
-    Ordering(#[serde(borrow)] Field<'i>, OrderingMask, RhsValue),
-    Unsigned(#[serde(borrow)] Field<'i>, UnsignedOp, u64),
-    Contains(#[serde(borrow)] Field<'i>, Bytes),
+pub enum FilterOp {
+    Ordering(OrderingMask, RhsValue),
+    Unsigned(UnsignedOp, u64),
+    Contains(Bytes),
     Matches(
-        #[serde(borrow)] Field<'i>,
-        #[serde(serialize_with = "serialize_regex", deserialize_with = "deserialize_regex")] Regex,
+        #[serde(serialize_with = "serialize_regex")]
+        #[serde(deserialize_with = "deserialize_regex")]
+        Regex,
     ),
-    OneOf(#[serde(borrow)] Field<'i>, RhsValues),
+    OneOf(RhsValues),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Filter<'i> {
+    Op(#[serde(borrow)] Field<'i>, FilterOp),
     Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }
@@ -241,14 +251,8 @@ pub enum Filter<'i> {
 impl<'i> Filter<'i> {
     pub fn uses(&self, field: Field<'i>) -> bool {
         match *self {
-            Filter::Ordering(uses, ..)
-            | Filter::Unsigned(uses, ..)
-            | Filter::Contains(uses, ..)
-            | Filter::Matches(uses, ..)
-            | Filter::OneOf(uses, ..) => field == uses,
-
+            Filter::Op(lhs, ..) => field == lhs,
             Filter::Combine(_, ref filters) => filters.iter().any(|filter| filter.uses(field)),
-
             Filter::Unary(_, ref filter) => filter.uses(field),
         }
     }
