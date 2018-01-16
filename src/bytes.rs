@@ -141,7 +141,7 @@ impl<'a> Lex<'a> for Bytes {
                                 b as char
                             }
                             _ => {
-                                return Err((LexErrorKind::CharacterEscape, input));
+                                return Err((LexErrorKind::CharacterEscape, &input[..c.len_utf8()]));
                             }
                         });
                     }
