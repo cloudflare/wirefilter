@@ -83,7 +83,7 @@ impl Deref for Bytes {
     }
 }
 
-simple_enum!(ByteSeparator {
+lex_enum!(ByteSeparator {
     ":" => Colon,
     "-" => Dash,
     "." => Dot,

@@ -65,7 +65,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
             let input = input.trim_left();
 
             let (filter, input) = match (lhs_type, op) {
-                (_, ComparisonOp::Any(mask)) => {
+                (_, ComparisonOp::Ordering(mask)) => {
                     let (rhs, input) = RhsValue::lex(input, lhs_type)?;
                     (FilterOp::Ordering(mask, rhs), input)
                 }
@@ -182,8 +182,7 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                         lhs.partial_cmp(rhs)
                             .unwrap_or_else(|| {
                                 panic_type!(field, lhs.get_type(), rhs.get_type());
-                            })
-                            .into(),
+                            }),
                     ),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0

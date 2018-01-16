@@ -16,10 +16,6 @@ quick_error! {
             description(s)
             display("expected literal {:?}", s)
         }
-        Enum(name: &'static str, variants: &'static [&'static str]) {
-            description(name)
-            display("expected {} starting with one of {:?}", name, variants)
-        }
         ParseInt(err: ParseIntError, radix: u32) {
             cause(err)
             description("integer")
@@ -78,63 +74,57 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
     }
 }
 
-macro_rules! simple_enum {
-    ($(# $attrs:tt)* $name:ident { $( $($s:tt)|+ => $item:ident $(= $value:expr)*, )+ }) => {
+macro_rules! lex_enum {
+    (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
+        $ty:ty => $item:ident,
+        $($rest:tt)*
+    }) => {
+        lex_enum!(@decl $preamble $name $input {
+            $($decl)*
+            $item($ty),
+        } {
+            $($expr)*
+            if let Ok((res, $input)) = $crate::lex::Lex::lex($input) {
+                return Ok(($name::$item(res), $input));
+            }
+        } { $($rest)* });
+    };
+
+    (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
+        $($s:tt)|+ => $item:ident $(= $value:expr)*,
+        $($rest:tt)*
+    }) => {
+        lex_enum!(@decl $preamble $name $input {
+            $($decl)*
+            $item $(= $value)*,
+        } {
+            $($expr)*
+            $(if let Ok($input) = $crate::lex::expect($input, $s) {
+                return Ok(($name::$item, $input));
+            })+
+        } { $($rest)* });
+    };
+
+    (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
         #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-        $(# $attrs)*
-        pub enum $name {
-            $($item $(= $value)*,)+
-        }
+        $($preamble)*
+        pub enum $name $decl
 
         impl<'a> $crate::lex::Lex<'a> for $name {
-            fn lex(input: &'a str) -> $crate::lex::LexResult<'a, Self> {
-                static EXPECTED_LITERALS: &'static [&'static str] = &[
-                    $($($s),+),+
-                ];
-
-                $($(if let Ok(input) = $crate::lex::expect(input, $s) {
-                    Ok(($name::$item, input))
-                } else)+)+ {
-                    Err((
-                        $crate::lex::LexErrorKind::Enum(stringify!($name), EXPECTED_LITERALS),
-                        input
-                    ))
-                }
+            fn lex($input: &'a str) -> $crate::lex::LexResult<'a, Self> {
+                $($expr)*
+                Err((
+                    $crate::lex::LexErrorKind::Name(stringify!($name)),
+                    $input
+                ))
             }
         }
     };
-}
 
-macro_rules! nested_enum {
-    (!impl $input:ident, $name:ident :: $item:ident ($ty:ty)) => {
-        nested_enum!(!impl $input, $name::$item ($ty) <- $crate::lex::Lex::lex)
-    };
-
-    (!impl $input:ident, $name:ident :: $item:ident <- $func:path) => {
-        $func($input).map(|(_, input)| ($name::$item, input))
-    };
-
-    (!impl $input:ident, $name:ident :: $item:ident ( $ty:ty ) <- $func:path) => {
-        $func($input).map(|(res, input)| ($name::$item(res), input))
-    };
-
-    ($(# $attrs:tt)* $name:ident { $($item:ident $(( $ty:ty ))* $(<- $func:path)*,)+ }) => {
-        $(# $attrs)*
-        pub enum $name {
-            $($item $(($ty))*,)+
-        }
-
-        impl<'a> $crate::lex::Lex<'a> for $name {
-            fn lex(input: &'a str) -> $crate::lex::LexResult<'a, Self> {
-                $(match nested_enum!(!impl input, $name::$item $(($ty))* $(<- $func)*) {
-                    Ok(res) => {
-                        return Ok(res);
-                    }
-                    Err(_) => {}
-                };)+
-                Err(($crate::lex::LexErrorKind::Name(stringify!($name)), input))
-            }
-        }
+    ($(# $attrs:tt)* $name:ident $items:tt) => {
+        lex_enum!(@decl {
+            $(# $attrs)*
+        } $name input {} {} $items);
     };
 }
 

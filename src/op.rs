@@ -4,7 +4,7 @@ const LESS: u8 = 0b001;
 const GREATER: u8 = 0b010;
 const EQUAL: u8 = 0b100;
 
-simple_enum!(#[repr(u8)] OrderingOp {
+lex_enum!(#[repr(u8)] OrderingOp {
     "eq" | "==" => Equal = EQUAL,
     "ne" | "!=" => NotEqual = LESS | GREATER,
     "ge" | ">=" => GreaterThanEqual = GREATER | EQUAL,
@@ -25,27 +25,27 @@ impl OrderingOp {
     }
 }
 
-simple_enum!(UnsignedOp {
+lex_enum!(UnsignedOp {
     "&" | "bitwise_and" => BitwiseAnd,
 });
 
-simple_enum!(BytesOp {
+lex_enum!(BytesOp {
     "contains" => Contains,
     "~" | "matches" => Matches,
 });
 
-nested_enum!(#[derive(Debug, PartialEq, Eq, Clone, Copy)] ComparisonOp {
-    Any(OrderingOp),
-    Unsigned(UnsignedOp),
-    Bytes(BytesOp),
+lex_enum!(ComparisonOp {
+    OrderingOp => Ordering,
+    UnsignedOp => Unsigned,
+    BytesOp => Bytes,
 });
 
-simple_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
+lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
     "or" | "||" => Or,
     "xor" | "^^" => Xor,
     "and" | "&&" => And,
 });
 
-simple_enum!(UnaryOp {
+lex_enum!(UnaryOp {
     "not" | "!" => Not,
 });
