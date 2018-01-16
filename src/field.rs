@@ -7,19 +7,21 @@ fn ident(input: &str) -> LexResult<&str> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Field<'a> {
-    pub path: &'a str,
-}
+pub struct Field<'a>(&'a str);
 
 impl<'a> fmt::Debug for Field<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.path)
+        f.write_str(self.path())
     }
 }
 
 impl<'a> Field<'a> {
     pub fn new(path: &'a str) -> Self {
-        Field { path }
+        Field(path)
+    }
+
+    pub fn path(self) -> &'a str {
+        self.0
     }
 }
 

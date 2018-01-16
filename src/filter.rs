@@ -47,8 +47,8 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
         let (lhs, input) = Field::lex(input)?;
 
         let lhs_type = self.fields
-            .get(lhs.path)
-            .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path))?
+            .get(lhs.path())
+            .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?
             .get_type();
 
         let input = input.trim_left();
@@ -168,7 +168,7 @@ macro_rules! cast_field {
 impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
     fn get_field(&self, field: Field) -> &LhsValue {
         self.fields
-            .get(field.path)
+            .get(field.path())
             .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
     }
 
