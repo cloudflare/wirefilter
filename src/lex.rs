@@ -79,10 +79,11 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
 }
 
 macro_rules! simple_enum {
-    ($name:ident { $( $($s:tt)|+ => $item:ident, )+ }) => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Serialize, Deserialize)]
+    ($(# $attrs:tt)* $name:ident { $( $($s:tt)|+ => $item:ident $(= $value:expr)*, )+ }) => {
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+        $(# $attrs)*
         pub enum $name {
-            $($item,)+
+            $($item $(= $value)*,)+
         }
 
         impl<'a> $crate::lex::Lex<'a> for $name {

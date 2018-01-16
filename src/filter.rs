@@ -2,7 +2,7 @@ use bytes::Bytes;
 use cidr::Cidr;
 use field::Field;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
-use op::{BytesOp, CombiningOp, ComparisonOp, OrderingMask, UnaryOp, UnsignedOp};
+use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp, UnsignedOp};
 use regex::bytes::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
@@ -186,7 +186,7 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                             .into(),
                     ),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
-                        cast_field!(field, lhs, Unsigned) & rhs == rhs
+                        cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
                     FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
@@ -230,7 +230,7 @@ fn deserialize_regex<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FilterOp {
-    Ordering(OrderingMask, RhsValue),
+    Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
     Contains(Bytes),
     Matches(
