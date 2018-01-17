@@ -178,12 +178,11 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                 let lhs = self.get_field(field);
 
                 match *op {
-                    FilterOp::Ordering(mask, ref rhs) => mask.contains(
-                        lhs.partial_cmp(rhs)
-                            .unwrap_or_else(|| {
-                                panic_type!(field, lhs.get_type(), rhs.get_type());
-                            }),
-                    ),
+                    FilterOp::Ordering(mask, ref rhs) => {
+                        mask.contains(lhs.partial_cmp(rhs).unwrap_or_else(|| {
+                            panic_type!(field, lhs.get_type(), rhs.get_type());
+                        }))
+                    }
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
@@ -221,13 +220,15 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
 #[derive(Serialize, Deserialize)]
 struct RegexRepr<'a>(#[serde(borrow)] Cow<'a, str>);
 
-fn serialize_regex<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
-    RegexRepr(Cow::Borrowed(regex.as_str())).serialize(ser)
-}
+impl<'a> RegexRepr<'a> {
+    fn serialize<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
+        Serialize::serialize(&RegexRepr(Cow::Borrowed(regex.as_str())), ser)
+    }
 
-fn deserialize_regex<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
-    let src = RegexRepr::deserialize(de)?;
-    Regex::new(&src.0).map_err(D::Error::custom)
+    fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
+        let src: RegexRepr = Deserialize::deserialize(de)?;
+        Regex::new(&src.0).map_err(D::Error::custom)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -235,11 +236,7 @@ pub enum FilterOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
     Contains(Bytes),
-    Matches(
-        #[serde(serialize_with = "serialize_regex")]
-        #[serde(deserialize_with = "deserialize_regex")]
-        Regex,
-    ),
+    Matches(#[serde(with = "RegexRepr")] Regex),
     OneOf(RhsValues),
 }
 
