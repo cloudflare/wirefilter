@@ -3,9 +3,10 @@ use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Deref;
 use std::str::FromStr;
 
@@ -26,24 +27,57 @@ impl Deref for IpCidr {
 }
 
 #[derive(Serialize, Deserialize)]
-struct IpCidrRepr {
-    address: IpAddr,
+struct IpCidrRepr<'a> {
+    #[serde(borrow)]
+    #[serde(with = "::serde_bytes")]
+    address: Cow<'a, [u8]>,
+
     network_length: u8,
 }
 
 impl Serialize for IpCidr {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        IpCidrRepr {
-            address: self.first_address(),
-            network_length: self.network_length(),
-        }.serialize(ser)
+        // if ser.is_human_readable() {
+        //     return self.to_string().serialize(ser);
+        // }
+        match self.0 {
+            ::cidr::IpCidr::V4(ref cidr) => IpCidrRepr {
+                address: Cow::Borrowed(&cidr.first_address().octets()),
+                network_length: cidr.network_length(),
+            }.serialize(ser),
+            ::cidr::IpCidr::V6(ref cidr) => IpCidrRepr {
+                address: Cow::Borrowed(&cidr.first_address().octets()),
+                network_length: cidr.network_length(),
+            }.serialize(ser),
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for IpCidr {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        // if de.is_human_readable() {
+        //     let s: &str = Deserialize::deserialize(de)?;
+        //     return match s.parse() {
+        //         Ok(cidr) => Ok(IpCidr(cidr)),
+        //         Err(err) => Err(D::Error::custom(err)),
+        //     };
+        // }
         let repr = IpCidrRepr::deserialize(de)?;
-        match ::cidr::IpCidr::new(repr.address, repr.network_length) {
+        let addr = match repr.address.len() {
+            4 => IpAddr::V4(Ipv4Addr::from(unsafe {
+                *(repr.address.as_ptr() as *const [u8; 4])
+            })),
+            16 => IpAddr::V6(Ipv6Addr::from(unsafe {
+                *(repr.address.as_ptr() as *const [u8; 16])
+            })),
+            _ => {
+                return Err(D::Error::invalid_length(
+                    repr.address.len(),
+                    &"4 for IPv4 or 16 for IPv16",
+                ))
+            }
+        };
+        match ::cidr::IpCidr::new(addr, repr.network_length) {
             Ok(cidr) => Ok(IpCidr(cidr)),
             Err(err) => Err(D::Error::custom(err)),
         }

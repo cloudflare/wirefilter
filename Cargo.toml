@@ -8,9 +8,10 @@ cidr = "0.0.3"
 quick-error = "1.2.1"
 regex = "0.2.5"
 serde = "1.0.27"
+serde_bytes = "0.10.3"
 serde_derive = "1.0.27"
 
 [dev-dependencies]
 bincode = "0.9.2"
-serde_json = "1.0.9"
 serde_cbor = "0.8.1"
+serde_json = "1.0.9"
