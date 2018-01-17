@@ -1,14 +1,58 @@
 use lex::{expect, hex_byte, oct_byte, span, Lex, LexErrorKind, LexResult};
 use regex::bytes::{Regex, RegexBuilder};
+use serde::{Serialize, Serializer, Deserializer, Deserialize};
+use serde::de::{self, Visitor};
 
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use std::str;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
+#[derive(PartialEq, Eq)]
 pub struct Bytes {
     is_str: bool,
     raw: Box<[u8]>,
+}
+
+impl Serialize for Bytes {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        if let Some(s) = self.as_str() {
+            ser.serialize_str(s)
+        } else {
+            ser.serialize_bytes(&self.raw)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Bytes {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        struct BytesVisitor;
+
+        impl<'de> Visitor<'de> for BytesVisitor {
+            type Value = Bytes;
+
+            fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+                f.write_str("a byte buffer or a string")
+            }
+
+            fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Bytes, E> {
+                self.visit_byte_buf(v.into())
+            }
+
+            fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Bytes, E> {
+                Ok(Bytes::from(v))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Bytes, E> {
+                self.visit_string(v.into())
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Bytes, E> {
+                Ok(Bytes::from(v))
+            }
+        }
+
+        de.deserialize_byte_buf(BytesVisitor)
+    }
 }
 
 extern "C" {
