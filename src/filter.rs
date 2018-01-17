@@ -33,7 +33,7 @@ fn combining_op(input: &str) -> (Option<CombiningOp>, &str) {
 }
 
 impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
-    fn simple_filter<'i>(&'i self, input: &'i str) -> LexResult<'i, Filter<'i>> {
+    fn simple_filter<'i>(&self, input: &'i str) -> LexResult<'i, Filter<'i>> {
         if let Ok(input) = expect(input, "(") {
             let input = input.trim_left();
             let (res, input) = self.combined_filter(input)?;
@@ -98,7 +98,7 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     }
 
     fn filter_prec<'i>(
-        &'i self,
+        &self,
         mut lhs: Filter<'i>,
         min_prec: Option<CombiningOp>,
         mut lookahead: (Option<CombiningOp>, &'i str),
@@ -129,13 +129,13 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
         Ok((lhs, lookahead.1))
     }
 
-    fn combined_filter<'i>(&'i self, input: &'i str) -> LexResult<'i, Filter<'i>> {
+    fn combined_filter<'i>(&self, input: &'i str) -> LexResult<'i, Filter<'i>> {
         let (lhs, input) = self.simple_filter(input)?;
         let lookahead = combining_op(input);
         self.filter_prec(lhs, None, lookahead)
     }
 
-    pub fn parse<'i>(&'i self, input: &'i str) -> Result<Filter<'i>, LexError<'i>> {
+    pub fn parse<'i>(&self, input: &'i str) -> Result<Filter<'i>, LexError<'i>> {
         let (res, input) = self.combined_filter(input)?;
         if input.is_empty() {
             Ok(res)
