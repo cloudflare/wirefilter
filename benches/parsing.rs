@@ -51,7 +51,7 @@ macro_rules! serde_bench {
             use super::*;
 
             #[bench]
-            fn serializer(b: &mut Bencher) {
+            fn a_serializer(b: &mut Bencher) {
                 let filter = parse_sample_filter(&create_default_context());
 
                 b.iter(|| {
@@ -62,7 +62,7 @@ macro_rules! serde_bench {
             }
 
             #[bench]
-            fn deserializer(b: &mut Bencher) {
+            fn b_deserializer(b: &mut Bencher) {
                 let serialized: Vec<u8> = $ser(
                     &parse_sample_filter(&create_default_context())
                 ).unwrap();
