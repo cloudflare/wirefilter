@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
@@ -218,13 +218,16 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct RegexRepr<'a>(#[serde(borrow)] Cow<'a, str>);
+
 fn serialize_regex<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
-    regex.as_str().serialize(ser)
+    RegexRepr(Cow::Borrowed(regex.as_str())).serialize(ser)
 }
 
 fn deserialize_regex<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
-    let src = Deserialize::deserialize(de)?;
-    Regex::new(src).map_err(D::Error::custom)
+    let src = RegexRepr::deserialize(de)?;
+    Regex::new(&src.0).map_err(D::Error::custom)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
