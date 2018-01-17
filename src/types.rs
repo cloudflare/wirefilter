@@ -21,8 +21,8 @@ fn lex_rhs_values<'a, T: Lex<'a>>(input: &'a str) -> LexResult<Vec<T>> {
 }
 
 macro_rules! declare_types {
-    (@enum $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
-        #[derive(Serialize, Deserialize)]
+    (@enum $(# $attrs:tt)* $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
+        $(# $attrs)*
         pub enum $name {
             $($variant($ty),)*
         }
@@ -64,11 +64,11 @@ macro_rules! declare_types {
             $($name($lhs_ty),)*
         });
 
-        declare_types!(@enum RhsValue {
+        declare_types!(@enum #[derive(Serialize, Deserialize)] RhsValue {
             $($name($rhs_ty),)*
         });
 
-        declare_types!(@enum RhsValues {
+        declare_types!(@enum #[derive(Serialize, Deserialize)] RhsValues {
             $($name(Vec<$rhs_ty>),)*
         });
 
