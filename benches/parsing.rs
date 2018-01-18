@@ -41,7 +41,7 @@ fn create_default_context() -> Context<&'static str, Type> {
     ]).iter().cloned().collect()
 }
 
-fn parse_sample_filter(context: &Context<&'static str, Type>) -> Filter<'static> {
+fn parse_sample_filter<'a>(context: &'a Context<&'static str, Type>) -> Filter<'a> {
     context.parse(get_default_source()).unwrap()
 }
 
@@ -52,7 +52,8 @@ macro_rules! serde_bench {
 
             #[bench]
             fn a_serializer(b: &mut Bencher) {
-                let filter = parse_sample_filter(&create_default_context());
+                let context = create_default_context();
+                let filter = parse_sample_filter(&context);
 
                 b.iter(|| {
                     black_box($ser(black_box(&filter)).unwrap())
@@ -92,10 +93,10 @@ serde_bench!(bench_json {
     serde_json::from_slice
 });
 
-// serde_bench!(bench_cbor {
-//     serde_cbor::to_vec,
-//     serde_cbor::from_slice
-// });
+serde_bench!(bench_cbor {
+    serde_cbor::to_vec,
+    serde_cbor::from_slice
+});
 
 fn serialize_bincode<T: Serialize>(value: &T) -> bincode::Result<Vec<u8>> {
     bincode::serialize(value, bincode::Infinite)
