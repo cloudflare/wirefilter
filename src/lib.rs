@@ -12,6 +12,8 @@ extern crate serde_bytes;
 #[macro_use]
 extern crate serde_derive;
 
+extern crate ordermap;
+
 #[macro_use]
 pub mod lex;
 

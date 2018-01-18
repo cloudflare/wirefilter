@@ -7,20 +7,20 @@ use regex::bytes::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
+use ordermap::OrderMap;
 
 use std::borrow::{Borrow, Cow};
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
 pub struct Context<K, T> {
-    fields: HashMap<K, T>,
+    fields: OrderMap<K, T>,
 }
 
 impl<K: Hash + Eq, T> FromIterator<(K, T)> for Context<K, T> {
     fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
         Context {
-            fields: HashMap::from_iter(iter),
+            fields: OrderMap::from_iter(iter),
         }
     }
 }
@@ -32,8 +32,8 @@ fn combining_op(input: &str) -> (Option<CombiningOp>, &str) {
     }
 }
 
-impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
-    fn simple_filter<'i>(&self, input: &'i str) -> LexResult<'i, Filter<'i>> {
+impl<'c, K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
+    fn simple_filter<'i>(&'c self, input: &'i str) -> LexResult<'i, Filter<'c>> {
         if let Ok((op, input)) = UnaryOp::lex(input) {
             let input = input.trim_left();
             let (arg, input) = self.simple_filter(input)?;
@@ -52,10 +52,12 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let (lhs, input) = Field::lex(input)?;
 
-        let lhs_type = self.fields
-            .get(lhs.path())
-            .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?
-            .get_type();
+        let (_, lhs, lhs_type) = self.fields
+            .get_full(lhs.path())
+            .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?;
+
+        let lhs = Field::new(lhs.borrow());
+        let lhs_type = lhs_type.get_type();
 
         let input = input.trim_left();
 
@@ -104,11 +106,11 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     }
 
     fn filter_prec<'i>(
-        &self,
-        mut lhs: Filter<'i>,
+        &'c self,
+        mut lhs: Filter<'c>,
         min_prec: Option<CombiningOp>,
         mut lookahead: (Option<CombiningOp>, &'i str),
-    ) -> LexResult<'i, Filter<'i>> {
+    ) -> LexResult<'i, Filter<'c>> {
         while let Some(op) = lookahead.0 {
             let mut rhs = self.simple_filter(lookahead.1)?;
             loop {
@@ -135,13 +137,13 @@ impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
         Ok((lhs, lookahead.1))
     }
 
-    fn combined_filter<'i>(&self, input: &'i str) -> LexResult<'i, Filter<'i>> {
+    fn combined_filter<'i>(&'c self, input: &'i str) -> LexResult<'i, Filter<'c>> {
         let (lhs, input) = self.simple_filter(input)?;
         let lookahead = combining_op(input);
         self.filter_prec(lhs, None, lookahead)
     }
 
-    pub fn parse<'i>(&self, input: &'i str) -> Result<Filter<'i>, LexError<'i>> {
+    pub fn parse<'i>(&'c self, input: &'i str) -> Result<Filter<'c>, LexError<'i>> {
         let (res, input) = self.combined_filter(input)?;
         if input.is_empty() {
             Ok(res)
