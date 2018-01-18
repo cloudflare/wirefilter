@@ -34,6 +34,12 @@ fn combining_op(input: &str) -> (Option<CombiningOp>, &str) {
 
 impl<K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
     fn simple_filter<'i>(&self, input: &'i str) -> LexResult<'i, Filter<'i>> {
+        if let Ok((op, input)) = UnaryOp::lex(input) {
+            let input = input.trim_left();
+            let (arg, input) = self.simple_filter(input)?;
+            return Ok((Filter::Unary(op, Box::new(arg)), input.trim_left()));
+        }
+
         if let Ok(input) = expect(input, "(") {
             let input = input.trim_left();
             let (res, input) = self.combined_filter(input)?;
