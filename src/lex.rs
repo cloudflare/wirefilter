@@ -5,57 +5,54 @@ use types::Type;
 
 use std::num::ParseIntError;
 
-quick_error! {
-    #[derive(Debug, PartialEq)]
-    pub enum LexErrorKind {
-        Name(name: &'static str) {
-            description(name)
-            display("expected {}", name)
-        }
-        Literal(s: &'static str) {
-            description(s)
-            display("expected literal {:?}", s)
-        }
-        ParseInt(err: ParseIntError, radix: u32) {
-            cause(err)
-            description("integer")
-            display("expected a valid integer in radix {}", radix)
-        }
-        ParseIp(err: NetworkParseError) {
-            cause(err)
-            description("network")
-            display("expected a valid IP network")
-        }
-        ParseRegex(err: RegexError) {
-            cause(err)
-            description("regex")
-            display("expected a valid regular expression")
-        }
-        CharacterEscape {
-            description("character escape")
-            display("expected \", xHH or OOO after \\")
-        }
-        EndingQuote {
-            description("ending quote")
-            display("expected to find an ending quote")
-        }
-        CountMismatch(name: &'static str, actual: usize, expected: usize) {
-            description("different count of items")
-            display("expected {} {}s, but found {}", expected, name, actual)
-        }
-        UnknownField {
-            description("registered field")
-            display("unknown field")
-        }
-        UnsupportedOp(lhs: Type, op: ComparisonOp) {
-            description("valid operation")
-            display("cannot use operation {:?} on type {:?}", op, lhs)
-        }
-        EOF {
-            description("end of input")
-            display("unrecognised input")
-        }
-    }
+#[derive(Debug, PartialEq, Fail)]
+pub enum LexErrorKind {
+    #[fail(display = "expected {}", _0)]
+    ExpectedName(&'static str),
+
+    #[fail(display = "expected literal {:?}", _0)]
+    ExpectedLiteral(&'static str),
+
+    #[fail(display = "{} while parsing with radix {}", err, radix)]
+    ParseInt {
+        #[cause]
+        err: ParseIntError,
+        radix: u32,
+    },
+
+    #[fail(display = "{}", _0)]
+    ParseNetwork(
+        #[cause]
+        NetworkParseError,
+    ),
+
+    #[fail(display = "{}", _0)]
+    ParseRegex(
+        #[cause]
+        RegexError,
+    ),
+
+    #[fail(display = "expected \", xHH or OOO after \\")]
+    InvalidCharacterEscape,
+
+    #[fail(display = "could not find an ending quote")]
+    MissingEndingQuote,
+
+    #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
+    CountMismatch {
+        name: &'static str,
+        actual: usize,
+        expected: usize,
+    },
+
+    #[fail(display = "unknown field")]
+    UnknownField,
+
+    #[fail(display = "cannot use operation {:?} on type {:?}", op, lhs)]
+    UnsupportedOp { lhs: Type, op: ComparisonOp },
+
+    #[fail(display = "unrecognised input")]
+    EOF,
 }
 
 pub type LexError<'a> = (LexErrorKind, &'a str);
@@ -70,7 +67,7 @@ pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'
     if input.starts_with(s) {
         Ok(&input[s.len()..])
     } else {
-        Err((LexErrorKind::Literal(s), input))
+        Err((LexErrorKind::ExpectedLiteral(s), input))
     }
 }
 
@@ -114,7 +111,7 @@ macro_rules! lex_enum {
             fn lex($input: &'a str) -> $crate::lex::LexResult<'a, Self> {
                 $($expr)*
                 Err((
-                    $crate::lex::LexErrorKind::Name(stringify!($name)),
+                    $crate::lex::LexErrorKind::ExpectedName(stringify!($name)),
                     $input
                 ))
             }
@@ -146,19 +143,23 @@ pub fn take_while<'a, F: Fn(char) -> bool>(
                 return if rest.len() != input.len() {
                     Ok((span(input, rest), rest))
                 } else {
-                    Err((LexErrorKind::CountMismatch(name, 0, 1), input))
+                    Err((LexErrorKind::ExpectedName(name), input))
                 };
             }
         }
     }
 }
 
-pub fn take<'a>(input: &'a str, count: usize) -> LexResult<'a, &'a str> {
-    if input.len() >= count {
-        Ok(input.split_at(count))
+pub fn take<'a>(input: &'a str, expected: usize) -> LexResult<'a, &'a str> {
+    if input.len() >= expected {
+        Ok(input.split_at(expected))
     } else {
         Err((
-            LexErrorKind::CountMismatch("character", input.len(), count),
+            LexErrorKind::CountMismatch {
+                name: "character",
+                actual: input.len(),
+                expected,
+            },
             input,
         ))
     }
@@ -168,7 +169,7 @@ fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
     let (digits, rest) = take(input, digits)?;
     match u8::from_str_radix(digits, radix) {
         Ok(b) => Ok((b, rest)),
-        Err(e) => Err((LexErrorKind::ParseInt(e, radix), digits)),
+        Err(err) => Err((LexErrorKind::ParseInt { err, radix }, digits)),
     }
 }
 

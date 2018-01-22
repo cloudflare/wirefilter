@@ -1,6 +1,6 @@
 use lex::{expect, hex_byte, oct_byte, span, Lex, LexErrorKind, LexResult};
 use regex::bytes::{Regex, RegexBuilder};
-use serde::{Serialize, Serializer, Deserializer, Deserialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, Visitor};
 
 use std::fmt::{self, Debug, Formatter};
@@ -141,7 +141,7 @@ impl<'a> Lex<'a> for Regex {
             loop {
                 let before_char = iter.as_str();
                 match iter.next()
-                    .ok_or_else(|| (LexErrorKind::EndingQuote, input))?
+                    .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
                 {
                     '\\' => {
                         iter.next();
@@ -155,7 +155,7 @@ impl<'a> Lex<'a> for Regex {
         };
         match RegexBuilder::new(regex_str).unicode(false).build() {
             Ok(regex) => Ok((regex, input)),
-            Err(e) => Err((LexErrorKind::ParseRegex(e), regex_str)),
+            Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }
     }
 }
@@ -167,7 +167,7 @@ impl<'a> Lex<'a> for Bytes {
             let mut iter = input.chars();
             loop {
                 match iter.next()
-                    .ok_or_else(|| (LexErrorKind::EndingQuote, input))?
+                    .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
                 {
                     '\\' => {
                         let input = iter.as_str();
@@ -185,7 +185,10 @@ impl<'a> Lex<'a> for Bytes {
                                 b as char
                             }
                             _ => {
-                                return Err((LexErrorKind::CharacterEscape, &input[..c.len_utf8()]));
+                                return Err((
+                                    LexErrorKind::InvalidCharacterEscape,
+                                    &input[..c.len_utf8()],
+                                ));
                             }
                         });
                     }
@@ -224,7 +227,10 @@ fn test() {
 
     assert_err!(
         Bytes::lex("01:4x;"),
-        LexErrorKind::ParseInt(u8::from_str_radix("4x", 16).unwrap_err(), 16),
+        LexErrorKind::ParseInt {
+            err: u8::from_str_radix("4x", 16).unwrap_err(),
+            radix: 16,
+        },
         "4x"
     );
 
@@ -232,7 +238,11 @@ fn test() {
 
     assert_ok!(Bytes::lex("01:2f-34"), Bytes::from(vec![0x01, 0x2F, 0x34]));
 
-    assert_err!(Bytes::lex("\"1"), LexErrorKind::EndingQuote, "1");
+    assert_err!(Bytes::lex("\"1"), LexErrorKind::MissingEndingQuote, "1");
 
-    assert_err!(Bytes::lex(r#""\n""#), LexErrorKind::CharacterEscape, "n\"");
+    assert_err!(
+        Bytes::lex(r#""\n""#),
+        LexErrorKind::InvalidCharacterEscape,
+        "n"
+    );
 }

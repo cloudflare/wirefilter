@@ -126,7 +126,7 @@ impl<'a> Lex<'a> for IpAddr {
         match Self::from_str(chunk) {
             Ok(ip_addr) => Ok((ip_addr, rest)),
             Err(err) => Err((
-                LexErrorKind::ParseIp(NetworkParseError::AddrParseError(err)),
+                LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(err)),
                 chunk,
             )),
         }
@@ -141,9 +141,11 @@ impl<'a> Lex<'a> for ::cidr::IpCidr {
 
         Ok(if let Ok(rest) = expect(rest, "/") {
             let (digits, rest) = take_while(rest, "digit", |c| c.is_digit(10))?;
-            let len = u8::from_str(digits).map_err(|e| (LexErrorKind::ParseInt(e, 10), digits))?;
+            let len = u8::from_str(digits)
+                .map_err(|err| (LexErrorKind::ParseInt { err, radix: 10 }, digits))?;
             (
-                Self::new(addr, len).map_err(|e| (LexErrorKind::ParseIp(e), span(input, rest)))?,
+                Self::new(addr, len)
+                    .map_err(|err| (LexErrorKind::ParseNetwork(err), span(input, rest)))?,
                 rest,
             )
         } else {

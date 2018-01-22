@@ -6,7 +6,7 @@ fn number(input: &str, radix: u32) -> LexResult<u64> {
     let (digits, input) = take_while(input, "digit", |c| c.is_digit(radix))?;
     match u64::from_str_radix(digits, radix) {
         Ok(res) => Ok((res, input)),
-        Err(e) => Err((LexErrorKind::ParseInt(e, radix), digits)),
+        Err(err) => Err((LexErrorKind::ParseInt { err, radix }, digits)),
     }
 }
 
@@ -35,7 +35,7 @@ fn index(input: &str) -> LexResult<isize> {
             }
             Ok((res, input))
         }
-        Err(e) => Err((LexErrorKind::ParseInt(e, 10), digits)),
+        Err(err) => Err((LexErrorKind::ParseInt { err, radix: 10 }, digits)),
     }
 }
 

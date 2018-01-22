@@ -2,8 +2,8 @@
 
 extern crate bincode;
 extern crate serde;
-extern crate serde_json;
 extern crate serde_cbor;
+extern crate serde_json;
 extern crate test;
 extern crate wirefilter;
 
@@ -22,7 +22,7 @@ fn print_serialized(serialized: &[u8]) {
         match b {
             0x00 => print!("\\0"),
             0x20...0x7E => print!("{}", b as char),
-            _ => print!("\\x{:02X}", b)
+            _ => print!("\\x{:02X}", b),
         }
     }
 
@@ -38,7 +38,9 @@ fn create_default_context() -> Context<&'static str, Type> {
         ("unsigned", Type::Unsigned),
         ("str", Type::Bytes),
         ("ip.src", Type::Ip),
-    ]).iter().cloned().collect()
+    ]).iter()
+        .cloned()
+        .collect()
 }
 
 fn parse_sample_filter<'a>(context: &'a Context<&'static str, Type>) -> Filter<'a> {
@@ -81,9 +83,7 @@ macro_rules! serde_bench {
 fn filter_parser(b: &mut Bencher) {
     let context = create_default_context();
 
-    b.iter(|| {
-        black_box(parse_sample_filter(&context))
-    });
+    b.iter(|| black_box(parse_sample_filter(&context)));
 
     print_serialized(get_default_source().as_bytes());
 }

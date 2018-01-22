@@ -3,11 +3,11 @@ use cidr::Cidr;
 use field::Field;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp, UnsignedOp};
+use ordermap::OrderMap;
 use regex::bytes::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
-use ordermap::OrderMap;
 
 use std::borrow::{Borrow, Cow};
 use std::hash::Hash;
@@ -91,9 +91,9 @@ impl<'c, K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
                         (FilterOp::Matches(rhs), input)
                     }
                 },
-                (ty, op) => {
+                (lhs, op) => {
                     return Err((
-                        LexErrorKind::UnsupportedOp(ty, op),
+                        LexErrorKind::UnsupportedOp { lhs, op },
                         span(initial_input, input),
                     ))
                 }
@@ -226,7 +226,10 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct RegexRepr<'a>(#[serde(borrow)] Cow<'a, str>);
+struct RegexRepr<'a>(
+    #[serde(borrow)]
+    Cow<'a, str>,
+);
 
 impl<'a> RegexRepr<'a> {
     fn serialize<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
@@ -244,13 +247,20 @@ pub enum FilterOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
     Contains(Bytes),
-    Matches(#[serde(with = "RegexRepr")] Regex),
+    Matches(
+        #[serde(with = "RegexRepr")]
+        Regex,
+    ),
     OneOf(RhsValues),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Filter<'i> {
-    Op(#[serde(borrow)] Field<'i>, FilterOp),
+    Op(
+        #[serde(borrow)]
+        Field<'i>,
+        FilterOp,
+    ),
     Combine(CombiningOp, Vec<Filter<'i>>),
     Unary(UnaryOp, Box<Filter<'i>>),
 }

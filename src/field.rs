@@ -49,13 +49,13 @@ fn test() {
 
     assert_err!(
         Field::lex("x..y"),
-        LexErrorKind::CountMismatch("alphanumeric character", 0, 1),
+        LexErrorKind::ExpectedName("alphanumeric character"),
         ".y"
     );
 
     assert_err!(
         Field::lex("x.#"),
-        LexErrorKind::CountMismatch("alphanumeric character", 0, 1),
+        LexErrorKind::ExpectedName("alphanumeric character"),
         "#"
     );
 }
