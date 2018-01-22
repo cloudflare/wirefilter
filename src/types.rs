@@ -46,6 +46,7 @@ macro_rules! declare_types {
 
     ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty ) , )*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[repr(u8)]
         pub enum Type {
             $($name,)*
         }
@@ -60,7 +61,7 @@ macro_rules! declare_types {
             }
         }
 
-        declare_types!(@enum LhsValue {
+        declare_types!(@enum #[repr(u8)] LhsValue {
             $($name($lhs_ty),)*
         });
 

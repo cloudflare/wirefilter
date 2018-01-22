@@ -1,0 +1,16 @@
+[package]
+authors = ["Ingvar Stepanyan <me@rreverser.com>"]
+name = "wirefilter-ffi"
+version = "0.1.0"
+
+[dependencies]
+libc = "0.2.36"
+
+[dependencies.wirefilter]
+path = ".."
+
+[lib]
+crate-type = ["dylib"]
+name = "wirefilter"
+
+[workspace]
