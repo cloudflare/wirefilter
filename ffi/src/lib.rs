@@ -88,15 +88,17 @@ fn create_parsing_context(fields: Fields<Type>) -> Result<Context<&str, Type>, s
         .collect()
 }
 
+pub type ParsingContext = *mut Context<&str, Type>;
+
 pub unsafe extern "C" fn wirefilter_create_parsing_context(
     fields: Fields<Type>,
-) -> *mut Context<&str, Type> {
+) -> ParsingContext {
     Box::into_raw(Box::new(
         create_parsing_context(fields).expect("Could not create a context"),
     ))
 }
 
-pub unsafe extern "C" fn wirefilter_free_parsing_context(context: *mut Context<Str, Type>) {
+pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext) {
     Box::from_raw(context);
 }
 
