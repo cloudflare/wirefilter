@@ -108,6 +108,6 @@ pub unsafe extern "C" fn wirefilter_validate(fields: Fields<Type>, filter: Str) 
     }
 }
 
-pub unsafe extern "C" fn wirefilter_free_error<'a>(error: Error) {
+pub unsafe extern "C" fn wirefilter_free_error(error: Error) {
     error.msg.free();
 }

@@ -55,15 +55,15 @@ pub enum LexErrorKind {
     EOF,
 }
 
-pub type LexError<'a> = (LexErrorKind, &'a str);
+pub type LexError<'i> = (LexErrorKind, &'i str);
 
-pub type LexResult<'a, T> = Result<(T, &'a str), LexError<'a>>;
+pub type LexResult<'i, T> = Result<(T, &'i str), LexError<'i>>;
 
-pub trait Lex<'a>: Sized {
-    fn lex(input: &'a str) -> LexResult<'a, Self>;
+pub trait Lex<'i>: Sized {
+    fn lex(input: &'i str) -> LexResult<'i, Self>;
 }
 
-pub fn expect<'a>(input: &'a str, s: &'static str) -> Result<&'a str, LexError<'a>> {
+pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'i>> {
     if input.starts_with(s) {
         Ok(&input[s.len()..])
     } else {
@@ -107,8 +107,8 @@ macro_rules! lex_enum {
         $($preamble)*
         pub enum $name $decl
 
-        impl<'a> $crate::lex::Lex<'a> for $name {
-            fn lex($input: &'a str) -> $crate::lex::LexResult<'a, Self> {
+        impl<'i> $crate::lex::Lex<'i> for $name {
+            fn lex($input: &'i str) -> $crate::lex::LexResult<Self> {
                 $($expr)*
                 Err((
                     $crate::lex::LexErrorKind::ExpectedName(stringify!($name)),
@@ -125,15 +125,15 @@ macro_rules! lex_enum {
     };
 }
 
-pub fn span<'a>(input: &'a str, rest: &'a str) -> &'a str {
+pub fn span<'i>(input: &'i str, rest: &'i str) -> &'i str {
     &input[..input.len() - rest.len()]
 }
 
-pub fn take_while<'a, F: Fn(char) -> bool>(
-    input: &'a str,
+pub fn take_while<'i, F: Fn(char) -> bool>(
+    input: &'i str,
     name: &'static str,
     f: F,
-) -> LexResult<'a, &'a str> {
+) -> LexResult<'i, &'i str> {
     let mut iter = input.chars();
     loop {
         let rest = iter.as_str();
@@ -150,7 +150,7 @@ pub fn take_while<'a, F: Fn(char) -> bool>(
     }
 }
 
-pub fn take<'a>(input: &'a str, expected: usize) -> LexResult<'a, &'a str> {
+pub fn take(input: &str, expected: usize) -> LexResult<&str> {
     if input.len() >= expected {
         Ok(input.split_at(expected))
     } else {

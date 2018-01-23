@@ -133,7 +133,7 @@ lex_enum!(ByteSeparator {
     "." => Dot,
 });
 
-impl<'a> Lex<'a> for Regex {
+impl<'i> Lex<'i> for Regex {
     fn lex(input: &str) -> LexResult<Self> {
         let input = expect(input, "\"")?;
         let (regex_str, input) = {
@@ -160,8 +160,8 @@ impl<'a> Lex<'a> for Regex {
     }
 }
 
-impl<'a> Lex<'a> for Bytes {
-    fn lex(mut input: &'a str) -> LexResult<'a, Self> {
+impl<'i> Lex<'i> for Bytes {
+    fn lex(mut input: &str) -> LexResult<Self> {
         if let Ok(input) = expect(input, "\"") {
             let mut res = String::new();
             let mut iter = input.chars();

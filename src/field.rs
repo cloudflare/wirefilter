@@ -25,8 +25,8 @@ impl<'a> Field<'a> {
     }
 }
 
-impl<'a> Lex<'a> for Field<'a> {
-    fn lex(mut input: &'a str) -> LexResult<'a, Self> {
+impl<'i> Lex<'i> for Field<'i> {
+    fn lex(mut input: &'i str) -> LexResult<Self> {
         let initial_input = input;
         loop {
             input = ident(input)?.1;

@@ -10,8 +10,8 @@ fn number(input: &str, radix: u32) -> LexResult<u64> {
     }
 }
 
-impl<'a> Lex<'a> for u64 {
-    fn lex(input: &'a str) -> LexResult<'a, u64> {
+impl<'i> Lex<'i> for u64 {
+    fn lex(input: &str) -> LexResult<u64> {
         if let Ok(input) = expect(input, "0x") {
             number(input, 16)
         } else if let Ok(input) = expect(input, "0") {
@@ -45,7 +45,7 @@ pub struct Range {
     pub end: Option<isize>,
 }
 
-impl<'a> Lex<'a> for Range {
+impl<'i> Lex<'i> for Range {
     fn lex(input: &str) -> LexResult<Self> {
         let (start, input) = if input.starts_with(':') {
             (0, input)
@@ -67,8 +67,8 @@ impl<'a> Lex<'a> for Range {
     }
 }
 
-impl<'a> Lex<'a> for Vec<Range> {
-    fn lex(input: &'a str) -> LexResult<Self> {
+impl<'i> Lex<'i> for Vec<Range> {
+    fn lex(input: &str) -> LexResult<Self> {
         let mut input = expect(input, "[")?;
         let mut res = Vec::new();
         loop {

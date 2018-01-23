@@ -27,10 +27,10 @@ impl Deref for IpCidr {
 }
 
 #[derive(Serialize, Deserialize)]
-struct IpCidrRepr<'a> {
+struct IpCidrRepr<'i> {
     #[serde(borrow)]
     #[serde(with = "::serde_bytes")]
-    address: Cow<'a, [u8]>,
+    address: Cow<'i, [u8]>,
 
     network_length: u8,
 }
@@ -117,7 +117,7 @@ impl PartialEq<IpCidr> for IpAddr {
     }
 }
 
-impl<'a> Lex<'a> for IpAddr {
+impl<'i> Lex<'i> for IpAddr {
     fn lex(input: &str) -> LexResult<Self> {
         let (chunk, rest) = take_while(input, "IP address character", |c| match c {
             '0'...'9' | 'a'...'f' | 'A'...'F' | ':' | '.' => true,
@@ -133,7 +133,7 @@ impl<'a> Lex<'a> for IpAddr {
     }
 }
 
-impl<'a> Lex<'a> for ::cidr::IpCidr {
+impl<'i> Lex<'i> for ::cidr::IpCidr {
     fn lex(input: &str) -> LexResult<Self> {
         // We're not using IpCidr::from_str here since it supports short IPv4
         // form which we don't want as it conflicts with singular numbers.
@@ -154,7 +154,7 @@ impl<'a> Lex<'a> for ::cidr::IpCidr {
     }
 }
 
-impl<'a> Lex<'a> for IpCidr {
+impl<'i> Lex<'i> for IpCidr {
     fn lex(input: &str) -> LexResult<Self> {
         let (value, input) = ::cidr::IpCidr::lex(input)?;
         Ok((IpCidr(value), input))

@@ -180,7 +180,7 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
             .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
     }
 
-    pub fn execute<'i>(&'i self, filter: &'i Filter<'i>) -> bool {
+    pub fn execute(&self, filter: &Filter) -> bool {
         match *filter {
             Filter::Op(field, ref op) => {
                 let lhs = self.get_field(field);
@@ -226,12 +226,12 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct RegexRepr<'a>(
+struct RegexRepr<'i>(
     #[serde(borrow)]
-    Cow<'a, str>,
+    Cow<'i, str>,
 );
 
-impl<'a> RegexRepr<'a> {
+impl<'i> RegexRepr<'i> {
     fn serialize<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
         Serialize::serialize(&RegexRepr(Cow::Borrowed(regex.as_str())), ser)
     }
@@ -255,18 +255,18 @@ pub enum FilterOp {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Filter<'i> {
+pub enum Filter<'a> {
     Op(
         #[serde(borrow)]
-        Field<'i>,
+        Field<'a>,
         FilterOp,
     ),
-    Combine(CombiningOp, Vec<Filter<'i>>),
-    Unary(UnaryOp, Box<Filter<'i>>),
+    Combine(CombiningOp, Vec<Filter<'a>>),
+    Unary(UnaryOp, Box<Filter<'a>>),
 }
 
-impl<'i> Filter<'i> {
-    pub fn uses(&self, field: Field<'i>) -> bool {
+impl<'a> Filter<'a> {
+    pub fn uses(&self, field: Field) -> bool {
         match *self {
             Filter::Op(lhs, ..) => field == lhs,
             Filter::Combine(_, ref filters) => filters.iter().any(|filter| filter.uses(field)),

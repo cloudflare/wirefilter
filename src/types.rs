@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
 
-fn lex_rhs_values<'a, T: Lex<'a>>(input: &'a str) -> LexResult<Vec<T>> {
+fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
     let mut input = expect(input, "{")?.trim_left();
     let mut res = Vec::new();
     loop {
