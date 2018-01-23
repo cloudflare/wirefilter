@@ -71,11 +71,23 @@ pub type ParsingContext<'a> = *mut Context<&'a str, Type>;
 
 pub unsafe extern "C" fn wirefilter_create_parsing_context(fields: Fields<Type>) -> ParsingContext {
     Box::into_raw(Box::new(
-        create_parsing_context(fields).expect("Could not create a context"),
+        create_parsing_context(fields).unwrap(),
     ))
 }
 
 pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext) {
+    Box::from_raw(context);
+}
+
+pub type ExecContext<'a> = *mut Context<&'a str, LhsValue>;
+
+pub unsafe extern "C" fn wirefilter_create_exec_context(values: Fields<LhsValue>) -> ExecContext {
+    Box::into_raw(Box::new(
+        create_parsing_context(fields).unwrap(),
+    ))
+}
+
+pub unsafe extern fn wirefilter_free_exec_context(context: ExecContext) {
     Box::from_raw(context);
 }
 
