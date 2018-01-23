@@ -1,12 +1,14 @@
 extern crate libc;
 extern crate wirefilter;
 
+use wirefilter::lex::LexErrorKind;
 use libc::size_t;
 use std::{slice, str};
 use wirefilter::types::Type;
 use wirefilter::Context;
 use std::string::ToString;
-use std::ptr::null_mut;
+use std::error::Error as StdError;
+use std::fmt::Display;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -16,16 +18,16 @@ pub struct Array<'a, T: 'a> {
 }
 
 impl<'a, T: 'a> Array<'a, T> {
-    pub unsafe fn as_slice(self) -> &'a [T] {
-        slice::from_raw_parts(self.data, self.length)
+    pub fn as_slice(self) -> &'a [T] {
+        unsafe { slice::from_raw_parts(self.data, self.length) }
     }
 }
 
 pub type Str<'a> = Array<'a, u8>;
 
 impl<'a> Str<'a> {
-    pub unsafe fn as_str(self) -> Result<&'a str, String> {
-        str::from_utf8(self.as_slice()).map_err(|err| err.to_string())
+    pub fn as_str(self) -> Result<&'a str, str::Utf8Error> {
+        str::from_utf8(self.as_slice())
     }
 }
 
@@ -46,44 +48,75 @@ pub struct Error {
     span_len: size_t,
 }
 
-pub unsafe extern "C" fn wirefilter_validate<'a>(
-    fields: Fields<'a, Type>,
-    filter: Str<'a>,
-) -> Error {
-    let res = fields
+impl Error {
+    pub fn new<E: Display>(err: E, span_start: size_t, span_len: size_t) -> Self {
+        let msg = Box::into_raw(err.to_string().into_boxed_str().into_boxed_bytes());
+        Error {
+            msg_data: unsafe { (*msg).as_mut_ptr() },
+            msg_len: unsafe { (*msg).len() },
+            span_start,
+            span_len,
+        }
+    }
+
+    pub fn new_lex(input: &str, (err, span): (LexErrorKind, &str)) -> Self {
+        Error::new(
+            err,
+            span.as_ptr() as size_t - input.as_ptr() as size_t,
+            span.len() as size_t,
+        )
+    }
+}
+
+impl Default for Error {
+    fn default() -> Self {
+        Error::new("", 0, 0)
+    }
+}
+
+impl<E: StdError> From<E> for Error {
+    fn from(err: E) -> Self {
+        Error::new(err, 0, 0)
+    }
+}
+
+fn create_parsing_context(fields: Fields<Type>) -> Result<Context<&str, Type>, str::Utf8Error> {
+    fields
         .as_slice()
         .iter()
         .map(|field| Ok((field.key.as_str()?, field.value)))
-        .collect::<Result<Context<_, _>, _>>()
-        .and_then(|context| {
-            match context.parse(filter.as_str()?) {
-                Ok(_) => Ok(()),
-                Err((err, _)) => Err(err.to_string())
-            }
-        });
+        .collect()
+}
 
-    match res {
-        Ok(_) => Error {
-            msg_data: null_mut(),
-            msg_len: 0,
-            span_start: 0,
-            span_len: 0,
-        },
-        Err(err) => {
-            let msg = Box::into_raw(err.to_string().into_boxed_str().into_boxed_bytes());
-            Error {
-                msg_data: (*msg).as_mut_ptr(),
-                msg_len: (*msg).len(),
-                span_start: 0,
-                span_len: 0
-            }
-        }
+pub unsafe extern "C" fn wirefilter_create_parsing_context(
+    fields: Fields<Type>,
+) -> *mut Context<&str, Type> {
+    Box::into_raw(Box::new(
+        create_parsing_context(fields).expect("Could not create a context"),
+    ))
+}
+
+pub unsafe extern "C" fn wirefilter_free_parsing_context(context: *mut Context<Str, Type>) {
+    Box::from_raw(context);
+}
+
+fn validate(fields: Fields<Type>, filter: Str) -> Result<(), Error> {
+    let filter = filter.as_str()?;
+
+    create_parsing_context(fields)?
+        .parse(filter)
+        .map_err(|err| Error::new_lex(filter, err))?;
+
+    Ok(())
+}
+
+pub unsafe extern "C" fn wirefilter_validate(fields: Fields<Type>, filter: Str) -> Error {
+    match validate(fields, filter) {
+        Ok(()) => Error::default(),
+        Err(err) => err,
     }
 }
 
 pub unsafe extern "C" fn wirefilter_free_error<'a>(error: Error) {
-    Box::from_raw(slice::from_raw_parts_mut(
-        error.msg_data,
-        error.msg_len,
-    ));
+    Box::from_raw(slice::from_raw_parts_mut(error.msg_data, error.msg_len));
 }
