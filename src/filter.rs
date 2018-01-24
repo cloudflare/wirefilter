@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use cidr::Cidr;
 use field::Field;
+use fnv::FnvBuildHasher;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp, UnsignedOp};
 use ordermap::OrderMap;
@@ -8,7 +9,6 @@ use regex::bytes::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
-use fnv::FnvBuildHasher;
 
 use std::borrow::{Borrow, Cow};
 use std::hash::Hash;
@@ -227,10 +227,7 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct RegexRepr<'i>(
-    #[serde(borrow)]
-    Cow<'i, str>,
-);
+struct RegexRepr<'i>(#[serde(borrow)] Cow<'i, str>);
 
 impl<'i> RegexRepr<'i> {
     fn serialize<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
@@ -248,20 +245,13 @@ pub enum FilterOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
     Contains(Bytes),
-    Matches(
-        #[serde(with = "RegexRepr")]
-        Regex,
-    ),
+    Matches(#[serde(with = "RegexRepr")] Regex),
     OneOf(RhsValues),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Filter<'a> {
-    Op(
-        #[serde(borrow)]
-        Field<'a>,
-        FilterOp,
-    ),
+    Op(#[serde(borrow)] Field<'a>, FilterOp),
     Combine(CombiningOp, Vec<Filter<'a>>),
     Unary(UnaryOp, Box<Filter<'a>>),
 }

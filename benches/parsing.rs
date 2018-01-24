@@ -7,10 +7,10 @@ extern crate serde_json;
 extern crate test;
 extern crate wirefilter;
 
+use serde::Serialize;
+use test::{black_box, Bencher};
 use wirefilter::{Context, Filter};
 use wirefilter::types::Type;
-use test::{black_box, Bencher};
-use serde::Serialize;
 
 fn print_serialized(serialized: &[u8]) {
     print!("`");
