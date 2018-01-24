@@ -6,6 +6,7 @@ version = "0.1.0"
 [dependencies]
 cidr = "0.0.3"
 failure = "0.1.1"
+fnv = "1.0.6"
 ordermap = "0.3.5"
 regex = "0.2.5"
 serde = "1.0.27"

@@ -8,13 +8,14 @@ use regex::bytes::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
+use fnv::FnvBuildHasher;
 
 use std::borrow::{Borrow, Cow};
 use std::hash::Hash;
 use std::iter::FromIterator;
 
 pub struct Context<K, T> {
-    fields: OrderMap<K, T>,
+    fields: OrderMap<K, T, FnvBuildHasher>,
 }
 
 impl<K: Hash + Eq, T> FromIterator<(K, T)> for Context<K, T> {

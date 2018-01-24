@@ -1,18 +1,15 @@
 #[macro_use]
 extern crate failure;
 
-extern crate cidr;
-
-extern crate regex;
-
-extern crate serde;
-
-extern crate serde_bytes;
-
 #[macro_use]
 extern crate serde_derive;
 
+extern crate cidr;
+extern crate fnv;
 extern crate ordermap;
+extern crate regex;
+extern crate serde;
+extern crate serde_bytes;
 
 #[macro_use]
 pub mod lex;
