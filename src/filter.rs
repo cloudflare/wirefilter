@@ -187,8 +187,8 @@ impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
                 let lhs = self.get_field(field);
 
                 match *op {
-                    FilterOp::Ordering(mask, ref rhs) => {
-                        mask.contains(lhs.partial_cmp(rhs).unwrap_or_else(|| {
+                    FilterOp::Ordering(op, ref rhs) => {
+                        op.contains(lhs.partial_cmp(rhs).unwrap_or_else(|| {
                             panic_type!(field, lhs.get_type(), rhs.get_type());
                         }))
                     }
