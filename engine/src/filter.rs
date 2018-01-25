@@ -174,11 +174,12 @@ macro_rules! cast_field {
     };
 }
 
-impl<K: Borrow<str> + Hash + Eq> Context<K, LhsValue> {
+impl<K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue>> Context<K, V> {
     fn get_field(&self, field: Field) -> &LhsValue {
         self.fields
             .get(field.path())
             .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
+            .borrow()
     }
 
     pub fn execute(&self, filter: &Filter) -> bool {

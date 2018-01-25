@@ -6,11 +6,9 @@ version = "0.1.0"
 [dependencies]
 libc = "0.2.36"
 
-[dependencies.wirefilter]
-path = ".."
+[dependencies.wirefilter-engine]
+path = "../engine"
 
 [lib]
 crate-type = ["dylib"]
 name = "wirefilter"
-
-[workspace]

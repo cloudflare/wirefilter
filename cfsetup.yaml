@@ -1,0 +1,13 @@
+everything: &everything
+  build:
+    builddeps: &deps
+      - rust
+    post-cache:
+      - cd ffi; cargo build --release
+  test:
+    builddeps: *deps
+    post-cache:
+      - cd engine; cargo test
+squeeze: *everything
+jessie: *everything
+stretch: *everything

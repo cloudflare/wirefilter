@@ -3,15 +3,15 @@ extern crate wirefilter;
 
 mod arrays;
 
-use wirefilter::lex::LexErrorKind;
+use arrays::{Array, Str};
 use libc::size_t;
-use std::str::Utf8Error;
-use wirefilter::types::Type;
-use wirefilter::Context;
-use std::string::ToString;
 use std::error::Error as StdError;
 use std::fmt::Display;
-use arrays::{Array, Str};
+use std::str::Utf8Error;
+use std::string::ToString;
+use wirefilter::Context;
+use wirefilter::lex::LexErrorKind;
+use wirefilter::types::{LhsValue, Type};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -59,7 +59,7 @@ impl<E: StdError> From<E> for Error {
     }
 }
 
-fn create_parsing_context(fields: Fields<Type>) -> Result<Context<&str, Type>, Utf8Error> {
+fn create_context<T>(fields: Fields<T>) -> Result<Context<&str, T>, Utf8Error> {
     fields
         .as_slice()
         .iter()
@@ -70,9 +70,7 @@ fn create_parsing_context(fields: Fields<Type>) -> Result<Context<&str, Type>, U
 pub type ParsingContext<'a> = *mut Context<&'a str, Type>;
 
 pub unsafe extern "C" fn wirefilter_create_parsing_context(fields: Fields<Type>) -> ParsingContext {
-    Box::into_raw(Box::new(
-        create_parsing_context(fields).unwrap(),
-    ))
+    Box::into_raw(Box::new(create_context(fields).unwrap()))
 }
 
 pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext) {
@@ -82,19 +80,17 @@ pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext
 pub type ExecContext<'a> = *mut Context<&'a str, LhsValue>;
 
 pub unsafe extern "C" fn wirefilter_create_exec_context(values: Fields<LhsValue>) -> ExecContext {
-    Box::into_raw(Box::new(
-        create_parsing_context(fields).unwrap(),
-    ))
+    Box::into_raw(Box::new(create_context(values).unwrap()))
 }
 
-pub unsafe extern fn wirefilter_free_exec_context(context: ExecContext) {
+pub unsafe extern "C" fn wirefilter_free_exec_context(context: ExecContext) {
     Box::from_raw(context);
 }
 
 fn validate(fields: Fields<Type>, filter: Str) -> Result<(), Error> {
     let filter = filter.as_str()?;
 
-    create_parsing_context(fields)?
+    create_context(fields)?
         .parse(filter)
         .map_err(|err| Error::new_lex(filter, err))?;
 
