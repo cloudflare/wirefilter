@@ -43,7 +43,7 @@ fn create_default_context() -> Context<&'static str, Type> {
         .collect()
 }
 
-fn parse_sample_filter(context: &Context<&'static str, Type>) -> Filter {
+fn parse_sample_filter<'c>(context: &'c Context<&'static str, Type>) -> Filter<'c> {
     context.parse(get_default_source()).unwrap()
 }
 
