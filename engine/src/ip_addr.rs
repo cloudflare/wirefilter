@@ -1,12 +1,9 @@
 use cidr::{Cidr, NetworkParseError};
 use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::Error;
 
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::ops::Deref;
 use std::str::FromStr;
 
