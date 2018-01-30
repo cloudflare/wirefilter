@@ -8,17 +8,16 @@ use std::ops::Deref;
 use std::str;
 
 #[derive(PartialEq, Eq)]
-pub struct Bytes {
-    is_str: bool,
-    raw: Box<[u8]>,
+pub enum Bytes {
+    Str(Box<str>),
+    Raw(Box<[u8]>),
 }
 
 impl Serialize for Bytes {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        if let Some(s) = self.as_str() {
-            ser.serialize_str(s)
-        } else {
-            ser.serialize_bytes(&self.raw)
+        match *self {
+            Bytes::Str(ref s) => s.serialize(ser),
+            Bytes::Raw(ref b) => b.serialize(ser),
         }
     }
 }
@@ -65,35 +64,26 @@ extern "C" {
 }
 
 impl Bytes {
-    pub fn is_str(&self) -> bool {
-        self.is_str
-    }
-
-    pub fn as_str(&self) -> Option<&str> {
-        if self.is_str {
-            Some(unsafe { str::from_utf8_unchecked(self) })
-        } else {
-            None
-        }
-    }
-
     pub fn contains(&self, rhs: &[u8]) -> bool {
         unsafe { !memmem(self.as_ptr(), self.len(), rhs.as_ptr(), rhs.len()).is_null() }
     }
 }
 
+impl From<Box<str>> for Bytes {
+    fn from(src: Box<str>) -> Self {
+        Bytes::Str(src)
+    }
+}
+
 impl From<String> for Bytes {
     fn from(src: String) -> Self {
-        Bytes {
-            is_str: true,
-            raw: src.into_bytes().into_boxed_slice(),
-        }
+        Self::from(src.into_boxed_str())
     }
 }
 
 impl From<Box<[u8]>> for Bytes {
     fn from(raw: Box<[u8]>) -> Self {
-        Bytes { is_str: false, raw }
+        Bytes::Raw(raw)
     }
 }
 
@@ -105,16 +95,17 @@ impl From<Vec<u8>> for Bytes {
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if let Some(s) = self.as_str() {
-            s.fmt(f)
-        } else {
-            for (i, b) in self.raw.iter().cloned().enumerate() {
-                if i != 0 {
-                    write!(f, ":")?;
+        match *self {
+            Bytes::Str(ref s) => s.fmt(f),
+            Bytes::Raw(ref b) => {
+                for (i, b) in b.iter().cloned().enumerate() {
+                    if i != 0 {
+                        write!(f, ":")?;
+                    }
+                    write!(f, "{:02X}", b)?;
                 }
-                write!(f, "{:02X}", b)?;
+                Ok(())
             }
-            Ok(())
         }
     }
 }
@@ -123,7 +114,10 @@ impl Deref for Bytes {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        &self.raw
+        match *self {
+            Bytes::Str(ref s) => s.as_bytes(),
+            Bytes::Raw(ref b) => b,
+        }
     }
 }
 
