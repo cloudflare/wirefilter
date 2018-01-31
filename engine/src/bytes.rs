@@ -3,17 +3,18 @@ use regex::bytes::{Regex, RegexBuilder};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, Visitor};
 
+use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use std::str;
 
-#[derive(PartialEq, Eq)]
-pub enum Bytes {
-    Str(Box<str>),
-    Raw(Box<[u8]>),
+#[derive(PartialEq, Eq, Clone)]
+pub enum Bytes<'a> {
+    Str(Cow<'a, str>),
+    Raw(Cow<'a, [u8]>),
 }
 
-impl Serialize for Bytes {
+impl<'a> Serialize for Bytes<'a> {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         match *self {
             Bytes::Str(ref s) => s.serialize(ser),
@@ -22,30 +23,38 @@ impl Serialize for Bytes {
     }
 }
 
-impl<'de> Deserialize<'de> for Bytes {
+impl<'a, 'de: 'a> Deserialize<'de> for Bytes<'a> {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         struct BytesVisitor;
 
         impl<'de> Visitor<'de> for BytesVisitor {
-            type Value = Bytes;
+            type Value = Bytes<'de>;
 
             fn expecting(&self, f: &mut Formatter) -> fmt::Result {
                 f.write_str("a byte buffer or a string")
             }
 
-            fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Bytes, E> {
+            fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Bytes<'de>, E> {
                 self.visit_byte_buf(v.into())
             }
 
-            fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Bytes, E> {
+            fn visit_borrowed_bytes<E: de::Error>(self, v: &'de [u8]) -> Result<Bytes<'de>, E> {
                 Ok(Bytes::from(v))
             }
 
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Bytes, E> {
+            fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Bytes<'de>, E> {
+                Ok(Bytes::from(v))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Bytes<'de>, E> {
                 self.visit_string(v.into())
             }
 
-            fn visit_string<E: de::Error>(self, v: String) -> Result<Bytes, E> {
+            fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Bytes<'de>, E> {
+                Ok(Bytes::from(v))
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Bytes<'de>, E> {
                 Ok(Bytes::from(v))
             }
         }
@@ -63,37 +72,37 @@ extern "C" {
     ) -> *const u8;
 }
 
-impl Bytes {
+impl<'a> Bytes<'a> {
     pub fn contains(&self, rhs: &[u8]) -> bool {
         unsafe { !memmem(self.as_ptr(), self.len(), rhs.as_ptr(), rhs.len()).is_null() }
     }
 }
 
-impl From<Box<str>> for Bytes {
-    fn from(src: Box<str>) -> Self {
-        Bytes::Str(src)
+impl<'a> From<&'a [u8]> for Bytes<'a> {
+    fn from(src: &'a [u8]) -> Self {
+        Bytes::Raw(Cow::from(src))
     }
 }
 
-impl From<String> for Bytes {
+impl<'a> From<Vec<u8>> for Bytes<'a> {
+    fn from(src: Vec<u8>) -> Self {
+        Bytes::Raw(Cow::from(src))
+    }
+}
+
+impl<'a> From<&'a str> for Bytes<'a> {
+    fn from(src: &'a str) -> Self {
+        Bytes::Str(Cow::from(src))
+    }
+}
+
+impl<'a> From<String> for Bytes<'a> {
     fn from(src: String) -> Self {
-        Self::from(src.into_boxed_str())
+        Bytes::Str(Cow::from(src))
     }
 }
 
-impl From<Box<[u8]>> for Bytes {
-    fn from(raw: Box<[u8]>) -> Self {
-        Bytes::Raw(raw)
-    }
-}
-
-impl From<Vec<u8>> for Bytes {
-    fn from(raw: Vec<u8>) -> Self {
-        Self::from(raw.into_boxed_slice())
-    }
-}
-
-impl Debug for Bytes {
+impl<'a> Debug for Bytes<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Bytes::Str(ref s) => s.fmt(f),
@@ -110,7 +119,7 @@ impl Debug for Bytes {
     }
 }
 
-impl Deref for Bytes {
+impl<'a> Deref for Bytes<'a> {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
@@ -154,7 +163,7 @@ impl<'i> Lex<'i> for Regex {
     }
 }
 
-impl<'i> Lex<'i> for Bytes {
+impl<'a, 'i> Lex<'i> for Bytes<'a> {
     fn lex(mut input: &str) -> LexResult<Self> {
         if let Ok(input) = expect(input, "\"") {
             let mut res = String::new();

@@ -59,11 +59,11 @@ impl<E: StdError> From<E> for Error {
     }
 }
 
-fn create_context<T>(fields: Fields<T>) -> Result<Context<&str, T>, Utf8Error> {
+fn create_context<T: Clone>(fields: Fields<T>) -> Result<Context<&str, T>, Utf8Error> {
     fields
         .as_slice()
         .iter()
-        .map(|field| Ok((field.key.as_str()?, field.value)))
+        .map(|field| Ok((field.key.as_str()?, field.value.clone())))
         .collect()
 }
 
@@ -77,9 +77,9 @@ pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext
     Box::from_raw(context);
 }
 
-pub type ExecContext<'a> = *mut Context<&'a str, LhsValue>;
+pub type ExecContext<'a> = *mut Context<&'a str, LhsValue<'a>>;
 
-pub unsafe extern "C" fn wirefilter_create_exec_context(values: Fields<LhsValue>) -> ExecContext {
+pub unsafe extern "C" fn wirefilter_create_exec_context<'a>(values: Fields<'a, LhsValue<'a>>) -> ExecContext<'a> {
     Box::into_raw(Box::new(create_context(values).unwrap()))
 }
 

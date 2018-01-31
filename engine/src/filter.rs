@@ -174,8 +174,8 @@ macro_rules! cast_field {
     };
 }
 
-impl<K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue>> Context<K, V> {
-    fn get_field(&self, field: Field) -> &LhsValue {
+impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
+    fn get_field(&self, field: Field) -> &LhsValue<'a> {
         self.fields
             .get(field.path())
             .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
@@ -242,17 +242,17 @@ impl<'i> RegexRepr<'i> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum FilterOp {
-    Ordering(OrderingOp, RhsValue),
+pub enum FilterOp<'a> {
+    Ordering(OrderingOp, #[serde(borrow)] RhsValue<'a>),
     Unsigned(UnsignedOp, u64),
-    Contains(Bytes),
+    Contains(#[serde(borrow)] Bytes<'a>),
     Matches(#[serde(with = "RegexRepr")] Regex),
-    OneOf(RhsValues),
+    OneOf(#[serde(borrow)] RhsValues<'a>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Filter<'a> {
-    Op(#[serde(borrow)] Field<'a>, FilterOp),
+    Op(#[serde(borrow)] Field<'a>, #[serde(borrow)] FilterOp<'a>),
     Combine(CombiningOp, Vec<Filter<'a>>),
     Unary(UnaryOp, Box<Filter<'a>>),
 }
