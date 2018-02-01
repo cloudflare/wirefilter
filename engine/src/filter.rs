@@ -15,6 +15,20 @@ pub struct Context<K, T> {
     fields: OrderMap<K, T, FnvBuildHasher>,
 }
 
+impl<K: Hash + Eq, T> Context<K, T> {
+    pub fn insert(&mut self, key: K, value: T) {
+        self.fields.insert(key, value);
+    }
+}
+
+impl<K: Hash + Eq, T> Default for Context<K, T> {
+    fn default() -> Self {
+        Context {
+            fields: OrderMap::default(),
+        }
+    }
+}
+
 impl<K: Hash + Eq, T> FromIterator<(K, T)> for Context<K, T> {
     fn from_iter<I: IntoIterator<Item = (K, T)>>(iter: I) -> Self {
         Context {

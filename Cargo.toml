@@ -3,3 +3,6 @@ members = [
 	"engine",
 	"ffi",
 ]
+
+[profile.release]
+panic = "abort"
