@@ -10,5 +10,5 @@ libc = "0.2.36"
 path = "../engine"
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
 name = "wirefilter"
