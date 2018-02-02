@@ -69,20 +69,24 @@ fn create_context<T: Clone>(fields: Fields<T>) -> Result<Context<&str, T>, Utf8E
 
 pub type ParsingContext<'a> = *mut Context<&'a str, Type>;
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_create_parsing_context(fields: Fields<Type>) -> ParsingContext {
     Box::into_raw(Box::new(create_context(fields).unwrap()))
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_free_parsing_context(context: ParsingContext) {
     Box::from_raw(context);
 }
 
 pub type ExecContext<'a> = *mut Context<&'a str, LhsValue<'a>>;
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_create_exec_context<'a>(values: Fields<'a, LhsValue<'a>>) -> ExecContext<'a> {
     Box::into_raw(Box::new(create_context(values).unwrap()))
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_free_exec_context(context: ExecContext) {
     Box::from_raw(context);
 }
@@ -97,6 +101,7 @@ fn validate(fields: Fields<Type>, filter: Str) -> Result<(), Error> {
     Ok(())
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_validate(fields: Fields<Type>, filter: Str) -> Error {
     match validate(fields, filter) {
         Ok(()) => Error::default(),
@@ -104,6 +109,7 @@ pub unsafe extern "C" fn wirefilter_validate(fields: Fields<Type>, filter: Str) 
     }
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn wirefilter_free_error(error: Error) {
     error.msg.free();
 }
