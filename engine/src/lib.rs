@@ -20,9 +20,11 @@ mod filter;
 mod ip_addr;
 mod number;
 pub mod op;
+mod re;
 pub mod types;
 
 pub use self::bytes::Bytes;
 pub use self::field::Field;
 pub use self::filter::{Context, Filter, FilterOp};
 pub use self::number::Range;
+pub use self::re::Regex;

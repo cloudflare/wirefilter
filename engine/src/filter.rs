@@ -1,16 +1,13 @@
 use bytes::Bytes;
-use cidr::Cidr;
 use field::Field;
 use fnv::FnvBuildHasher;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp, UnsignedOp};
 use ordermap::OrderMap;
-use regex::bytes::Regex;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::Error;
+use re::Regex;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
@@ -201,7 +198,7 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     FilterOp::OneOf(ref values) => match *values {
                         RhsValues::Ip(ref networks) => {
                             let lhs = cast_field!(field, lhs, Ip);
-                            networks.iter().any(|network| network.contains(lhs))
+                            networks.iter().any(|network| lhs == network)
                         }
                         RhsValues::Bytes(ref values) => {
                             let lhs = cast_field!(field, lhs, Bytes);
@@ -227,30 +224,16 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct RegexRepr<'i>(#[serde(borrow)] Cow<'i, str>);
-
-impl<'i> RegexRepr<'i> {
-    fn serialize<S: Serializer>(regex: &Regex, ser: S) -> Result<S::Ok, S::Error> {
-        Serialize::serialize(&RegexRepr(Cow::Borrowed(regex.as_str())), ser)
-    }
-
-    fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
-        let src: RegexRepr = Deserialize::deserialize(de)?;
-        Regex::new(&src.0).map_err(D::Error::custom)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum FilterOp<'a> {
     Ordering(OrderingOp, #[serde(borrow)] RhsValue<'a>),
     Unsigned(UnsignedOp, u64),
     Contains(#[serde(borrow)] Bytes<'a>),
-    Matches(#[serde(with = "RegexRepr")] Regex),
+    Matches(Regex),
     OneOf(#[serde(borrow)] RhsValues<'a>),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Filter<'a> {
     Op(#[serde(borrow)] Field<'a>, #[serde(borrow)] FilterOp<'a>),
     Combine(CombiningOp, Vec<Filter<'a>>),

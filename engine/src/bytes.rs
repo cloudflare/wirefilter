@@ -1,5 +1,4 @@
-use lex::{expect, hex_byte, oct_byte, span, Lex, LexErrorKind, LexResult};
-use regex::bytes::{Regex, RegexBuilder};
+use lex::{expect, hex_byte, oct_byte, Lex, LexErrorKind, LexResult};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, Visitor};
 
@@ -8,7 +7,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use std::str;
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Bytes<'a> {
     Str(Cow<'a, str>),
     Raw(Cow<'a, [u8]>),
@@ -135,33 +134,6 @@ lex_enum!(ByteSeparator {
     "-" => Dash,
     "." => Dot,
 });
-
-impl<'i> Lex<'i> for Regex {
-    fn lex(input: &str) -> LexResult<Self> {
-        let input = expect(input, "\"")?;
-        let (regex_str, input) = {
-            let mut iter = input.chars();
-            loop {
-                let before_char = iter.as_str();
-                match iter.next()
-                    .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
-                {
-                    '\\' => {
-                        iter.next();
-                    }
-                    '"' => {
-                        break (span(input, before_char), iter.as_str());
-                    }
-                    _ => {}
-                };
-            }
-        };
-        match RegexBuilder::new(regex_str).unicode(false).build() {
-            Ok(regex) => Ok((regex, input)),
-            Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
-        }
-    }
-}
 
 impl<'a, 'i> Lex<'i> for Bytes<'a> {
     fn lex(mut input: &str) -> LexResult<Self> {

@@ -4,23 +4,14 @@ use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
-use std::ops::Deref;
 use std::str::FromStr;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct IpCidr(::cidr::IpCidr);
 
 impl Debug for IpCidr {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         Debug::fmt(&self.0, f)
-    }
-}
-
-impl Deref for IpCidr {
-    type Target = ::cidr::IpCidr;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -53,7 +44,7 @@ impl PartialOrd<IpCidr> for IpAddr {
 
 impl PartialEq<IpCidr> for IpAddr {
     fn eq(&self, network: &IpCidr) -> bool {
-        network.contains(self)
+        network.0.contains(self)
     }
 }
 

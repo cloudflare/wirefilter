@@ -92,7 +92,7 @@ macro_rules! lex_enum {
     };
 
     (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
         $($preamble)*
         pub enum $name $decl
 
