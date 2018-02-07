@@ -26,5 +26,5 @@ pub mod types;
 pub use self::bytes::Bytes;
 pub use self::field::Field;
 pub use self::filter::{Context, Filter, FilterOp};
-pub use self::number::Range;
+pub use self::number::{Range, Ranges};
 pub use self::re::Regex;

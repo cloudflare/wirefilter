@@ -55,58 +55,6 @@ fn test_ipv4() {
 }
 
 #[test]
-fn test_substring() {
-    assert_ok!(
-        "[1];",
-        vec![
-            Range {
-                from: 1,
-                to: Some(2),
-            },
-        ],
-        ";"
-    );
-    assert_ok!(
-        "[0:3];",
-        vec![
-            Range {
-                from: 0,
-                to: Some(3),
-            },
-        ],
-        ";"
-    );
-    assert_ok!(
-        "[1,:2,3-4,7:,9:10];",
-        vec![
-            Range {
-                from: 1,
-                to: Some(2),
-            },
-            Range {
-                from: 0,
-                to: Some(2),
-            },
-            Range {
-                from: 3,
-                to: Some(5),
-            },
-            Range { from: 7, to: None },
-            Range {
-                from: 9,
-                to: Some(19),
-            },
-        ],
-        ";"
-    );
-    assert_err!(Ranges::parse("[1-]"), Char, "-]");
-    assert_err!(Ranges::parse("[-9]"), Alt, "-9]");
-    assert_err!(Ranges::parse("[:]"), Alt, ":]");
-    assert_err!(Ranges::parse("[-]"), Alt, "-]");
-    assert_err!(Ranges::parse("[]"), Alt, "]");
-}
-
-#[test]
 fn test_value() {
     assert_ok!("0x7F;", Value::Unsigned(127), ";");
     assert_ok!("127;", Value::Unsigned(127), ";");
