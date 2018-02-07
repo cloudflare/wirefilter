@@ -9,9 +9,9 @@ use std::str::FromStr;
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct IpCidr(::cidr::IpCidr);
 
-impl From<::cidr::IpCidr> for IpCidr {
-    fn from(cidr: ::cidr::IpCidr) -> Self {
-        IpCidr(cidr)
+impl<T: Into<::cidr::IpCidr>> From<T> for IpCidr {
+    fn from(cidr: T) -> Self {
+        IpCidr(cidr.into())
     }
 }
 
@@ -96,4 +96,46 @@ impl<'i> Lex<'i> for IpCidr {
         let (value, input) = ::cidr::IpCidr::lex(input)?;
         Ok((IpCidr(value), input))
     }
+}
+
+#[test]
+fn test() {
+    use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
+
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    assert_ok!(
+        IpCidr::lex("12.34.56.78;"),
+        Ipv4Cidr::new(Ipv4Addr::new(12, 34, 56, 78), 32)
+            .unwrap()
+            .into(),
+        ";"
+    );
+    assert_ok!(
+        IpCidr::lex("12.34.56.0/24;"),
+        Ipv4Cidr::new(Ipv4Addr::new(12, 34, 56, 0), 24)
+            .unwrap()
+            .into(),
+        ";"
+    );
+    assert_ok!(
+        IpCidr::lex("::/10;"),
+        Ipv6Cidr::new(Ipv6Addr::from(0), 10).unwrap().into(),
+        ";"
+    );
+    assert_ok!(
+        IpCidr::lex("::ffff:12.34.56.78/127/"),
+        Ipv6Cidr::new(
+            Ipv6Addr::from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 12, 34, 56, 78]),
+            127
+        ).unwrap()
+            .into(),
+        "/"
+    );
+    assert_ok!(
+        IpCidr::lex("1234::5678"),
+        Ipv6Cidr::new(Ipv6Addr::new(0x1234, 0, 0, 0, 0, 0, 0, 0x5678), 128)
+            .unwrap()
+            .into()
+    )
 }
