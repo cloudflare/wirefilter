@@ -9,6 +9,12 @@ use std::str::FromStr;
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct IpCidr(::cidr::IpCidr);
 
+impl From<::cidr::IpCidr> for IpCidr {
+    fn from(cidr: ::cidr::IpCidr) -> Self {
+        IpCidr(cidr)
+    }
+}
+
 impl Debug for IpCidr {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         Debug::fmt(&self.0, f)
