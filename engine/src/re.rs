@@ -1,5 +1,5 @@
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::Error as DeError;
 
 use std::borrow::Cow;
@@ -27,7 +27,10 @@ impl FromStr for Regex {
     type Err = ::regex::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ::regex::bytes::RegexBuilder::new(s).unicode(false).build().map(Regex)
+        ::regex::bytes::RegexBuilder::new(s)
+            .unicode(false)
+            .build()
+            .map(Regex)
     }
 }
 
@@ -67,6 +70,7 @@ impl<'de> Deserialize<'de> for Regex {
 impl<'i> Lex<'i> for Regex {
     fn lex(input: &str) -> LexResult<Self> {
         let input = expect(input, "\"")?;
+        let mut had_escaped_quote = false;
         let (regex_str, input) = {
             let mut iter = input.chars();
             loop {
@@ -75,7 +79,9 @@ impl<'i> Lex<'i> for Regex {
                     .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
                 {
                     '\\' => {
-                        iter.next();
+                        if let Some('"') = iter.next() {
+                            had_escaped_quote = true;
+                        }
                     }
                     '"' => {
                         break (span(input, before_char), iter.as_str());
@@ -84,9 +90,23 @@ impl<'i> Lex<'i> for Regex {
                 };
             }
         };
-        match regex_str.parse() {
+        let regex = if had_escaped_quote {
+            regex_str.replace("\\\"", "\"").parse()
+        } else {
+            regex_str.parse()
+        };
+        match regex {
             Ok(regex) => Ok((regex, input)),
             Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }
     }
+}
+
+#[test]
+fn test() {
+    assert_ok!(
+        Regex::lex(r#""[a-z]+\d{1,10}\"";"#),
+        Regex::new(r#"[a-z]+\d{1,10}""#).unwrap(),
+        ";"
+    );
 }
