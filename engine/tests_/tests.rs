@@ -38,14 +38,6 @@ macro_rules! assert_incomplete {
 }
 
 #[test]
-fn test_unsigned() {
-    assert_ok!("0x1f5+", 501u64, "+");
-    assert_ok!("0123;", 83u64, ";");
-    assert_ok!("78!", 78u64, "!");
-    assert_ok!("0xefg", 239u64, "g");
-}
-
-#[test]
 fn test_comparison_operator() {
     assert_ok!("~1", ComparisonOp::Matches, "1");
     assert_ok!(">=2", ComparisonOp::GreaterThanEqual, "2");
@@ -57,55 +49,9 @@ fn test_comparison_operator() {
 }
 
 #[test]
-fn test_field() {
-    assert_ok!("xyz1", Field("xyz"), "1");
-    assert_ok!("containst;", Field("containst"), ";");
-    assert_ok!("xyz.abc1", Field("xyz.abc"), "1");
-    assert_ok!("xyz.;", Field("xyz"), ".;");
-    assert_err!(Field::parse("."), Alpha, ".");
-    assert_err!(Field::parse("123"), Alpha, "123");
-}
-
-#[test]
-fn test_ethernet_addr() {
-    assert_ok!(
-        "12:34:56:78:90:abc",
-        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
-        "c"
-    );
-    assert_ok!(
-        "12.34.56.78.90.abc",
-        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
-        "c"
-    );
-    assert_ok!(
-        "12.34:56.78-90abc",
-        EthernetAddr([0x12, 0x34, 0x56, 0x78, 0x90, 0xab]),
-        "c"
-    );
-    assert_err!(EthernetAddr::parse("12:34:56:7g:90:ab"), MapRes, "7g:90:ab");
-    assert_err!(
-        EthernetAddr::parse("12:34f:56:78:90:ab"),
-        OneOf,
-        "f:56:78:90:ab"
-    );
-}
-
-#[test]
 fn test_ipv4() {
     assert_ok!("12.34.56.78;", Ipv4Addr::new(12, 34, 56, 78), ";");
     assert_err!(Ipv4Addr::parse("12.34.56.789"), MapRes, "789");
-}
-
-#[test]
-fn test_string() {
-    assert_ok!(r#""hello, world";"#, Cow::Borrowed("hello, world"), ";");
-    assert_ok!(
-        r#""esca\x0a\ped\042";"#,
-        Cow::Owned(String::from("esca\nped\"")),
-        ";"
-    );
-    assert_incomplete!(Cow::parse("\"hello"), 7);
 }
 
 #[test]
