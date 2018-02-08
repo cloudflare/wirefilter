@@ -70,7 +70,8 @@ impl<'de> Deserialize<'de> for Regex {
 impl<'i> Lex<'i> for Regex {
     fn lex(input: &str) -> LexResult<Self> {
         let input = expect(input, "\"")?;
-        let mut had_escaped_quote = false;
+        let mut regex_buf = String::new();
+        let mut in_char_class = false;
         let (regex_str, input) = {
             let mut iter = input.chars();
             loop {
@@ -79,23 +80,31 @@ impl<'i> Lex<'i> for Regex {
                     .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
                 {
                     '\\' => {
-                        if let Some('"') = iter.next() {
-                            had_escaped_quote = true;
+                        if let Some(c) = iter.next() {
+                            if in_char_class || c != '"' {
+                                regex_buf.push('\\');
+                            }
+                            regex_buf.push(c);
                         }
                     }
-                    '"' => {
+                    '"' if !in_char_class => {
                         break (span(input, before_char), iter.as_str());
                     }
-                    _ => {}
+                    '[' if !in_char_class => {
+                        in_char_class = true;
+                        regex_buf.push('[');
+                    }
+                    ']' if in_char_class => {
+                        in_char_class = false;
+                        regex_buf.push(']');
+                    }
+                    c => {
+                        regex_buf.push(c);
+                    }
                 };
             }
         };
-        let regex = if had_escaped_quote {
-            regex_str.replace("\\\"", "\"").parse()
-        } else {
-            regex_str.parse()
-        };
-        match regex {
+        match regex_buf.parse() {
             Ok(regex) => Ok((regex, input)),
             Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }
@@ -105,8 +114,8 @@ impl<'i> Lex<'i> for Regex {
 #[test]
 fn test() {
     assert_ok!(
-        Regex::lex(r#""[a-z]+\d{1,10}\"";"#),
-        Regex::new(r#"[a-z]+\d{1,10}""#).unwrap(),
+        Regex::lex(r#""[a-z"\]]+\d{1,10}\"";"#),
+        Regex::new(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
         ";"
     );
 }
