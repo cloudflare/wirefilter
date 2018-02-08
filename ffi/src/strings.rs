@@ -62,14 +62,9 @@ impl<'a> fmt::Display for ExternallyAllocatedStr<'a> {
 #[cfg(test)]
 impl From<&'static str> for ExternallyAllocatedStr<'static> {
     fn from(raw: &'static str) -> Self {
-        let bytes = raw.to_owned().into_boxed_str().into_boxed_bytes();
-        let raw = Box::into_raw(bytes);
-
-        unsafe {
-            ExternallyAllocatedStr {
-                data: &*((*raw).as_ptr()),
-                length: (*raw).len(),
-            }
+        ExternallyAllocatedStr {
+            data: unsafe { &*(*raw).as_ptr() },
+            length: (*raw).len(),
         }
     }
 }
