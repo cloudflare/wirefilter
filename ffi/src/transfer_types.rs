@@ -40,36 +40,52 @@ impl RustAllocatedString {
 }
 
 #[repr(C)]
-pub struct ExternallyAllocatedStr<'a> {
+pub struct ExternallyAllocatedByteArr<'a> {
     data: &'a u8,
     length: size_t,
 }
 
-impl<'a> ExternallyAllocatedStr<'a> {
+impl<'a> ExternallyAllocatedByteArr<'a> {
+    fn as_slice(&self) -> &'a [u8] {
+        unsafe { slice::from_raw_parts(self.data, self.length) }
+    }
+
     fn as_str(&self) -> &'a str {
-        let slice = unsafe { slice::from_raw_parts(self.data, self.length) };
-        str::from_utf8(slice).unwrap()
+        str::from_utf8(self.as_slice()).unwrap()
     }
 }
 
-impl<'a> Into<&'a str> for ExternallyAllocatedStr<'a> {
+impl<'a> Into<&'a str> for ExternallyAllocatedByteArr<'a> {
     fn into(self) -> &'a str {
         self.as_str()
     }
 }
 
-impl<'a> Into<String> for ExternallyAllocatedStr<'a> {
+impl<'a> Into<String> for ExternallyAllocatedByteArr<'a> {
     fn into(self) -> String {
         format!("{}", self.as_str())
     }
 }
 
+impl<'a> Into<&'a [u8]> for ExternallyAllocatedByteArr<'a> {
+    fn into(self) -> &'a [u8] {
+        self.as_slice()
+    }
+}
+
 #[cfg(test)]
-impl From<&'static str> for ExternallyAllocatedStr<'static> {
-    fn from(raw: &'static str) -> Self {
-        ExternallyAllocatedStr {
+impl From<&'static [u8]> for ExternallyAllocatedByteArr<'static> {
+    fn from(raw: &'static [u8]) -> Self {
+        ExternallyAllocatedByteArr {
             data: unsafe { &*raw.as_ptr() },
             length: raw.len(),
         }
+    }
+}
+
+#[cfg(test)]
+impl From<&'static str> for ExternallyAllocatedByteArr<'static> {
+    fn from(raw: &'static str) -> Self {
+        ExternallyAllocatedByteArr::from(raw.as_bytes())
     }
 }

@@ -1,14 +1,14 @@
 extern crate libc;
 extern crate wirefilter;
 
-mod strings;
+mod transfer_types;
 
 use libc::size_t;
 use std::cmp::max;
 use std::fmt;
 use std::net::IpAddr;
 use std::str::FromStr;
-use strings::{ExternallyAllocatedStr, RustAllocatedString};
+use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
 use wirefilter::{Bytes, Context, Filter};
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
@@ -91,7 +91,7 @@ pub extern "C" fn wirefilter_free_scheme(scheme: &mut Scheme) {
 #[no_mangle]
 pub extern "C" fn wirefilter_add_unsigned_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
-    name: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
 ) {
     scheme.insert(name.into(), Type::Unsigned);
 }
@@ -99,7 +99,7 @@ pub extern "C" fn wirefilter_add_unsigned_type_field_to_scheme<'a>(
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ip_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
-    name: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
 ) {
     scheme.insert(name.into(), Type::Ip);
 }
@@ -107,7 +107,7 @@ pub extern "C" fn wirefilter_add_ip_type_field_to_scheme<'a>(
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
-    name: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
 ) {
     scheme.insert(name.into(), Type::Bytes);
 }
@@ -120,7 +120,7 @@ pub extern "C" fn wirefilter_free_parsing_result(result: ParsingResult) {
 #[no_mangle]
 pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     scheme: &'s Scheme,
-    input: ExternallyAllocatedStr<'i>,
+    input: ExternallyAllocatedByteArr<'i>,
 ) -> ParsingResult<'s> {
     let input = input.into();
 
@@ -145,17 +145,17 @@ pub extern "C" fn wirefilter_free_execution_context(exec_context: &mut Execution
 #[no_mangle]
 pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
     value: u64,
 ) {
     exec_context.insert(name.into(), LhsValue::Unsigned(value));
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
+pub extern "C" fn wirefilter_add_string_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedStr<'a>,
-    value: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
+    value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &'a str = value.into();
     let bytes = Bytes::from(slice);
@@ -163,10 +163,21 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
+    exec_context: &mut ExecutionContext<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
+    value: ExternallyAllocatedByteArr<'a>,
+) {
+    let slice: &'a [u8] = value.into();
+    let bytes = Bytes::from(slice);
+    exec_context.insert(name.into(), LhsValue::Bytes(bytes));
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_add_ip_string_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedStr<'a>,
-    value: ExternallyAllocatedStr<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
+    value: ExternallyAllocatedByteArr<'a>,
 ) -> bool {
     match IpAddr::from_str(value.into()) {
         Ok(ip) => {
@@ -192,14 +203,20 @@ mod ffi_test {
     fn test_with_scheme<F: Fn(&mut Scheme)>(test_fn: F) {
         let scheme = unsafe { &mut *wirefilter_create_scheme() };
 
-        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("ip1"));
-        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("ip2"));
+        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("ip1"));
+        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("ip2"));
 
-        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("str1"));
-        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("str2"));
+        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("str1"));
+        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("str2"));
 
-        wirefilter_add_unsigned_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("num1"));
-        wirefilter_add_unsigned_type_field_to_scheme(scheme, ExternallyAllocatedStr::from("num2"));
+        wirefilter_add_unsigned_type_field_to_scheme(
+            scheme,
+            ExternallyAllocatedByteArr::from("num1"),
+        );
+        wirefilter_add_unsigned_type_field_to_scheme(
+            scheme,
+            ExternallyAllocatedByteArr::from("num2"),
+        );
 
         test_fn(scheme);
 
@@ -211,37 +228,37 @@ mod ffi_test {
 
         wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("ip1"),
-            ExternallyAllocatedStr::from("127.0.0.1"),
+            ExternallyAllocatedByteArr::from("ip1"),
+            ExternallyAllocatedByteArr::from("127.0.0.1"),
         );
 
         wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("ip2"),
-            ExternallyAllocatedStr::from("192.168.0.1"),
+            ExternallyAllocatedByteArr::from("ip2"),
+            ExternallyAllocatedByteArr::from("192.168.0.1"),
+        );
+
+        wirefilter_add_string_bytes_value_to_execution_context(
+            exec_context,
+            ExternallyAllocatedByteArr::from("str1"),
+            ExternallyAllocatedByteArr::from("Hey"),
         );
 
         wirefilter_add_bytes_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("str1"),
-            ExternallyAllocatedStr::from("Hey"),
-        );
-
-        wirefilter_add_bytes_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedStr::from("str2"),
-            ExternallyAllocatedStr::from("yo123"),
+            ExternallyAllocatedByteArr::from("str2"),
+            ExternallyAllocatedByteArr::from("yo123"),
         );
 
         wirefilter_add_unsigned_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("num1"),
+            ExternallyAllocatedByteArr::from("num1"),
             42,
         );
 
         wirefilter_add_unsigned_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("num2"),
+            ExternallyAllocatedByteArr::from("num2"),
             1337,
         );
 
@@ -250,7 +267,7 @@ mod ffi_test {
 
     fn test_with_filter<T: Fn(&Filter)>(input: &'static str, func: T) {
         test_with_scheme(|scheme| {
-            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedStr::from(input));
+            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input));
 
             match result {
                 ParsingResult::Ok(filter) => func(unsafe { &*filter }),
@@ -265,7 +282,7 @@ mod ffi_test {
     fn parse_error() {
         test_with_scheme(|scheme| {
             let src = r#"num1 == "abc""#;
-            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedStr::from(src));
+            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(src));
 
             match result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
@@ -335,24 +352,24 @@ mod ffi_test {
 
         let success = wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("ip"),
-            ExternallyAllocatedStr::from("500.12.1.0"),
+            ExternallyAllocatedByteArr::from("ip"),
+            ExternallyAllocatedByteArr::from("500.12.1.0"),
         );
 
         assert!(!success);
 
         let success = wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("ip"),
-            ExternallyAllocatedStr::from("::xyz"),
+            ExternallyAllocatedByteArr::from("ip"),
+            ExternallyAllocatedByteArr::from("::xyz"),
         );
 
         assert!(!success);
 
         let success = wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("ip"),
-            ExternallyAllocatedStr::from("::1"),
+            ExternallyAllocatedByteArr::from("ip"),
+            ExternallyAllocatedByteArr::from("::1"),
         );
 
         assert!(success);
@@ -373,10 +390,10 @@ mod ffi_test {
     fn panic_on_wrong_exec_context_type() {
         let exec_context = create_execution_context();
 
-        wirefilter_add_bytes_value_to_execution_context(
+        wirefilter_add_string_bytes_value_to_execution_context(
             exec_context,
-            ExternallyAllocatedStr::from("num1"),
-            ExternallyAllocatedStr::from("Hey"),
+            ExternallyAllocatedByteArr::from("num1"),
+            ExternallyAllocatedByteArr::from("Hey"),
         );
 
         test_with_filter("num1 == 42", |filter| {
