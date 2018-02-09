@@ -63,8 +63,8 @@ impl<'a> fmt::Display for ExternallyAllocatedStr<'a> {
 impl From<&'static str> for ExternallyAllocatedStr<'static> {
     fn from(raw: &'static str) -> Self {
         ExternallyAllocatedStr {
-            data: unsafe { &*(*raw).as_ptr() },
-            length: (*raw).len(),
+            data: unsafe { &*raw.as_ptr() },
+            length: raw.len(),
         }
     }
 }
