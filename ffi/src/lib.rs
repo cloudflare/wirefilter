@@ -93,7 +93,7 @@ pub extern "C" fn wirefilter_add_unsigned_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
     name: ExternallyAllocatedStr<'a>,
 ) {
-    scheme.insert(name.to_string(), Type::Unsigned);
+    scheme.insert(name.into(), Type::Unsigned);
 }
 
 #[no_mangle]
@@ -101,7 +101,7 @@ pub extern "C" fn wirefilter_add_ip_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
     name: ExternallyAllocatedStr<'a>,
 ) {
-    scheme.insert(name.to_string(), Type::Ip);
+    scheme.insert(name.into(), Type::Ip);
 }
 
 #[no_mangle]
@@ -109,7 +109,7 @@ pub extern "C" fn wirefilter_add_bytes_type_field_to_scheme<'a>(
     scheme: &mut Scheme,
     name: ExternallyAllocatedStr<'a>,
 ) {
-    scheme.insert(name.to_string(), Type::Bytes);
+    scheme.insert(name.into(), Type::Bytes);
 }
 
 #[no_mangle]
@@ -122,7 +122,7 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     scheme: &'s Scheme,
     input: ExternallyAllocatedStr<'i>,
 ) -> ParsingResult<'s> {
-    let input = input.as_str();
+    let input = input.into();
 
     match scheme.parse(input) {
         Ok(filter) => ParsingResult::from(filter),
@@ -148,7 +148,7 @@ pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'a>,
     value: u64,
 ) {
-    exec_context.insert(name.as_str(), LhsValue::Unsigned(value));
+    exec_context.insert(name.into(), LhsValue::Unsigned(value));
 }
 
 #[no_mangle]
@@ -157,18 +157,23 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'a>,
     value: ExternallyAllocatedStr<'a>,
 ) {
-    let bytes = Bytes::from(value.as_str());
-    exec_context.insert(name.as_str(), LhsValue::Bytes(bytes));
+    let slice: &'a str = value.into();
+    let bytes = Bytes::from(slice);
+    exec_context.insert(name.into(), LhsValue::Bytes(bytes));
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_ip_value_to_execution_context<'a>(
+pub extern "C" fn wirefilter_add_ip_string_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'a>,
     value: ExternallyAllocatedStr<'a>,
-) {
-    if let Ok(ip) = IpAddr::from_str(value.as_str()) {
-        exec_context.insert(name.as_str(), LhsValue::Ip(ip));
+) -> bool {
+    match IpAddr::from_str(value.into()) {
+        Ok(ip) => {
+            exec_context.insert(name.into(), LhsValue::Ip(ip));
+            true
+        }
+        Err(_) => false,
     }
 }
 
@@ -204,13 +209,13 @@ mod ffi_test {
     fn create_execution_context<'a>() -> &'a mut ExecutionContext<'a> {
         let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
 
-        wirefilter_add_ip_value_to_execution_context(
+        wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
             ExternallyAllocatedStr::from("ip1"),
             ExternallyAllocatedStr::from("127.0.0.1"),
         );
 
-        wirefilter_add_ip_value_to_execution_context(
+        wirefilter_add_ip_string_value_to_execution_context(
             exec_context,
             ExternallyAllocatedStr::from("ip2"),
             ExternallyAllocatedStr::from("192.168.0.1"),
@@ -322,6 +327,35 @@ mod ffi_test {
         });
 
         wirefilter_free_execution_context(exec_context);
+    }
+
+    #[test]
+    fn ip_string_validation() {
+        let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
+
+        let success = wirefilter_add_ip_string_value_to_execution_context(
+            exec_context,
+            ExternallyAllocatedStr::from("ip"),
+            ExternallyAllocatedStr::from("500.12.1.0"),
+        );
+
+        assert!(!success);
+
+        let success = wirefilter_add_ip_string_value_to_execution_context(
+            exec_context,
+            ExternallyAllocatedStr::from("ip"),
+            ExternallyAllocatedStr::from("::xyz"),
+        );
+
+        assert!(!success);
+
+        let success = wirefilter_add_ip_string_value_to_execution_context(
+            exec_context,
+            ExternallyAllocatedStr::from("ip"),
+            ExternallyAllocatedStr::from("::1"),
+        );
+
+        assert!(success);
     }
 
     #[test]

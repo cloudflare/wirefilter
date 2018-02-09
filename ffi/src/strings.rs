@@ -1,6 +1,5 @@
 use libc::size_t;
 use std::{slice, str};
-use std::fmt;
 
 #[repr(C)]
 pub struct RustAllocatedString {
@@ -47,15 +46,21 @@ pub struct ExternallyAllocatedStr<'a> {
 }
 
 impl<'a> ExternallyAllocatedStr<'a> {
-    pub fn as_str(&self) -> &'a str {
+    fn as_str(&self) -> &'a str {
         let slice = unsafe { slice::from_raw_parts(self.data, self.length) };
         str::from_utf8(slice).unwrap()
     }
 }
 
-impl<'a> fmt::Display for ExternallyAllocatedStr<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+impl<'a> Into<&'a str> for ExternallyAllocatedStr<'a> {
+    fn into(self) -> &'a str {
+        self.as_str()
+    }
+}
+
+impl<'a> Into<String> for ExternallyAllocatedStr<'a> {
+    fn into(self) -> String {
+        format!("{}", self.as_str())
     }
 }
 
