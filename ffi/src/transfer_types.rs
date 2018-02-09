@@ -25,7 +25,6 @@ impl Drop for RustAllocatedString {
     fn drop(&mut self) {
         unsafe {
             let slice = slice::from_raw_parts_mut(self.data as *mut u8, self.length);
-
             Box::from_raw(slice);
         }
     }

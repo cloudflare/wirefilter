@@ -6,8 +6,7 @@ mod transfer_types;
 use libc::size_t;
 use std::cmp::max;
 use std::fmt;
-use std::net::IpAddr;
-use std::str::FromStr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
 use wirefilter::{Bytes, Context, Filter};
 use wirefilter::lex::LexErrorKind;
@@ -63,7 +62,6 @@ impl<'a> From<Filter<'a>> for ParsingResult<'a> {
 impl<'a, 'b> From<ParseError<'b>> for ParsingResult<'a> {
     fn from(err: ParseError<'b>) -> Self {
         let msg = RustAllocatedString::from(err.to_string());
-
         ParsingResult::Err(msg)
     }
 }
@@ -174,18 +172,23 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_ip_string_value_to_execution_context<'a>(
+pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: ExternallyAllocatedByteArr<'a>,
-) -> bool {
-    match IpAddr::from_str(value.into()) {
-        Ok(ip) => {
-            exec_context.insert(name.into(), LhsValue::Ip(ip));
-            true
-        }
-        Err(_) => false,
-    }
+    value: &'a [u16; 8],
+) {
+    let ip = IpAddr::from(Ipv6Addr::from(*value));
+    exec_context.insert(name.into(), LhsValue::Ip(ip));
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
+    exec_context: &mut ExecutionContext<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
+    value: &'a [u8; 4],
+) {
+    let ip = IpAddr::from(Ipv4Addr::from(*value));
+    exec_context.insert(name.into(), LhsValue::Ip(ip));
 }
 
 #[no_mangle]
@@ -226,16 +229,16 @@ mod ffi_test {
     fn create_execution_context<'a>() -> &'a mut ExecutionContext<'a> {
         let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
 
-        wirefilter_add_ip_string_value_to_execution_context(
+        wirefilter_add_ipv4_value_to_execution_context(
             exec_context,
             ExternallyAllocatedByteArr::from("ip1"),
-            ExternallyAllocatedByteArr::from("127.0.0.1"),
+            &[127, 0, 0, 1],
         );
 
-        wirefilter_add_ip_string_value_to_execution_context(
+        wirefilter_add_ipv6_value_to_execution_context(
             exec_context,
             ExternallyAllocatedByteArr::from("ip2"),
-            ExternallyAllocatedByteArr::from("192.168.0.1"),
+            &[0, 0, 0, 0, 0, 0xffff, 0xc0a8, 1],
         );
 
         wirefilter_add_string_bytes_value_to_execution_context(
@@ -333,46 +336,20 @@ mod ffi_test {
         );
 
         test_with_filter(
-            r#"ip2 == 192.168.0.1 && (str1 == "Hey" || str2 == "ya")"#,
+            r#"ip2 == 0:0:0:0:0:ffff:c0a8:1 && (str1 == "Hey" || str2 == "ya")"#,
             |filter| {
                 assert!(wirefilter_match(filter, exec_context));
             },
         );
 
-        test_with_filter("ip1 == 127.0.0.1 && ip2 == 127.0.0.2", |filter| {
-            assert!(!wirefilter_match(filter, exec_context));
-        });
+        test_with_filter(
+            "ip1 == 127.0.0.1 && ip2 == 0:0:0:0:0:ffff:c0a8:2",
+            |filter| {
+                assert!(!wirefilter_match(filter, exec_context));
+            },
+        );
 
         wirefilter_free_execution_context(exec_context);
-    }
-
-    #[test]
-    fn ip_string_validation() {
-        let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
-
-        let success = wirefilter_add_ip_string_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedByteArr::from("ip"),
-            ExternallyAllocatedByteArr::from("500.12.1.0"),
-        );
-
-        assert!(!success);
-
-        let success = wirefilter_add_ip_string_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedByteArr::from("ip"),
-            ExternallyAllocatedByteArr::from("::xyz"),
-        );
-
-        assert!(!success);
-
-        let success = wirefilter_add_ip_string_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedByteArr::from("ip"),
-            ExternallyAllocatedByteArr::from("::1"),
-        );
-
-        assert!(success);
     }
 
     #[test]
