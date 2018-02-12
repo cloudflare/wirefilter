@@ -44,31 +44,22 @@ pub struct ExternallyAllocatedByteArr<'a> {
     length: size_t,
 }
 
-impl<'a> ExternallyAllocatedByteArr<'a> {
-    fn as_slice(&self) -> &'a [u8] {
-        unsafe { slice::from_raw_parts(self.data, self.length) }
-    }
-
-    fn as_str(&self) -> &'a str {
-        str::from_utf8(self.as_slice()).unwrap()
-    }
-}
-
 impl<'a> Into<&'a str> for ExternallyAllocatedByteArr<'a> {
     fn into(self) -> &'a str {
-        self.as_str()
+        str::from_utf8(self.into()).unwrap()
     }
 }
 
 impl<'a> Into<String> for ExternallyAllocatedByteArr<'a> {
     fn into(self) -> String {
-        format!("{}", self.as_str())
+        let slice: &'a str = self.into();
+        slice.to_owned()
     }
 }
 
 impl<'a> Into<&'a [u8]> for ExternallyAllocatedByteArr<'a> {
     fn into(self) -> &'a [u8] {
-        self.as_slice()
+        unsafe { slice::from_raw_parts(self.data, self.length) }
     }
 }
 
