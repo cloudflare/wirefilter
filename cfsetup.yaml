@@ -8,6 +8,5 @@ everything: &everything
     builddeps: *deps
     post-cache:
       - cd engine; cargo test
-squeeze: *everything
 jessie: *everything
 stretch: *everything
