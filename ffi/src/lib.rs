@@ -175,7 +175,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: &'a [u16; 8],
+    value: &[u16; 8],
 ) {
     let ip = IpAddr::from(Ipv6Addr::from(*value));
     exec_context.insert(name.into(), LhsValue::Ip(ip));
@@ -185,7 +185,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
 pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: &'a [u8; 4],
+    value: &[u8; 4],
 ) {
     let ip = IpAddr::from(Ipv4Addr::from(*value));
     exec_context.insert(name.into(), LhsValue::Ip(ip));
