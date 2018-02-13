@@ -3,6 +3,7 @@ authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-engine"
 version = "0.1.0"
 description = "Rust library for the Segments Filter engine"
+publish = false
 
 [dependencies]
 cidr = "0.0.4"

@@ -3,6 +3,7 @@ authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-ffi"
 version = "0.1.0"
 description = "Shared library for the Segments Filter engine FFI"
+publish = false
 
 [dependencies]
 libc = "0.2.36"
