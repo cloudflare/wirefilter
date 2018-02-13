@@ -377,31 +377,4 @@ mod ffi_test {
             wirefilter_match(filter, exec_context);
         });
     }
-
-    #[test]
-    fn compare_different_ips() {
-        let exec_context = create_execution_context();
-
-        wirefilter_add_ipv6_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedByteArr::from("ip1"),
-            &Ipv6Addr::from(2).segments() // ::2
-        );
-
-        test_with_filter("ip1 > ::1", |filter| {
-            assert!(wirefilter_match(filter, exec_context));
-        });
-
-        test_with_filter("ip1 > ::2", |filter| {
-            assert!(!wirefilter_match(filter, exec_context));
-        });
-
-        test_with_filter("ip1 < 127.0.0.3", |filter| {
-            assert!(!wirefilter_match(filter, exec_context));
-        });
-
-        test_with_filter("ip1 >= 127.0.0.1 and ip1 < 127.0.0.255", |filter| {
-            assert!(!wirefilter_match(filter, exec_context));
-        });
-    }
 }

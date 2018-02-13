@@ -199,11 +199,9 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                 let lhs = self.get_field(field);
 
                 match *op {
-                    FilterOp::Ordering(op, ref rhs) => {
-                        lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
-                            panic_type!(field, lhs.get_type(), rhs.get_type());
-                        })
-                    }
+                    FilterOp::Ordering(op, ref rhs) => lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
+                        panic_type!(field, lhs.get_type(), rhs.get_type());
+                    }),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
@@ -264,67 +262,90 @@ impl<'a> Filter<'a> {
     }
 }
 
-#[test]
-fn test() {
-    use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr};
-    use types::{RhsValue, Type};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::types::LhsValue;
 
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-    let context: Context<_, _> = [
-        ("http.host", Type::Bytes),
-        ("port", Type::Unsigned),
-        ("ip.src", Type::Ip),
-    ].iter()
-        .cloned()
-        .collect();
+    #[test]
+    fn parse() {
+        use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr};
+        use types::{RhsValue, Type};
 
-    assert_eq!(
-        context.parse("http.host contains \"t\""),
-        Ok(Filter::Op(
-            Field::new("http.host"),
-            FilterOp::Contains(Bytes::from("t"))
-        ))
-    );
-    assert_eq!(
-        context.parse("port in { 80 443 }"),
-        Ok(Filter::Op(
-            Field::new("port"),
-            FilterOp::OneOf(RhsValues::Unsigned(vec![80, 443]))
-        ))
-    );
-    assert_eq!(
-        context.parse("not ip.src in { 127.0.0.0/8 ::1/128 } and (port == 80) or port >= 1024"),
-        Ok(Filter::Combine(
-            CombiningOp::Or,
-            vec![
-                Filter::Combine(
-                    CombiningOp::And,
-                    vec![
-                        Filter::Unary(
-                            UnaryOp::Not,
-                            Box::new(Filter::Op(
-                                Field::new("ip.src"),
-                                FilterOp::OneOf(RhsValues::Ip(vec![
-                                    IpCidr::V4(
-                                        Ipv4Cidr::new(Ipv4Addr::new(127, 0, 0, 0), 8).unwrap(),
-                                    ).into(),
-                                    IpCidr::V6(Ipv6Cidr::new(Ipv6Addr::from(1), 128).unwrap())
-                                        .into(),
-                                ])),
-                            )),
-                        ),
-                        Filter::Op(
-                            Field::new("port"),
-                            FilterOp::Ordering(OrderingOp::Equal, RhsValue::Unsigned(80)),
-                        ),
-                    ],
-                ),
-                Filter::Op(
-                    Field::new("port"),
-                    FilterOp::Ordering(OrderingOp::GreaterThanEqual, RhsValue::Unsigned(1024)),
-                ),
-            ]
-        ))
-    );
+        let context: Context<_, _> = [
+            ("http.host", Type::Bytes),
+            ("port", Type::Unsigned),
+            ("ip.src", Type::Ip),
+        ].iter()
+            .cloned()
+            .collect();
+
+        assert_eq!(
+            context.parse("http.host contains \"t\""),
+            Ok(Filter::Op(
+                Field::new("http.host"),
+                FilterOp::Contains(Bytes::from("t"))
+            ))
+        );
+        assert_eq!(
+            context.parse("port in { 80 443 }"),
+            Ok(Filter::Op(
+                Field::new("port"),
+                FilterOp::OneOf(RhsValues::Unsigned(vec![80, 443]))
+            ))
+        );
+        assert_eq!(
+            context.parse("not ip.src in { 127.0.0.0/8 ::1/128 } and (port == 80) or port >= 1024"),
+            Ok(Filter::Combine(
+                CombiningOp::Or,
+                vec![
+                    Filter::Combine(
+                        CombiningOp::And,
+                        vec![
+                            Filter::Unary(
+                                UnaryOp::Not,
+                                Box::new(Filter::Op(
+                                    Field::new("ip.src"),
+                                    FilterOp::OneOf(RhsValues::Ip(vec![
+                                        IpCidr::V4(
+                                            Ipv4Cidr::new(Ipv4Addr::new(127, 0, 0, 0), 8).unwrap(),
+                                        ).into(),
+                                        IpCidr::V6(Ipv6Cidr::new(Ipv6Addr::from(1), 128).unwrap())
+                                            .into(),
+                                    ])),
+                                )),
+                            ),
+                            Filter::Op(
+                                Field::new("port"),
+                                FilterOp::Ordering(OrderingOp::Equal, RhsValue::Unsigned(80)),
+                            ),
+                        ],
+                    ),
+                    Filter::Op(
+                        Field::new("port"),
+                        FilterOp::Ordering(OrderingOp::GreaterThanEqual, RhsValue::Unsigned(1024)),
+                    ),
+                ]
+            ))
+        );
+    }
+
+    fn assert_filter(context: &Context<&str, LhsValue>, filter: &str, expect: bool) {
+        let filter = context.parse(filter).unwrap();
+        assert_eq!(context.execute(&filter), expect);
+    }
+
+    #[test]
+    fn compare_ip() {
+        let mut context = Context::default();
+        context.insert("ip", LhsValue::Ip(IpAddr::V6(Ipv6Addr::from(2))));
+
+        assert_filter(&context, "ip > ::1", true);
+        assert_filter(&context, "ip <= ::3", true);
+        assert_filter(&context, "ip > ::2", false);
+        assert_filter(&context, "ip < 127.0.0.3", false);
+        assert_filter(&context, "ip >= 127.0.0.1 and ip < 127.0.0.255", false);
+    }
 }
