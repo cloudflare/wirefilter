@@ -200,9 +200,9 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
 
                 match *op {
                     FilterOp::Ordering(op, ref rhs) => {
-                        op.contains(lhs.partial_cmp(rhs).unwrap_or_else(|| {
+                        lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
                             panic_type!(field, lhs.get_type(), rhs.get_type());
-                        }))
+                        })
                     }
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0

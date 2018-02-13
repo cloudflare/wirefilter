@@ -2,8 +2,8 @@ use bytes::Bytes;
 use ip_addr::IpCidr;
 use lex::{Lex, LexResult};
 use lex::expect;
+use op::OrderingOp;
 
-use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
 
@@ -73,23 +73,18 @@ macro_rules! declare_types {
             $($(# $rhs_attrs)* $name(Vec<$rhs_ty>),)*
         });
 
-        impl<'a> PartialOrd<RhsValue<'a>> for LhsValue<'a> {
-            fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
-                match (self, other) {
+        impl<'a> LhsValue<'a> {
+            pub fn try_cmp(&self, op: OrderingOp, other: &RhsValue) -> Result<bool, ()> {
+                let cmp = match (self, other) {
                     $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => {
                         lhs.partial_cmp(rhs)
                     },)*
-                    _ => None,
-                }
-            }
-        }
-
-        impl<'a> PartialEq<RhsValue<'a>> for LhsValue<'a> {
-            fn eq(&self, other: &RhsValue) -> bool {
-                match (self, other) {
-                    $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => lhs == rhs,)*
-                    _ => false,
-                }
+                    _ => return Err(()),
+                };
+                Ok(match cmp {
+                    Some(cmp) => op.contains(cmp),
+                    None => false,
+                })
             }
         }
 
