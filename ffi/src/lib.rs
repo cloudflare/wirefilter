@@ -82,7 +82,7 @@ pub unsafe extern "C" fn wirefilter_create_scheme() -> *mut Scheme {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_scheme(scheme: &mut Scheme) {
+pub extern "C" fn wirefilter_free_scheme(scheme: *mut Scheme) {
     drop(unsafe { Box::from_raw(scheme) });
 }
 
@@ -136,7 +136,7 @@ pub unsafe extern "C" fn wirefilter_create_execution_context<'a>() -> *mut Execu
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_execution_context(exec_context: &mut ExecutionContext) {
+pub extern "C" fn wirefilter_free_execution_context(exec_context: *mut ExecutionContext) {
     drop(unsafe { Box::from_raw(exec_context) });
 }
 
@@ -203,64 +203,74 @@ mod ffi_test {
     use wirefilter::op::{CombiningOp, OrderingOp};
     use wirefilter::types::RhsValue;
 
-    fn test_with_scheme<F: Fn(&mut Scheme)>(test_fn: F) {
-        let scheme = unsafe { &mut *wirefilter_create_scheme() };
+    fn create_scheme() -> Box<Scheme> {
+        let mut scheme = unsafe { Box::from_raw(wirefilter_create_scheme()) };
 
-        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("ip1"));
-        wirefilter_add_ip_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("ip2"));
+        wirefilter_add_ip_type_field_to_scheme(
+            &mut scheme,
+            ExternallyAllocatedByteArr::from("ip1"),
+        );
+        wirefilter_add_ip_type_field_to_scheme(
+            &mut scheme,
+            ExternallyAllocatedByteArr::from("ip2"),
+        );
 
-        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("str1"));
-        wirefilter_add_bytes_type_field_to_scheme(scheme, ExternallyAllocatedByteArr::from("str2"));
+        wirefilter_add_bytes_type_field_to_scheme(
+            &mut scheme,
+            ExternallyAllocatedByteArr::from("str1"),
+        );
+        wirefilter_add_bytes_type_field_to_scheme(
+            &mut scheme,
+            ExternallyAllocatedByteArr::from("str2"),
+        );
 
         wirefilter_add_unsigned_type_field_to_scheme(
-            scheme,
+            &mut scheme,
             ExternallyAllocatedByteArr::from("num1"),
         );
         wirefilter_add_unsigned_type_field_to_scheme(
-            scheme,
+            &mut scheme,
             ExternallyAllocatedByteArr::from("num2"),
         );
 
-        test_fn(scheme);
-
-        wirefilter_free_scheme(scheme);
+        scheme
     }
 
-    fn create_execution_context<'a>() -> &'a mut ExecutionContext<'a> {
-        let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
+    fn create_execution_context() -> Box<ExecutionContext<'static>> {
+        let mut exec_context = unsafe { Box::from_raw(wirefilter_create_execution_context()) };
 
         wirefilter_add_ipv4_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("ip1"),
             &[127, 0, 0, 1],
         );
 
         wirefilter_add_ipv6_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("ip2"),
             &[0, 0, 0, 0, 0, 0xffff, 0xc0a8, 1],
         );
 
         wirefilter_add_string_bytes_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("str1"),
             ExternallyAllocatedByteArr::from("Hey"),
         );
 
         wirefilter_add_bytes_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("str2"),
             ExternallyAllocatedByteArr::from("yo123"),
         );
 
         wirefilter_add_unsigned_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("num1"),
             42,
         );
 
         wirefilter_add_unsigned_value_to_execution_context(
-            exec_context,
+            &mut exec_context,
             ExternallyAllocatedByteArr::from("num2"),
             1337,
         );
@@ -268,24 +278,34 @@ mod ffi_test {
         exec_context
     }
 
-    fn test_with_filter<T: Fn(&Filter)>(input: &'static str, func: T) {
-        test_with_scheme(|scheme| {
-            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input));
+    fn create_filter<'a>(
+        scheme: &'a Scheme,
+        input: &'static str,
+    ) -> (&'a Filter<'a>, ParsingResult<'a>) {
+        let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input));
 
-            match result {
-                ParsingResult::Ok(filter) => func(unsafe { &*filter }),
-                ParsingResult::Err(ref err) => panic!("{}", err.as_str()),
-            }
+        match result {
+            ParsingResult::Ok(filter) => (unsafe { &*filter }, result),
+            ParsingResult::Err(ref err) => panic!("{}", err.as_str()),
+        }
+    }
 
-            wirefilter_free_parsing_result(result);
-        });
+    fn match_filter(input: &'static str, scheme: &Scheme, exec_context: &ExecutionContext) -> bool {
+        let (filter, parsing_result) = create_filter(scheme, input);
+        let result = wirefilter_match(filter, exec_context);
+
+        wirefilter_free_parsing_result(parsing_result);
+
+        result
     }
 
     #[test]
     fn parse_error() {
-        test_with_scheme(|scheme| {
-            let src = r#"num1 == "abc""#;
-            let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(src));
+        let src = r#"num1 == "abc""#;
+        let scheme = create_scheme();
+
+        {
+            let result = wirefilter_parse_filter(&scheme, ExternallyAllocatedByteArr::from(src));
 
             match result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
@@ -296,12 +316,18 @@ mod ffi_test {
             }
 
             wirefilter_free_parsing_result(result);
-        });
+        }
+
+        wirefilter_free_scheme(Box::into_raw(scheme));
     }
 
     #[test]
     fn parse_filter() {
-        test_with_filter(r#"num1 > 3 && str2 == "abc""#, |filter| {
+        let scheme = create_scheme();
+
+        {
+            let (filter, parsing_result) = create_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
+
             assert_eq!(
                 *filter,
                 Filter::Combine(
@@ -321,60 +347,37 @@ mod ffi_test {
                     ]
                 )
             );
-        });
+
+            wirefilter_free_parsing_result(parsing_result);
+        }
+
+        wirefilter_free_scheme(Box::into_raw(scheme));
     }
 
     #[test]
-    fn match_filter() {
+    fn filter_matching() {
+        let scheme = create_scheme();
         let exec_context = create_execution_context();
 
-        test_with_filter(
+        assert!(match_filter(
             r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
-            |filter| {
-                assert!(wirefilter_match(filter, exec_context));
-            },
-        );
+            &scheme,
+            &exec_context
+        ));
 
-        test_with_filter(
+        assert!(match_filter(
             r#"ip2 == 0:0:0:0:0:ffff:c0a8:1 && (str1 == "Hey" || str2 == "ya")"#,
-            |filter| {
-                assert!(wirefilter_match(filter, exec_context));
-            },
-        );
+            &scheme,
+            &exec_context
+        ));
 
-        test_with_filter(
+        assert!(!match_filter(
             "ip1 == 127.0.0.1 && ip2 == 0:0:0:0:0:ffff:c0a8:2",
-            |filter| {
-                assert!(!wirefilter_match(filter, exec_context));
-            },
-        );
+            &scheme,
+            &exec_context
+        ));
 
-        wirefilter_free_execution_context(exec_context);
-    }
-
-    #[test]
-    #[should_panic(expected = "Could not find previously registered field num1")]
-    fn panic_on_missing_value() {
-        let exec_context = unsafe { &mut *wirefilter_create_execution_context() };
-
-        test_with_filter("num1 == 42", |filter| {
-            wirefilter_match(filter, exec_context);
-        });
-    }
-
-    #[test]
-    #[should_panic(expected="Field num1 was previously registered with type Unsigned but now contains Bytes")]
-    fn panic_on_wrong_exec_context_type() {
-        let exec_context = create_execution_context();
-
-        wirefilter_add_string_bytes_value_to_execution_context(
-            exec_context,
-            ExternallyAllocatedByteArr::from("num1"),
-            ExternallyAllocatedByteArr::from("Hey"),
-        );
-
-        test_with_filter("num1 == 42", |filter| {
-            wirefilter_match(filter, exec_context);
-        });
+        wirefilter_free_execution_context(Box::into_raw(exec_context));
+        wirefilter_free_scheme(Box::into_raw(scheme));
     }
 }
