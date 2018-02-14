@@ -2,11 +2,35 @@ everything: &everything
   build:
     builddeps: &deps
       - rust
+    pre-cache-copy-paths: &paths
+      - engine/Cargo.toml
+      - ffi/Cargo.toml
+      - Cargo.lock
+      - Cargo.toml
+    pre-cache:
+      - export CARGO_HOME=/var/lib/cargo
+      - export CARGO_TARGET_DIR=$CARGO_HOME/target
+      - mkdir engine/src && touch engine/src/lib.rs
+      - mkdir ffi/src && touch ffi/src/lib.rs
+      - cargo build -q --locked --release
+      - cargo clean -p wirefilter-engine -p wirefilter-ffi --release
     post-cache:
-      - cd ffi; cargo build --release
+      - export CARGO_HOME=/var/lib/cargo
+      - export CARGO_TARGET_DIR=$CARGO_HOME/target
+      - sudo -E cargo build --frozen --release
   test:
     builddeps: *deps
+    pre-cache-copy-paths: *paths
+    pre-cache:
+      - export CARGO_HOME=/var/lib/cargo
+      - export CARGO_TARGET_DIR=$CARGO_HOME/target
+      - mkdir engine/src && touch engine/src/lib.rs
+      - mkdir ffi/src && touch ffi/src/lib.rs
+      - cargo build -q --locked
+      - cargo clean -p wirefilter-engine -p wirefilter-ffi
     post-cache:
-      - cd engine; cargo test
+      - export CARGO_HOME=/var/lib/cargo
+      - export CARGO_TARGET_DIR=$CARGO_HOME/target
+      - sudo -E cargo test --frozen
 jessie: *everything
 stretch: *everything
