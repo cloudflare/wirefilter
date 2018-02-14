@@ -14,7 +14,7 @@ lex_enum!(#[repr(u8)] OrderingOp {
 });
 
 impl OrderingOp {
-    pub fn contains(self, ordering: Ordering) -> bool {
+    pub fn matches(self, ordering: Ordering) -> bool {
         let mask = self as u8;
         let flag = match ordering {
             Ordering::Less => LESS,
@@ -22,6 +22,14 @@ impl OrderingOp {
             Ordering::Equal => EQUAL,
         };
         mask & flag != 0
+    }
+
+    pub fn matches_opt(self, ordering: Option<Ordering>) -> bool {
+        match ordering {
+            Some(ordering) => self.matches(ordering),
+            // only `!=` should be true for incomparable types
+            None => self == OrderingOp::NotEqual,
+        }
     }
 }
 

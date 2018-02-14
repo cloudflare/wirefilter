@@ -347,5 +347,7 @@ mod tests {
         assert_filter(&context, "ip > ::2", false);
         assert_filter(&context, "ip < 127.0.0.3", false);
         assert_filter(&context, "ip >= 127.0.0.1 and ip < 127.0.0.255", false);
+        assert_filter(&context, "ip == 127.0.0.0/8", false);
+        assert_filter(&context, "ip != 127.0.0.0/8", true);
     }
 }

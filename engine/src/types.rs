@@ -75,16 +75,13 @@ macro_rules! declare_types {
 
         impl<'a> LhsValue<'a> {
             pub fn try_cmp(&self, op: OrderingOp, other: &RhsValue) -> Result<bool, ()> {
-                let cmp = match (self, other) {
+                let opt_ordering = match (self, other) {
                     $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => {
                         lhs.partial_cmp(rhs)
                     },)*
                     _ => return Err(()),
                 };
-                Ok(match cmp {
-                    Some(cmp) => op.contains(cmp),
-                    None => false,
-                })
+                Ok(op.matches_opt(opt_ordering))
             }
         }
 
