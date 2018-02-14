@@ -7,30 +7,17 @@ everything: &everything
       - ffi/Cargo.toml
       - Cargo.lock
       - Cargo.toml
+      - cfsetup-cargo.sh
     pre-cache:
-      - export CARGO_HOME=/var/lib/cargo
-      - export CARGO_TARGET_DIR=$CARGO_HOME/target
-      - mkdir engine/src && touch engine/src/lib.rs
-      - mkdir ffi/src && touch ffi/src/lib.rs
-      - cargo build -q --locked --release
-      - cargo clean -p wirefilter-engine -p wirefilter-ffi --release
+      - ./cfsetup-cargo.sh prebuild --release
     post-cache:
-      - export CARGO_HOME=/var/lib/cargo
-      - export CARGO_TARGET_DIR=$CARGO_HOME/target
-      - sudo -E cargo build --frozen --release
+      - sudo ./cfsetup-cargo.sh build --release
   test:
     builddeps: *deps
     pre-cache-copy-paths: *paths
     pre-cache:
-      - export CARGO_HOME=/var/lib/cargo
-      - export CARGO_TARGET_DIR=$CARGO_HOME/target
-      - mkdir engine/src && touch engine/src/lib.rs
-      - mkdir ffi/src && touch ffi/src/lib.rs
-      - cargo test --no-run -q --locked
-      - cargo clean -p wirefilter-engine -p wirefilter-ffi
+      - ./cfsetup-cargo.sh prebuild
     post-cache:
-      - export CARGO_HOME=/var/lib/cargo
-      - export CARGO_TARGET_DIR=$CARGO_HOME/target
-      - sudo -E cargo test --frozen
+      - sudo ./cfsetup-cargo.sh test
 jessie: *everything
 stretch: *everything
