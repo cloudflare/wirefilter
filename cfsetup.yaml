@@ -10,14 +10,23 @@ everything: &everything
       - cfsetup-cargo.sh
     pre-cache:
       - ./cfsetup-cargo.sh prebuild --release
+      - ./cfsetup-cargo.sh install cargo-deb
     post-cache:
-      - sudo ./cfsetup-cargo.sh build --release
+      - cd ffi
+      - sudo ../cfsetup-cargo.sh build --release --frozen
+      # Copy artifact so that package.metadata.deb.assets could find it
+      # (see https://github.com/mmstick/cargo-deb/issues/48)
+      - mkdir -p ../target/release
+      - cp /var/lib/cargo/target/release/libwirefilter.so ../target/release
+      - sudo ../cfsetup-cargo.sh deb --no-build
+    artifacts:
+      - /var/lib/cargo/target/debian/*.deb
   test:
     builddeps: *deps
     pre-cache-copy-paths: *paths
     pre-cache:
       - ./cfsetup-cargo.sh prebuild
     post-cache:
-      - sudo ./cfsetup-cargo.sh test
+      - sudo ./cfsetup-cargo.sh test --frozen
 jessie: *everything
 stretch: *everything

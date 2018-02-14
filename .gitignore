@@ -1,3 +1,3 @@
-target/
-**/*.rs.bk
+/artifacts
+/target
 .DS_Store
