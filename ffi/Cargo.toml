@@ -16,5 +16,9 @@ path = "../engine"
 crate-type = ["cdylib"]
 name = "wirefilter"
 
+[package.metadata.release]
+tag-prefix = "v"
+no-dev-version = true
+
 [package.metadata.deb]
 assets = [["target/release/libwirefilter.so", "usr/local/lib/", "644"]]
