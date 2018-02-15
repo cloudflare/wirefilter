@@ -6,6 +6,7 @@ description = "Shared library for the Segments Filter engine FFI"
 publish = false
 
 [dependencies]
+fnv = "1.0.6"
 libc = "0.2.36"
 
 [dependencies.wirefilter-engine]

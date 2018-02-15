@@ -1,11 +1,14 @@
+extern crate fnv;
 extern crate libc;
 extern crate wirefilter;
 
 mod transfer_types;
 
+use fnv::FnvHasher;
 use libc::size_t;
 use std::cmp::max;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
 use wirefilter::{Bytes, Context, Filter};
@@ -126,6 +129,13 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
         Ok(filter) => ParsingResult::from(filter),
         Err(err) => ParsingResult::from(ParseError::new(input, err)),
     }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
+    let mut hasher = FnvHasher::default();
+    filter.hash(&mut hasher);
+    hasher.finish()
 }
 
 pub type ExecutionContext<'a> = Context<&'a str, LhsValue<'a>>;
@@ -378,6 +388,36 @@ mod ffi_test {
         ));
 
         wirefilter_free_execution_context(Box::into_raw(exec_context));
+        wirefilter_free_scheme(Box::into_raw(scheme));
+    }
+
+    #[test]
+    fn filter_hash() {
+        let scheme = create_scheme();
+
+        {
+            let (filter1, parsing_result1) = create_filter(
+                &scheme,
+                r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
+            );
+            let (filter2, parsing_result2) = create_filter(
+                &scheme,
+                r#"num1 >     41 && num2 == 1337 &&    ip1 != 192.168.0.1 and str2 ~ "yo\d+""#,
+            );
+            let (filter3, parsing_result3) = create_filter(&scheme, r#"num1 > 41 && num2 == 1337"#);
+
+            let hash1 = wirefilter_get_filter_hash(&filter1);
+            let hash2 = wirefilter_get_filter_hash(&filter2);
+            let hash3 = wirefilter_get_filter_hash(&filter3);
+
+            assert_eq!(hash1, hash2);
+            assert_ne!(hash2, hash3);
+
+            wirefilter_free_parsing_result(parsing_result1);
+            wirefilter_free_parsing_result(parsing_result2);
+            wirefilter_free_parsing_result(parsing_result3);
+        }
+
         wirefilter_free_scheme(Box::into_raw(scheme));
     }
 }
