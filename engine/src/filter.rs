@@ -170,8 +170,8 @@ macro_rules! panic_type {
         panic!(
             "Field {:?} was previously registered with type {:?} but now contains {:?}",
             $field,
-            $expected,
-            $actual
+            $expected.get_type(),
+            $actual.get_type()
         );
     };
 }
@@ -180,7 +180,7 @@ macro_rules! cast_field {
     ($field:ident, $lhs:ident, $ty:ident) => {
         match $lhs {
             &LhsValue::$ty(ref value) => value,
-            other => panic_type!($field, other.get_type(), Type::$ty)
+            other => panic_type!($field, other, Type::$ty)
         }
     };
 }
@@ -200,7 +200,7 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
 
                 match *op {
                     FilterOp::Ordering(op, ref rhs) => lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
-                        panic_type!(field, lhs.get_type(), rhs.get_type());
+                        panic_type!(field, lhs, rhs);
                     }),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
@@ -208,7 +208,7 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
                     FilterOp::OneOf(ref values) => values.try_contains(lhs).unwrap_or_else(|()| {
-                        panic_type!(field, lhs.get_type(), values.get_type())
+                        panic_type!(field, lhs, values)
                     }),
                 }
             }
