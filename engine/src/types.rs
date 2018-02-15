@@ -105,6 +105,15 @@ macro_rules! declare_types {
                     })*
                 })
             }
+
+            pub fn try_contains(&self, lhs: &LhsValue) -> Result<bool, ()> {
+                Ok(match (self, lhs) {
+                    $((&RhsValues::$name(ref values), &LhsValue::$name(ref lhs)) => {
+                        values.iter().any(|rhs| lhs == rhs)
+                    })*
+                    _ => return Err(()),
+                })
+            }
         }
     };
 }

@@ -207,20 +207,9 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     }
                     FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-                    FilterOp::OneOf(ref values) => match *values {
-                        RhsValues::Ip(ref networks) => {
-                            let lhs = cast_field!(field, lhs, Ip);
-                            networks.iter().any(|network| lhs == network)
-                        }
-                        RhsValues::Bytes(ref values) => {
-                            let lhs = cast_field!(field, lhs, Bytes);
-                            values.iter().any(|value| lhs == value)
-                        }
-                        RhsValues::Unsigned(ref values) => {
-                            let lhs = cast_field!(field, lhs, Unsigned);
-                            values.iter().any(|value| lhs == value)
-                        }
-                    },
+                    FilterOp::OneOf(ref values) => values.try_contains(lhs).unwrap_or_else(|()| {
+                        panic_type!(field, lhs.get_type(), values.get_type())
+                    }),
                 }
             }
             Filter::Combine(op, ref filters) => {
