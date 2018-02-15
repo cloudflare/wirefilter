@@ -89,28 +89,30 @@ pub extern "C" fn wirefilter_free_scheme(scheme: *mut Scheme) {
     drop(unsafe { Box::from_raw(scheme) });
 }
 
-#[no_mangle]
-pub extern "C" fn wirefilter_add_unsigned_type_field_to_scheme<'a>(
-    scheme: &mut Scheme,
-    name: ExternallyAllocatedByteArr<'a>,
-) {
-    scheme.insert(name.into(), Type::Unsigned);
+macro_rules! register_types_ffi {
+    ($($ty:path => $name:ident,)*) => {
+        fn _check_all_types_are_covered(ty: Type) {
+            match ty {
+                $($ty => {})*
+            }
+        }
+
+        $(
+            #[no_mangle]
+            pub extern "C" fn $name(
+                scheme: &mut Scheme,
+                name: ExternallyAllocatedByteArr,
+            ) {
+                scheme.insert(name.into(), $ty);
+            }
+        )*
+    };
 }
 
-#[no_mangle]
-pub extern "C" fn wirefilter_add_ip_type_field_to_scheme<'a>(
-    scheme: &mut Scheme,
-    name: ExternallyAllocatedByteArr<'a>,
-) {
-    scheme.insert(name.into(), Type::Ip);
-}
-
-#[no_mangle]
-pub extern "C" fn wirefilter_add_bytes_type_field_to_scheme<'a>(
-    scheme: &mut Scheme,
-    name: ExternallyAllocatedByteArr<'a>,
-) {
-    scheme.insert(name.into(), Type::Bytes);
+register_types_ffi! {
+    Type::Ip => wirefilter_add_ip_type_field_to_scheme,
+    Type::Bytes => wirefilter_add_bytes_type_field_to_scheme,
+    Type::Unsigned => wirefilter_add_unsigned_type_field_to_scheme,
 }
 
 #[no_mangle]
