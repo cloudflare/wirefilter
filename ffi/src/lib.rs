@@ -140,8 +140,13 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
 
 pub type ExecutionContext<'a> = Context<&'a str, LhsValue<'a>>;
 
+// NOTE: we bind lifetime of the ExecutionContext to the Scheme here to
+// get rid of unbounded lifetime.
+// See: https://doc.rust-lang.org/beta/nomicon/unbounded-lifetimes.html
 #[no_mangle]
-pub unsafe extern "C" fn wirefilter_create_execution_context<'a>() -> *mut ExecutionContext<'a> {
+pub unsafe extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
+    _scheme: &'s Scheme,
+) -> *mut ExecutionContext<'e> {
     Box::into_raw(Box::new(Context::default()))
 }
 
@@ -246,8 +251,9 @@ mod ffi_test {
         scheme
     }
 
-    fn create_execution_context() -> Box<ExecutionContext<'static>> {
-        let mut exec_context = unsafe { Box::from_raw(wirefilter_create_execution_context()) };
+    fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> Box<ExecutionContext<'e>> {
+        let mut exec_context =
+            unsafe { Box::from_raw(wirefilter_create_execution_context(scheme)) };
 
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
@@ -367,27 +373,31 @@ mod ffi_test {
     #[test]
     fn filter_matching() {
         let scheme = create_scheme();
-        let exec_context = create_execution_context();
 
-        assert!(match_filter(
-            r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
-            &scheme,
-            &exec_context
-        ));
+        {
+            let exec_context = create_execution_context(&scheme);
 
-        assert!(match_filter(
-            r#"ip2 == 0:0:0:0:0:ffff:c0a8:1 && (str1 == "Hey" || str2 == "ya")"#,
-            &scheme,
-            &exec_context
-        ));
+            assert!(match_filter(
+                r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
+                &scheme,
+                &exec_context
+            ));
 
-        assert!(!match_filter(
-            "ip1 == 127.0.0.1 && ip2 == 0:0:0:0:0:ffff:c0a8:2",
-            &scheme,
-            &exec_context
-        ));
+            assert!(match_filter(
+                r#"ip2 == 0:0:0:0:0:ffff:c0a8:1 && (str1 == "Hey" || str2 == "ya")"#,
+                &scheme,
+                &exec_context
+            ));
 
-        wirefilter_free_execution_context(Box::into_raw(exec_context));
+            assert!(!match_filter(
+                "ip1 == 127.0.0.1 && ip2 == 0:0:0:0:0:ffff:c0a8:2",
+                &scheme,
+                &exec_context
+            ));
+
+            wirefilter_free_execution_context(Box::into_raw(exec_context));
+        }
+
         wirefilter_free_scheme(Box::into_raw(scheme));
     }
 
