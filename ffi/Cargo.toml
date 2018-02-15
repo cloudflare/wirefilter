@@ -16,4 +16,4 @@ crate-type = ["cdylib"]
 name = "wirefilter"
 
 [package.metadata.deb]
-assets = [["../target/release/libwirefilter.so", "usr/local/lib/", "644"]]
+assets = [["target/release/libwirefilter.so", "usr/local/lib/", "644"]]
