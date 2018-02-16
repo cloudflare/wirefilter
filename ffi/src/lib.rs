@@ -192,6 +192,15 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
+    exec_context: &mut ExecutionContext<'a>,
+    name: ExternallyAllocatedByteArr<'a>,
+    value: bool,
+) {
+    exec_context.insert(name.into(), LhsValue::Bool(value));
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_match(filter: &Filter, exec_context: &ExecutionContext) -> bool {
     exec_context.execute(filter)
 }

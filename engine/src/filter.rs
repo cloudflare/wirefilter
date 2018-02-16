@@ -73,6 +73,16 @@ impl<'c, K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
 
         let input = input.trim_left();
 
+        if lhs_type == Type::Bool {
+            return Ok((
+                Filter::Op(
+                    lhs,
+                    FilterOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true)),
+                ),
+                input,
+            ));
+        }
+
         let (op, input) = if let Ok(input) = expect(input, "in") {
             let input = input.trim_left();
 
@@ -207,9 +217,9 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     }
                     FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-                    FilterOp::OneOf(ref values) => values.try_contains(lhs).unwrap_or_else(|()| {
-                        panic_type!(field, lhs, values)
-                    }),
+                    FilterOp::OneOf(ref values) => values
+                        .try_contains(lhs)
+                        .unwrap_or_else(|()| panic_type!(field, lhs, values)),
                 }
             }
             Filter::Combine(op, ref filters) => {
@@ -254,7 +264,7 @@ impl<'a> Filter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::types::LhsValue;
+    use types::LhsValue;
 
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -267,6 +277,7 @@ mod tests {
             ("http.host", Type::Bytes),
             ("port", Type::Unsigned),
             ("ip.src", Type::Ip),
+            ("isTCP", Type::Bool),
         ].iter()
             .cloned()
             .collect();
@@ -286,7 +297,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            context.parse("not ip.src in { 127.0.0.0/8 ::1/128 } and (port == 80) or port >= 1024"),
+            context.parse(
+                "not ip.src in { 127.0.0.0/8 ::1/128 } and (port == 80) and !isTCP or port >= 1024"
+            ),
             Ok(Filter::Combine(
                 CombiningOp::Or,
                 vec![
@@ -309,6 +322,13 @@ mod tests {
                             Filter::Op(
                                 Field::new("port"),
                                 FilterOp::Ordering(OrderingOp::Equal, RhsValue::Unsigned(80)),
+                            ),
+                            Filter::Unary(
+                                UnaryOp::Not,
+                                Box::new(Filter::Op(
+                                    Field::new("isTCP"),
+                                    FilterOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true)),
+                                )),
                             ),
                         ],
                     ),
@@ -338,5 +358,17 @@ mod tests {
         assert_filter(&context, "ip >= 127.0.0.1 and ip < 127.0.0.255", false);
         assert_filter(&context, "ip == 127.0.0.0/8", false);
         assert_filter(&context, "ip != 127.0.0.0/8", true);
+    }
+
+    #[test]
+    fn check_bool() {
+        let mut context = Context::default();
+        context.insert("true", LhsValue::Bool(true));
+        context.insert("false", LhsValue::Bool(false));
+
+        assert_filter(&context, "true", true);
+        assert_filter(&context, "not true", false);
+        assert_filter(&context, "false", false);
+        assert_filter(&context, "!false", true);
     }
 }

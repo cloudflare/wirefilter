@@ -118,8 +118,16 @@ macro_rules! declare_types {
     };
 }
 
+impl<'i> Lex<'i> for bool {
+    fn lex(_input: &str) -> LexResult<Self> {
+        // Boolean fields should be checked without parsing RHS value
+        unreachable!()
+    }
+}
+
 declare_types!(
     Ip(IpAddr | IpCidr),
     Bytes(Bytes<'a> | #[serde(borrow)] Bytes<'a>),
     Unsigned(u64 | u64),
+    Bool(bool | bool),
 );
