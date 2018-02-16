@@ -3,7 +3,7 @@ use lex::{expect, span, take_while, Lex, LexResult};
 use std::fmt;
 
 fn ident(input: &str) -> LexResult<&str> {
-    take_while(input, "alphanumeric character", char::is_alphanumeric)
+    take_while(input, "identifier character", |c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -47,15 +47,17 @@ fn test() {
 
     assert_ok!(Field::lex("x.y.z0-"), Field::new("x.y.z0"), "-");
 
+    assert_ok!(Field::lex("is_tcp"), Field::new("is_tcp"), "");
+
     assert_err!(
         Field::lex("x..y"),
-        LexErrorKind::ExpectedName("alphanumeric character"),
+        LexErrorKind::ExpectedName("identifier character"),
         ".y"
     );
 
     assert_err!(
         Field::lex("x.#"),
-        LexErrorKind::ExpectedName("alphanumeric character"),
+        LexErrorKind::ExpectedName("identifier character"),
         "#"
     );
 }
