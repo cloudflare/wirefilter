@@ -89,30 +89,13 @@ pub extern "C" fn wirefilter_free_scheme(scheme: *mut Scheme) {
     drop(unsafe { Box::from_raw(scheme) });
 }
 
-macro_rules! register_types_ffi {
-    ($($ty:path => $name:ident,)*) => {
-        fn _check_all_types_are_covered(ty: Type) {
-            match ty {
-                $($ty => {})*
-            }
-        }
-
-        $(
-            #[no_mangle]
-            pub extern "C" fn $name(
-                scheme: &mut Scheme,
-                name: ExternallyAllocatedByteArr,
-            ) {
-                scheme.insert(name.into(), $ty);
-            }
-        )*
-    };
-}
-
-register_types_ffi! {
-    Type::Ip => wirefilter_add_ip_type_field_to_scheme,
-    Type::Bytes => wirefilter_add_bytes_type_field_to_scheme,
-    Type::Unsigned => wirefilter_add_unsigned_type_field_to_scheme,
+#[no_mangle]
+pub extern "C" fn wirefilter_add_type_field_to_scheme(
+    scheme: &mut Scheme,
+    name: ExternallyAllocatedByteArr,
+    ty: Type,
+) {
+    scheme.insert(name.into(), ty)
 }
 
 #[no_mangle]
@@ -223,31 +206,37 @@ mod ffi_test {
     fn create_scheme() -> Box<Scheme> {
         let mut scheme = unsafe { Box::from_raw(wirefilter_create_scheme()) };
 
-        wirefilter_add_ip_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("ip1"),
+            Type::Ip,
         );
-        wirefilter_add_ip_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("ip2"),
+            Type::Ip,
         );
 
-        wirefilter_add_bytes_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("str1"),
+            Type::Bytes,
         );
-        wirefilter_add_bytes_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("str2"),
+            Type::Bytes,
         );
 
-        wirefilter_add_unsigned_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("num1"),
+            Type::Unsigned,
         );
-        wirefilter_add_unsigned_type_field_to_scheme(
+        wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("num2"),
+            Type::Unsigned,
         );
 
         scheme
