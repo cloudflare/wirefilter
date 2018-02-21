@@ -9,7 +9,7 @@ use libc::size_t;
 use std::cmp::max;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
 use wirefilter::{Bytes, Context, Filter};
 use wirefilter::lex::LexErrorKind;
@@ -175,20 +175,18 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: &[u16; 8],
+    value: [u8; 16],
 ) {
-    let ip = IpAddr::from(Ipv6Addr::from(*value));
-    exec_context.insert(name.into(), LhsValue::Ip(ip));
+    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(value)));
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: &[u8; 4],
+    value: [u8; 4],
 ) {
-    let ip = IpAddr::from(Ipv4Addr::from(*value));
-    exec_context.insert(name.into(), LhsValue::Ip(ip));
+    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(value)));
 }
 
 #[no_mangle]
@@ -258,13 +256,13 @@ mod ffi_test {
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("ip1"),
-            &[127, 0, 0, 1],
+            [127, 0, 0, 1],
         );
 
         wirefilter_add_ipv6_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("ip2"),
-            &[0, 0, 0, 0, 0, 0xffff, 0xc0a8, 1],
+            *b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xC0\xA8\x00\x01",
         );
 
         wirefilter_add_string_bytes_value_to_execution_context(
