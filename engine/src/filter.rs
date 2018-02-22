@@ -235,18 +235,18 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum FilterOp<'a> {
-    Ordering(OrderingOp, #[serde(borrow)] RhsValue<'a>),
+    Ordering(OrderingOp, RhsValue<'a>),
     Unsigned(UnsignedOp, u64),
-    Contains(#[serde(borrow)] Bytes<'a>),
+    Contains(Bytes<'a>),
     Matches(Regex),
-    OneOf(#[serde(borrow)] RhsValues<'a>),
+    OneOf(RhsValues<'a>),
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Filter<'a> {
-    Op(#[serde(borrow)] Field<'a>, #[serde(borrow)] FilterOp<'a>),
+    Op(Field<'a>, FilterOp<'a>),
     Combine(CombiningOp, Vec<Filter<'a>>),
     Unary(UnaryOp, Box<Filter<'a>>),
 }

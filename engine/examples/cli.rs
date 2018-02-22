@@ -1,4 +1,3 @@
-extern crate serde_json;
 extern crate wirefilter;
 
 use wirefilter::Context;
@@ -6,7 +5,6 @@ use wirefilter::types::Type;
 
 use std::cmp::max;
 use std::env::args;
-use std::io::stdout;
 
 fn main() {
     let filter = args()
@@ -25,7 +23,6 @@ fn main() {
     match context.parse(&filter) {
         Ok(res) => {
             println!("{:#?}", res);
-            serde_json::to_writer(stdout(), &res).unwrap();
         }
         Err((err, span)) => {
             println!("`{}`", filter);

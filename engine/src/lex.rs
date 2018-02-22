@@ -7,9 +7,11 @@ use std::num::ParseIntError;
 
 #[derive(Debug, PartialEq, Fail)]
 pub enum LexErrorKind {
-    #[fail(display = "expected {}", _0)] ExpectedName(&'static str),
+    #[fail(display = "expected {}", _0)]
+    ExpectedName(&'static str),
 
-    #[fail(display = "expected literal {:?}", _0)] ExpectedLiteral(&'static str),
+    #[fail(display = "expected literal {:?}", _0)]
+    ExpectedLiteral(&'static str),
 
     #[fail(display = "{} while parsing with radix {}", err, radix)]
     ParseInt {
@@ -18,13 +20,17 @@ pub enum LexErrorKind {
         radix: u32,
     },
 
-    #[fail(display = "{}", _0)] ParseNetwork(#[cause] NetworkParseError),
+    #[fail(display = "{}", _0)]
+    ParseNetwork(#[cause] NetworkParseError),
 
-    #[fail(display = "{}", _0)] ParseRegex(#[cause] RegexError),
+    #[fail(display = "{}", _0)]
+    ParseRegex(#[cause] RegexError),
 
-    #[fail(display = "expected \", xHH or OOO after \\")] InvalidCharacterEscape,
+    #[fail(display = "expected \", xHH or OOO after \\")]
+    InvalidCharacterEscape,
 
-    #[fail(display = "could not find an ending quote")] MissingEndingQuote,
+    #[fail(display = "could not find an ending quote")]
+    MissingEndingQuote,
 
     #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
     CountMismatch {
@@ -33,15 +39,14 @@ pub enum LexErrorKind {
         expected: usize,
     },
 
-    #[fail(display = "unknown field")] UnknownField,
+    #[fail(display = "unknown field")]
+    UnknownField,
 
     #[fail(display = "cannot use operation {:?} on type {:?}", op, lhs)]
-    UnsupportedOp {
-        lhs: Type,
-        op: ComparisonOp,
-    },
+    UnsupportedOp { lhs: Type, op: ComparisonOp },
 
-    #[fail(display = "unrecognised input")] EOF,
+    #[fail(display = "unrecognised input")]
+    EOF,
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);
@@ -92,7 +97,7 @@ macro_rules! lex_enum {
     };
 
     (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
-        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+        #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
         $($preamble)*
         pub enum $name $decl
 

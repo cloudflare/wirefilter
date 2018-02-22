@@ -65,11 +65,11 @@ macro_rules! declare_types {
             $($name($lhs_ty),)*
         });
 
-        declare_types!(@enum #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)] RhsValue {
+        declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValue {
             $($(# $rhs_attrs)* $name($rhs_ty),)*
         });
 
-        declare_types!(@enum #[derive(Serialize, Deserialize, PartialEq, Eq, Hash)] RhsValues {
+        declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValues {
             $($(# $rhs_attrs)* $name(Vec<$rhs_ty>),)*
         });
 
@@ -127,7 +127,7 @@ impl<'i> Lex<'i> for bool {
 
 declare_types!(
     Ip(IpAddr | IpCidr),
-    Bytes(Bytes<'a> | #[serde(borrow)] Bytes<'a>),
+    Bytes(Bytes<'a> | Bytes<'a>),
     Unsigned(u64 | u64),
     Bool(bool | bool),
 );

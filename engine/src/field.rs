@@ -3,10 +3,12 @@ use lex::{expect, span, take_while, Lex, LexResult};
 use std::fmt;
 
 fn ident(input: &str) -> LexResult<&str> {
-    take_while(input, "identifier character", |c| c.is_ascii_alphanumeric() || c == '_')
+    take_while(input, "identifier character", |c| {
+        c.is_ascii_alphanumeric() || c == '_'
+    })
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Field<'a>(&'a str);
 
 impl<'a> fmt::Debug for Field<'a> {

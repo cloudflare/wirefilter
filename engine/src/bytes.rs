@@ -1,6 +1,4 @@
 use lex::{expect, hex_byte, oct_byte, Lex, LexErrorKind, LexResult};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{self, Visitor};
 
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
@@ -11,55 +9,6 @@ use std::str;
 pub enum Bytes<'a> {
     Str(Cow<'a, str>),
     Raw(Cow<'a, [u8]>),
-}
-
-impl<'a> Serialize for Bytes<'a> {
-    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        match *self {
-            Bytes::Str(ref s) => s.serialize(ser),
-            Bytes::Raw(ref b) => b.serialize(ser),
-        }
-    }
-}
-
-impl<'a, 'de: 'a> Deserialize<'de> for Bytes<'a> {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        struct BytesVisitor;
-
-        impl<'de> Visitor<'de> for BytesVisitor {
-            type Value = Bytes<'de>;
-
-            fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-                f.write_str("a byte buffer or a string")
-            }
-
-            fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Bytes<'de>, E> {
-                self.visit_byte_buf(v.into())
-            }
-
-            fn visit_borrowed_bytes<E: de::Error>(self, v: &'de [u8]) -> Result<Bytes<'de>, E> {
-                Ok(Bytes::from(v))
-            }
-
-            fn visit_byte_buf<E: de::Error>(self, v: Vec<u8>) -> Result<Bytes<'de>, E> {
-                Ok(Bytes::from(v))
-            }
-
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<Bytes<'de>, E> {
-                self.visit_string(v.into())
-            }
-
-            fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Bytes<'de>, E> {
-                Ok(Bytes::from(v))
-            }
-
-            fn visit_string<E: de::Error>(self, v: String) -> Result<Bytes<'de>, E> {
-                Ok(Bytes::from(v))
-            }
-        }
-
-        de.deserialize_byte_buf(BytesVisitor)
-    }
 }
 
 extern "C" {

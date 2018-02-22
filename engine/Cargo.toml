@@ -6,19 +6,11 @@ description = "Rust library for the Segments Filter engine"
 publish = false
 
 [dependencies]
-cidr = "0.0.4"
+cidr = { version = "0.0.4", default-features = false }
 failure = "0.1.1"
 fnv = "1.0.6"
 ordermap = "0.3.5"
 regex = "0.2.5"
-serde = "1.0.27"
-serde_bytes = "0.10.3"
-serde_derive = "1.0.27"
-
-[dev-dependencies]
-bincode = { git = "https://github.com/TyOverby/bincode", rev = "0bc2544" }
-serde_cbor = "0.8.2"
-serde_json = "1.0.9"
 
 [lib]
 name = "wirefilter"

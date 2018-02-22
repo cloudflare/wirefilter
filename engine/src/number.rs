@@ -100,74 +100,35 @@ fn test_number() {
 
 #[test]
 fn test_ranges() {
-    assert_ok!(
-        Ranges::lex("[1];"),
-        vec![
-            Range {
-                start: 1,
-                end: 1,
-            },
-        ],
-        ";"
-    );
-    assert_ok!(
-        Ranges::lex("[0:3];"),
-        vec![
-            Range {
-                start: 0,
-                end: 2,
-            },
-        ],
-        ";"
-    );
+    assert_ok!(Ranges::lex("[1];"), vec![Range { start: 1, end: 1 }], ";");
+    assert_ok!(Ranges::lex("[0:3];"), vec![Range { start: 0, end: 2 }], ";");
     assert_ok!(
         Ranges::lex("[-3];"),
-        vec![
-            Range {
-                start: -3,
-                end: -3,
-            },
-        ],
+        vec![Range { start: -3, end: -3 }],
         ";"
     );
-    assert_ok!(
-        Ranges::lex("[:]"),
-        vec![
-            Range {
-                start: 0,
-                end: -1,
-            },
-        ],
-        ""
-    );
+    assert_ok!(Ranges::lex("[:]"), vec![Range { start: 0, end: -1 }], "");
     assert_ok!(
         Ranges::lex("[1,:2,3-4,7:,9:10];"),
         vec![
-            Range {
-                start: 1,
-                end: 1,
-            },
-            Range {
-                start: 0,
-                end: 1,
-            },
-            Range {
-                start: 3,
-                end: 4,
-            },
-            Range {
-                start: 7,
-                end: -1,
-            },
-            Range {
-                start: 9,
-                end: 18,
-            },
+            Range { start: 1, end: 1 },
+            Range { start: 0, end: 1 },
+            Range { start: 3, end: 4 },
+            Range { start: 7, end: -1 },
+            Range { start: 9, end: 18 },
         ],
         ";"
     );
-    assert_err!(Ranges::lex("[1-]"), LexErrorKind::ExpectedName("digit"), "]");
-    assert_err!(Ranges::lex("[--9]"), LexErrorKind::ExpectedName("digit"), "-9]");
+    assert_err!(
+        Ranges::lex("[1-]"),
+        LexErrorKind::ExpectedName("digit"),
+        "]"
+    );
+    assert_err!(
+        Ranges::lex("[--9]"),
+        LexErrorKind::ExpectedName("digit"),
+        "-9]"
+    );
     assert_err!(Ranges::lex("[-]"), LexErrorKind::ExpectedName("digit"), "]");
     assert_err!(Ranges::lex("[]"), LexErrorKind::ExpectedName("digit"), "]");
 }

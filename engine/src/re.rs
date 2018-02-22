@@ -1,8 +1,5 @@
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::Error as DeError;
 
-use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
@@ -51,19 +48,6 @@ impl Hash for Regex {
 impl Debug for Regex {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl Serialize for Regex {
-    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        self.as_str().serialize(ser)
-    }
-}
-
-impl<'de> Deserialize<'de> for Regex {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Regex, D::Error> {
-        let src = <Cow<str>>::deserialize(de)?;
-        Regex::new(&src).map_err(D::Error::custom)
     }
 }
 
