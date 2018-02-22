@@ -21,10 +21,10 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
 }
 
 macro_rules! declare_types {
-    (@enum $(# $attrs:tt)* $name:ident { $($(# $variant_attrs:tt)* $variant:ident ( $ty:ty ) , )* }) => {
+    (@enum $(# $attrs:tt)* $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
         pub enum $name<'a> {
-            $($(# $variant_attrs)* $variant($ty),)*
+            $($variant($ty),)*
         }
 
         impl<'a> GetType for $name<'a> {
@@ -44,7 +44,7 @@ macro_rules! declare_types {
         }
     };
 
-    ($($name:ident ( $lhs_ty:ty | $(# $rhs_attrs:tt)* $rhs_ty:ty ) , )*) => {
+    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty ) , )*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u8)]
         pub enum Type {
@@ -66,11 +66,11 @@ macro_rules! declare_types {
         });
 
         declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValue {
-            $($(# $rhs_attrs)* $name($rhs_ty),)*
+            $($name($rhs_ty),)*
         });
 
         declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValues {
-            $($(# $rhs_attrs)* $name(Vec<$rhs_ty>),)*
+            $($name(Vec<$rhs_ty>),)*
         });
 
         impl<'a> LhsValue<'a> {
