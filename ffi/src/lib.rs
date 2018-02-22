@@ -11,7 +11,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
-use wirefilter::{Bytes, Context, Filter};
+use wirefilter::{Context, Filter};
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
 
@@ -150,25 +150,13 @@ pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_string_bytes_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
-    value: ExternallyAllocatedByteArr<'a>,
-) {
-    let slice: &'a str = value.into();
-    let bytes = Bytes::from(slice);
-    exec_context.insert(name.into(), LhsValue::Bytes(bytes));
-}
-
-#[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &'a [u8] = value.into();
-    let bytes = Bytes::from(slice);
-    exec_context.insert(name.into(), LhsValue::Bytes(bytes));
+    exec_context.insert(name.into(), LhsValue::Bytes(slice.into()));
 }
 
 #[no_mangle]
@@ -265,7 +253,7 @@ mod ffi_test {
             *b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xC0\xA8\x00\x01",
         );
 
-        wirefilter_add_string_bytes_value_to_execution_context(
+        wirefilter_add_bytes_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("str1"),
             ExternallyAllocatedByteArr::from("Hey"),
@@ -355,7 +343,7 @@ mod ffi_test {
                             Field::new("str2"),
                             FilterOp::Ordering(
                                 OrderingOp::Equal,
-                                RhsValue::Bytes(Bytes::from("abc")),
+                                RhsValue::Bytes("abc".to_owned().into()),
                             ),
                         ),
                     ]

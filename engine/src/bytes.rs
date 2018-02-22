@@ -1,56 +1,28 @@
 use lex::{expect, hex_byte, oct_byte, Lex, LexErrorKind, LexResult};
 
-use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
 use std::str;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub enum Bytes<'a> {
-    Str(Cow<'a, str>),
-    Raw(Cow<'a, [u8]>),
+pub enum Bytes {
+    Str(Box<str>),
+    Raw(Box<[u8]>),
 }
 
-extern "C" {
-    fn memmem(
-        haystack: *const u8,
-        haystack_len: usize,
-        needle: *const u8,
-        needle_len: usize,
-    ) -> *const u8;
-}
-
-impl<'a> Bytes<'a> {
-    pub fn contains(&self, rhs: &[u8]) -> bool {
-        unsafe { !memmem(self.as_ptr(), self.len(), rhs.as_ptr(), rhs.len()).is_null() }
-    }
-}
-
-impl<'a> From<&'a [u8]> for Bytes<'a> {
-    fn from(src: &'a [u8]) -> Self {
-        Bytes::Raw(Cow::from(src))
-    }
-}
-
-impl<'a> From<Vec<u8>> for Bytes<'a> {
+impl From<Vec<u8>> for Bytes {
     fn from(src: Vec<u8>) -> Self {
-        Bytes::Raw(Cow::from(src))
+        Bytes::Raw(src.into_boxed_slice())
     }
 }
 
-impl<'a> From<&'a str> for Bytes<'a> {
-    fn from(src: &'a str) -> Self {
-        Bytes::Str(Cow::from(src))
-    }
-}
-
-impl<'a> From<String> for Bytes<'a> {
+impl From<String> for Bytes {
     fn from(src: String) -> Self {
-        Bytes::Str(Cow::from(src))
+        Bytes::Str(src.into_boxed_str())
     }
 }
 
-impl<'a> Debug for Bytes<'a> {
+impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Bytes::Str(ref s) => s.fmt(f),
@@ -67,7 +39,7 @@ impl<'a> Debug for Bytes<'a> {
     }
 }
 
-impl<'a> Deref for Bytes<'a> {
+impl Deref for Bytes {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
@@ -84,7 +56,7 @@ lex_enum!(ByteSeparator {
     "." => Dot,
 });
 
-impl<'a, 'i> Lex<'i> for Bytes<'a> {
+impl<'i> Lex<'i> for Bytes {
     fn lex(mut input: &str) -> LexResult<Self> {
         if let Ok(input) = expect(input, "\"") {
             let mut res = String::new();

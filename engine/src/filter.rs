@@ -195,6 +195,26 @@ macro_rules! cast_field {
     };
 }
 
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    extern "C" {
+        fn memmem(
+            haystack: *const u8,
+            haystack_len: usize,
+            needle: *const u8,
+            needle_len: usize,
+        ) -> *const u8;
+    }
+
+    unsafe {
+        !memmem(
+            haystack.as_ptr(),
+            haystack.len(),
+            needle.as_ptr(),
+            needle.len(),
+        ).is_null()
+    }
+}
+
 impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
     fn get_field(&self, field: Field) -> &LhsValue<'a> {
         self.fields
@@ -215,7 +235,7 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
-                    FilterOp::Contains(ref rhs) => cast_field!(field, lhs, Bytes).contains(rhs),
+                    FilterOp::Contains(ref rhs) => contains(cast_field!(field, lhs, Bytes), rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
                     FilterOp::OneOf(ref values) => values
                         .try_contains(lhs)
@@ -236,17 +256,17 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub enum FilterOp<'a> {
-    Ordering(OrderingOp, RhsValue<'a>),
+pub enum FilterOp {
+    Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
-    Contains(Bytes<'a>),
+    Contains(Bytes),
     Matches(Regex),
-    OneOf(RhsValues<'a>),
+    OneOf(RhsValues),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Filter<'a> {
-    Op(Field<'a>, FilterOp<'a>),
+    Op(Field<'a>, FilterOp),
     Combine(CombiningOp, Vec<Filter<'a>>),
     Unary(UnaryOp, Box<Filter<'a>>),
 }
@@ -286,7 +306,7 @@ mod tests {
             context.parse("http.host contains \"t\""),
             Ok(Filter::Op(
                 Field::new("http.host"),
-                FilterOp::Contains(Bytes::from("t"))
+                FilterOp::Contains(Bytes::from("t".to_owned()))
             ))
         );
         assert_eq!(

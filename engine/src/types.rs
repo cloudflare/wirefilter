@@ -4,8 +4,10 @@ use lex::{Lex, LexResult};
 use lex::expect;
 use op::OrderingOp;
 
+use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 use std::net::IpAddr;
+use std::ops::Deref;
 
 fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
     let mut input = expect(input, "{")?.trim_left();
@@ -21,13 +23,13 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
 }
 
 macro_rules! declare_types {
-    (@enum $(# $attrs:tt)* $name:ident { $($variant:ident ( $ty:ty ) , )* }) => {
+    (@enum $(# $attrs:tt)* $name:ident $(<$lt:tt>)* { $($variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
-        pub enum $name<'a> {
+        pub enum $name $(<$lt>)* {
             $($variant($ty),)*
         }
 
-        impl<'a> GetType for $name<'a> {
+        impl $(<$lt>)* GetType for $name $(<$lt>)* {
             fn get_type(&self) -> Type {
                 match *self {
                     $($name::$variant(_) => Type::$variant,)*
@@ -35,7 +37,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'a> Debug for $name<'a> {
+        impl $(<$lt>)* Debug for $name $(<$lt>)* {
             fn fmt(&self, f: &mut Formatter) -> fmt::Result {
                 match *self {
                     $($name::$variant(ref inner) => Debug::fmt(inner, f),)*
@@ -61,7 +63,7 @@ macro_rules! declare_types {
             }
         }
 
-        declare_types!(@enum #[repr(u8)] #[derive(Clone)] LhsValue {
+        declare_types!(@enum #[repr(u8)] #[derive(Clone)] LhsValue<'a> {
             $($name($lhs_ty),)*
         });
 
@@ -77,7 +79,7 @@ macro_rules! declare_types {
             pub fn try_cmp(&self, op: OrderingOp, other: &RhsValue) -> Result<bool, ()> {
                 let opt_ordering = match (self, other) {
                     $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => {
-                        lhs.partial_cmp(rhs)
+                        lhs.deref().partial_cmp(rhs.deref())
                     },)*
                     _ => return Err(()),
                 };
@@ -85,7 +87,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'a> RhsValue<'a> {
+        impl RhsValue {
             pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
@@ -96,7 +98,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'a> RhsValues<'a> {
+        impl RhsValues {
             pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
@@ -109,7 +111,7 @@ macro_rules! declare_types {
             pub fn try_contains(&self, lhs: &LhsValue) -> Result<bool, ()> {
                 Ok(match (self, lhs) {
                     $((&RhsValues::$name(ref values), &LhsValue::$name(ref lhs)) => {
-                        values.iter().any(|rhs| lhs == rhs)
+                        values.iter().any(|rhs| lhs.deref() == rhs.deref())
                     })*
                     _ => return Err(()),
                 })
@@ -127,7 +129,7 @@ impl<'i> Lex<'i> for bool {
 
 declare_types!(
     Ip(IpAddr | IpCidr),
-    Bytes(Bytes<'a> | Bytes<'a>),
+    Bytes(Cow<'a, [u8]> | Bytes),
     Unsigned(u64 | u64),
     Bool(bool | bool),
 );

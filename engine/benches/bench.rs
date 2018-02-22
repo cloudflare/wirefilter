@@ -4,7 +4,7 @@ extern crate test;
 extern crate wirefilter;
 
 use test::{black_box, Bencher};
-use wirefilter::{Context, Filter};
+use wirefilter::Context;
 use wirefilter::types::Type;
 
 #[bench]
