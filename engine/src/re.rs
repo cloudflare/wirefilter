@@ -1,14 +1,17 @@
+use bytes::Bytes;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
 
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
 
 pub struct Regex(::regex::bytes::Regex);
 
 impl Regex {
     pub fn new(s: &str) -> Result<Self, ::regex::Error> {
-        Self::from_str(s)
+        ::regex::bytes::RegexBuilder::new(s)
+            .unicode(false)
+            .build()
+            .map(Regex)
     }
 
     pub fn is_match(&self, text: &[u8]) -> bool {
@@ -20,14 +23,20 @@ impl Regex {
     }
 }
 
-impl FromStr for Regex {
-    type Err = ::regex::Error;
+impl From<Bytes> for Regex {
+    fn from(bytes: Bytes) -> Self {
+        use std::fmt::Write;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ::regex::bytes::RegexBuilder::new(s)
-            .unicode(false)
-            .build()
-            .map(Regex)
+        Regex::new(&match bytes {
+            Bytes::Raw(ref bytes) => {
+                let mut regex_str = String::with_capacity(bytes.len() * 5);
+                for b in bytes.iter() {
+                    write!(regex_str, r"\x{:02X}", b).unwrap();
+                }
+                regex_str
+            }
+            Bytes::Str(ref s) => format!("(?u){}", ::regex::escape(s)),
+        }).unwrap() // can't fail because it's escaped
     }
 }
 
@@ -88,7 +97,7 @@ impl<'i> Lex<'i> for Regex {
                 };
             }
         };
-        match regex_buf.parse() {
+        match Regex::new(&regex_buf) {
             Ok(regex) => Ok((regex, input)),
             Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }

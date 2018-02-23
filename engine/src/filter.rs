@@ -103,16 +103,16 @@ impl<'c, K: Borrow<str> + Hash + Eq, T: GetType> Context<K, T> {
                     let (rhs, input) = u64::lex(input)?;
                     (FilterOp::Unsigned(op, rhs), input)
                 }
-                (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
-                    BytesOp::Contains => {
-                        let (rhs, input) = Bytes::lex(input)?;
-                        (FilterOp::Contains(rhs), input)
-                    }
-                    BytesOp::Matches => {
-                        let (rhs, input) = Regex::lex(input)?;
-                        (FilterOp::Matches(rhs), input)
-                    }
-                },
+                (Type::Bytes, ComparisonOp::Bytes(op)) => {
+                    let (regex, input) = match op {
+                        BytesOp::Contains => {
+                            let (rhs, input) = Bytes::lex(input)?;
+                            (Regex::from(rhs), input)
+                        }
+                        BytesOp::Matches => Regex::lex(input)?,
+                    };
+                    (FilterOp::Matches(regex), input)
+                }
                 (lhs, op) => {
                     return Err((
                         LexErrorKind::UnsupportedOp { lhs, op },
@@ -195,26 +195,6 @@ macro_rules! cast_field {
     };
 }
 
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    extern "C" {
-        fn memmem(
-            haystack: *const u8,
-            haystack_len: usize,
-            needle: *const u8,
-            needle_len: usize,
-        ) -> *const u8;
-    }
-
-    unsafe {
-        !memmem(
-            haystack.as_ptr(),
-            haystack.len(),
-            needle.as_ptr(),
-            needle.len(),
-        ).is_null()
-    }
-}
-
 impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
     fn get_field(&self, field: Field) -> &LhsValue<'a> {
         self.fields
@@ -235,7 +215,6 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
-                    FilterOp::Contains(ref rhs) => contains(cast_field!(field, lhs, Bytes), rhs),
                     FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
                     FilterOp::OneOf(ref values) => values
                         .try_contains(lhs)
@@ -259,7 +238,6 @@ impl<'a, K: Borrow<str> + Hash + Eq, V: Borrow<LhsValue<'a>>> Context<K, V> {
 pub enum FilterOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
-    Contains(Bytes),
     Matches(Regex),
     OneOf(RhsValues),
 }
@@ -303,10 +281,25 @@ mod tests {
             .collect();
 
         assert_eq!(
-            context.parse("http.host contains \"t\""),
-            Ok(Filter::Op(
-                Field::new("http.host"),
-                FilterOp::Contains(Bytes::from("t".to_owned()))
+            context.parse(
+                r#"http.host contains "t" or http.host contains E0:BE or http.host matches "^\d+""#
+            ),
+            Ok(Filter::Combine(
+                CombiningOp::Or,
+                vec![
+                    Filter::Op(
+                        Field::new("http.host"),
+                        FilterOp::Matches(Regex::new(r"(?u)t").unwrap()),
+                    ),
+                    Filter::Op(
+                        Field::new("http.host"),
+                        FilterOp::Matches(Regex::new(r"\xE0\xBE").unwrap()),
+                    ),
+                    Filter::Op(
+                        Field::new("http.host"),
+                        FilterOp::Matches(Regex::new(r"^\d+").unwrap()),
+                    ),
+                ]
             ))
         );
         assert_eq!(
