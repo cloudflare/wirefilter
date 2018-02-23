@@ -2,6 +2,7 @@ everything: &everything
   build:
     builddeps: &builddeps
       - rust
+      - cargo-deb
     pre-cache-copy-paths: &paths
       - engine/Cargo.toml
       - ffi/Cargo.toml
@@ -10,7 +11,6 @@ everything: &everything
       - cfsetup-cargo.sh
     pre-cache:
       - ./cfsetup-cargo.sh prebuild --release
-      - ./cfsetup-cargo.sh install cargo-deb
     post-cache:
       - cd ffi
       - sudo ../cfsetup-cargo.sh build --release --frozen
