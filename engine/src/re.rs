@@ -29,7 +29,7 @@ impl From<Bytes> for Regex {
 
         Regex::new(&match bytes {
             Bytes::Raw(ref bytes) => {
-                let mut regex_str = String::with_capacity(bytes.len() * 5);
+                let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
                 for b in bytes.iter() {
                     write!(regex_str, r"\x{:02X}", b).unwrap();
                 }
