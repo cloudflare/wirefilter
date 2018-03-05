@@ -2,6 +2,9 @@ extern crate fnv;
 extern crate libc;
 extern crate wirefilter;
 
+#[cfg(test)]
+extern crate regex;
+
 mod transfer_types;
 
 use fnv::FnvHasher;
@@ -10,10 +13,15 @@ use std::cmp::max;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
-use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString};
+use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
 use wirefilter::{Context, Filter};
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
+
+#[cfg(test)]
+use regex::Regex;
+
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 pub struct ParseError<'a> {
     msg: String,
@@ -189,6 +197,11 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
 #[no_mangle]
 pub extern "C" fn wirefilter_match(filter: &Filter, exec_context: &ExecutionContext) -> bool {
     exec_context.execute(filter)
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
+    StaticRustAllocatedString::from(VERSION)
 }
 
 #[cfg(test)]
@@ -415,5 +428,13 @@ mod ffi_test {
         }
 
         wirefilter_free_scheme(Box::into_raw(scheme));
+    }
+
+    #[test]
+    fn get_version() {
+        let version = wirefilter_get_version();
+        let re = Regex::new(r"\d+\.\d+\.\d+").unwrap();
+
+        assert!(re.is_match(version.as_str()));
     }
 }

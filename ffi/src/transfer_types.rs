@@ -8,8 +8,8 @@ pub struct RustAllocatedString {
 }
 
 impl From<String> for RustAllocatedString {
-    fn from(raw: String) -> Self {
-        let bytes = raw.into_boxed_str().into_boxed_bytes();
+    fn from(string: String) -> Self {
+        let bytes = string.into_boxed_str().into_boxed_bytes();
         let raw = Box::into_raw(bytes);
 
         unsafe {
@@ -30,13 +30,35 @@ impl Drop for RustAllocatedString {
     }
 }
 
-#[cfg(test)]
-impl RustAllocatedString {
-    pub fn as_str(&self) -> &str {
-        let slice = unsafe { slice::from_raw_parts(self.data, self.length) };
-        str::from_utf8(slice).unwrap()
+#[repr(C)]
+pub struct StaticRustAllocatedString {
+    data: *const u8,
+    length: size_t,
+}
+
+impl From<&'static str> for StaticRustAllocatedString {
+    fn from(string: &'static str) -> Self {
+        StaticRustAllocatedString {
+            data: string.as_bytes().as_ptr(),
+            length: string.len(),
+        }
     }
 }
+
+macro_rules! add_as_str_for_tests {
+    ($type:ident) => {
+        #[cfg(test)]
+        impl $type {
+            pub fn as_str(&self) -> &str {
+                let slice = unsafe { slice::from_raw_parts(self.data, self.length) };
+                str::from_utf8(slice).unwrap()
+            }
+        }
+    };
+}
+
+add_as_str_for_tests!(StaticRustAllocatedString);
+add_as_str_for_tests!(RustAllocatedString);
 
 #[repr(C)]
 pub struct ExternallyAllocatedByteArr<'a> {
@@ -65,17 +87,17 @@ impl<'a> Into<&'a [u8]> for ExternallyAllocatedByteArr<'a> {
 
 #[cfg(test)]
 impl From<&'static [u8]> for ExternallyAllocatedByteArr<'static> {
-    fn from(raw: &'static [u8]) -> Self {
+    fn from(bytes: &'static [u8]) -> Self {
         ExternallyAllocatedByteArr {
-            data: unsafe { &*raw.as_ptr() },
-            length: raw.len(),
+            data: unsafe { &*bytes.as_ptr() },
+            length: bytes.len(),
         }
     }
 }
 
 #[cfg(test)]
 impl From<&'static str> for ExternallyAllocatedByteArr<'static> {
-    fn from(raw: &'static str) -> Self {
-        ExternallyAllocatedByteArr::from(raw.as_bytes())
+    fn from(string: &'static str) -> Self {
+        ExternallyAllocatedByteArr::from(string.as_bytes())
     }
 }

@@ -9,6 +9,9 @@ publish = false
 fnv = "1.0.6"
 libc = "0.2.36"
 
+[dev-dependencies]
+regex = "0.2.5"
+
 [dependencies.wirefilter-engine]
 path = "../engine"
 
