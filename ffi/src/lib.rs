@@ -445,7 +445,7 @@ mod ffi_test {
         let version = wirefilter_get_version();
         let re = Regex::new(r"\d+\.\d+\.\d+").unwrap();
 
-        assert!(re.is_match(version.as_str()));
+        assert!(re.is_match(version.into()));
     }
 
     #[test]
