@@ -6,8 +6,6 @@ export CARGO_TARGET_DIR=$CARGO_HOME/target
 CMD=$1
 shift
 
-PARAMS="-q $@"
-
 set -x
 
 case $CMD in
@@ -20,13 +18,13 @@ case $CMD in
 		touch {engine,ffi}/src/lib.rs
 
 		# Build library with Cargo.lock (including all the dependencies)
-		cargo build --locked --all $PARAMS
+		cargo build --locked --all $@
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi $PARAMS
+		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi $@
 		;;
 	*)
 		# Execute any other command without special params but in same env
-		cargo $CMD $PARAMS
+		cargo $CMD $@
 		;;
 esac
