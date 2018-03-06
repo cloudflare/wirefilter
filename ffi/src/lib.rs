@@ -15,6 +15,7 @@ use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
 use wirefilter::{Context, Filter};
+use wirefilter::Field;
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
 
@@ -197,6 +198,15 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
 #[no_mangle]
 pub extern "C" fn wirefilter_match(filter: &Filter, exec_context: &ExecutionContext) -> bool {
     exec_context.execute(filter)
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_filter_uses(
+    filter: &Filter,
+    field_name: ExternallyAllocatedByteArr,
+) -> bool {
+    let field = Field::new(field_name.into());
+    filter.uses(field)
 }
 
 #[no_mangle]
@@ -436,5 +446,46 @@ mod ffi_test {
         let re = Regex::new(r"\d+\.\d+\.\d+").unwrap();
 
         assert!(re.is_match(version.as_str()));
+    }
+
+    #[test]
+    fn filter_uses() {
+        let scheme = create_scheme();
+
+        {
+            let (filter, parsing_result) = create_filter(
+                &scheme,
+                r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
+            );
+
+            assert!(wirefilter_filter_uses(
+                filter,
+                ExternallyAllocatedByteArr::from("num1")
+            ));
+
+            assert!(wirefilter_filter_uses(
+                filter,
+                ExternallyAllocatedByteArr::from("ip1")
+            ));
+
+            assert!(wirefilter_filter_uses(
+                filter,
+                ExternallyAllocatedByteArr::from("str2")
+            ));
+
+            assert!(!wirefilter_filter_uses(
+                filter,
+                ExternallyAllocatedByteArr::from("str1")
+            ));
+
+            assert!(!wirefilter_filter_uses(
+                filter,
+                ExternallyAllocatedByteArr::from("ip2")
+            ));
+
+            wirefilter_free_parsing_result(parsing_result);
+        }
+
+        wirefilter_free_scheme(Box::into_raw(scheme));
     }
 }
