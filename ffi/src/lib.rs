@@ -172,18 +172,18 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: [u8; 16],
+    value: &[u8; 16],
 ) {
-    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(value)));
+    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(*value)));
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: [u8; 4],
+    value: &[u8; 4],
 ) {
-    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(value)));
+    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(*value)));
 }
 
 #[no_mangle]
@@ -267,13 +267,13 @@ mod ffi_test {
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("ip1"),
-            [127, 0, 0, 1],
+            &[127, 0, 0, 1],
         );
 
         wirefilter_add_ipv6_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("ip2"),
-            *b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xC0\xA8\x00\x01",
+            b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xC0\xA8\x00\x01",
         );
 
         wirefilter_add_bytes_value_to_execution_context(
