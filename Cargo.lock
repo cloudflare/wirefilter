@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "wirefilter-ffi"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.36 (registry+https://github.com/rust-lang/crates.io-index)",
