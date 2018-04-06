@@ -1,0 +1,9 @@
+ip.addr == 127.0.0.1
+ip.addr == 2001:0db8:85a3:0000:0000:8a2e:0370:7334
+ip.geoip.asnum == "AS30992"
+ip.geoip.country == "VN"
+http.user_agent == "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)"
+http.host == "example.org"
+http.host == "example.org" and http.request.uri.path ~ "^/static/.*"
+(tcp.port == 443 or ssl) and http.host == "example.org"
+http.host == "example.org" and http.cookie contains "access_token="
