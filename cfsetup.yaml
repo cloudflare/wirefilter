@@ -1,5 +1,5 @@
 everything: &everything
-  build:
+  build: &build
     builddeps: &builddeps
       - rust
       - cargo-deb
@@ -17,6 +17,9 @@ everything: &everything
       - sudo ../cfsetup-cargo.sh deb --no-build
     artifacts:
       - /var/lib/cargo/target/debian/*.deb
+  build-arm64:
+    <<: *build
+    target-arch: arm64
   test:
     builddeps: *builddeps
     pre-cache-copy-paths: *paths
@@ -32,5 +35,6 @@ everything: &everything
     pre-cache: *test-pre-cache
     post-cache:
       - sudo ./cfsetup-cargo.sh test --frozen | cargo-to-teamcity
-jessie: *everything
+
 stretch: *everything
+jessie: *everything
