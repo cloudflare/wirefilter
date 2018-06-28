@@ -16,6 +16,7 @@ fn main() {
         ("str", Type::Bytes),
         ("bytes", Type::Bytes),
         ("unsigned", Type::Unsigned),
+        ("bool", Type::Bool),
     ].iter()
         .cloned()
         .collect();
