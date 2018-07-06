@@ -17,8 +17,12 @@ mod number;
 pub mod op;
 mod re;
 pub mod types;
+mod scheme;
+mod execution_context;
 
 pub use self::bytes::Bytes;
+pub use self::execution_context::ExecutionContext;
 pub use self::field::Field;
-pub use self::filter::{Context, Filter, FilterOp};
+pub use self::filter::{Filter, FilterOp};
 pub use self::re::Regex;
+pub use self::scheme::Scheme;

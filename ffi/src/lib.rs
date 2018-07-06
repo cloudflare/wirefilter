@@ -14,7 +14,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
-use wirefilter::{Context, Filter};
+use wirefilter::{ExecutionContext, Filter, Scheme};
 use wirefilter::Field;
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
@@ -86,11 +86,9 @@ impl<'a> Drop for ParsingResult<'a> {
     }
 }
 
-pub type Scheme = Context<String, Type>;
-
 #[no_mangle]
 pub unsafe extern "C" fn wirefilter_create_scheme() -> *mut Scheme {
-    Box::into_raw(Box::new(Context::default()))
+    Box::into_raw(Box::new(Scheme::default()))
 }
 
 #[no_mangle]
@@ -104,7 +102,7 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
     name: ExternallyAllocatedByteArr,
     ty: Type,
 ) {
-    scheme.insert(name.into(), ty)
+    scheme.add_field(name.into(), ty)
 }
 
 #[no_mangle]
@@ -132,8 +130,6 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
     hasher.finish()
 }
 
-pub type ExecutionContext<'a> = Context<&'a str, LhsValue<'a>>;
-
 // NOTE: we bind lifetime of the ExecutionContext to the Scheme here to
 // get rid of unbounded lifetime.
 // See: https://doc.rust-lang.org/beta/nomicon/unbounded-lifetimes.html
@@ -141,7 +137,7 @@ pub type ExecutionContext<'a> = Context<&'a str, LhsValue<'a>>;
 pub unsafe extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
     _scheme: &'s Scheme,
 ) -> *mut ExecutionContext<'e> {
-    Box::into_raw(Box::new(Context::default()))
+    Box::into_raw(Box::new(ExecutionContext::default()))
 }
 
 #[no_mangle]
@@ -155,7 +151,7 @@ pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: u64,
 ) {
-    exec_context.insert(name.into(), LhsValue::Unsigned(value));
+    exec_context.set_field_value(name.into(), LhsValue::Unsigned(value));
 }
 
 #[no_mangle]
@@ -165,7 +161,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &'a [u8] = value.into();
-    exec_context.insert(name.into(), LhsValue::Bytes(slice.into()));
+    exec_context.set_field_value(name.into(), LhsValue::Bytes(slice.into()));
 }
 
 #[no_mangle]
@@ -174,7 +170,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: &[u8; 16],
 ) {
-    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(*value)));
+    exec_context.set_field_value(name.into(), LhsValue::Ip(IpAddr::from(*value)));
 }
 
 #[no_mangle]
@@ -183,7 +179,7 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: &[u8; 4],
 ) {
-    exec_context.insert(name.into(), LhsValue::Ip(IpAddr::from(*value)));
+    exec_context.set_field_value(name.into(), LhsValue::Ip(IpAddr::from(*value)));
 }
 
 #[no_mangle]
@@ -192,7 +188,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: bool,
 ) {
-    exec_context.insert(name.into(), LhsValue::Bool(value));
+    exec_context.set_field_value(name.into(), LhsValue::Bool(value));
 }
 
 #[no_mangle]

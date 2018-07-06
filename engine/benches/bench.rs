@@ -6,11 +6,10 @@ extern crate wirefilter;
 use std::net::IpAddr;
 use std::str::FromStr;
 use test::{black_box, Bencher};
-use wirefilter::Context;
-use wirefilter::Filter;
+use wirefilter::{ExecutionContext, Filter, Scheme};
 use wirefilter::types::{LhsValue, Type};
 
-fn create_scheme() -> Context<&'static str, Type> {
+fn create_scheme() -> Scheme {
     [
         ("http.cookie", Type::Bytes),
         ("http.host", Type::Bytes),
@@ -23,10 +22,11 @@ fn create_scheme() -> Context<&'static str, Type> {
         ("tcp.port", Type::Unsigned),
     ].iter()
         .cloned()
+        .map(|(k, t)| (k.to_owned(), t))
         .collect()
 }
 
-fn create_exec_contexts() -> Vec<Context<&'static str, LhsValue<'static>>> {
+fn create_exec_contexts() -> Vec<ExecutionContext<'static>> {
     [
         [
             (
@@ -103,7 +103,7 @@ fn create_exec_contexts() -> Vec<Context<&'static str, LhsValue<'static>>> {
         .collect()
 }
 
-fn parse_filters<'c>(scheme: &'c Context<&'static str, Type>) -> Vec<Filter<'c>> {
+fn parse_filters<'s>(scheme: &'s Scheme) -> Vec<Filter<'s>> {
     include_str!("filters.dat")
         .split_terminator("\n")
         .map(|src| scheme.parse(src).unwrap())
