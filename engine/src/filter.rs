@@ -12,8 +12,14 @@ pub enum FilterOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
+pub struct FilterField<'a> {
+    pub field: Field<'a>,
+    pub index: usize,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum Filter<'a> {
-    Op(Field<'a>, FilterOp),
+    Op(FilterField<'a>, FilterOp),
     Combine(CombiningOp, Vec<Filter<'a>>),
     Unary(UnaryOp, Box<Filter<'a>>),
 }
@@ -21,7 +27,7 @@ pub enum Filter<'a> {
 impl<'a> Filter<'a> {
     pub fn uses(&self, field: Field) -> bool {
         match self {
-            Filter::Op(lhs, ..) => field == *lhs,
+            Filter::Op(FilterField { field: lhs, .. }, ..) => field == *lhs,
             Filter::Combine(_, filters) => filters.iter().any(|filter| filter.uses(field)),
             Filter::Unary(_, filter) => filter.uses(field),
         }

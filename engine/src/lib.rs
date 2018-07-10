@@ -24,7 +24,7 @@ pub use self::{
     bytes::Bytes,
     execution_context::ExecutionContext,
     field::Field,
-    filter::{Filter, FilterOp},
+    filter::{Filter, FilterField, FilterOp},
     re::Regex,
     scheme::Scheme,
 };

@@ -1,4 +1,4 @@
-use filter::{Filter, FilterOp};
+use filter::{Filter, FilterField, FilterOp};
 use op::{CombiningOp, UnaryOp, UnsignedOp};
 use scheme::Scheme;
 use types::{GetType, LhsValue, Type};
@@ -31,14 +31,6 @@ impl<'a> ExecutionContext<'a> {
             .unwrap_or_else(|| panic!("Could not find previously registered field {}", name))
     }
 
-    pub fn get_field_value(&self, name: &str) -> &LhsValue<'a> {
-        let (index, name, _ty) = self.get_scheme_entry(name);
-
-        self.values[index]
-            .as_ref()
-            .unwrap_or_else(|| panic!("Field {} was registered but not given a value", name))
-    }
-
     pub fn set_field_value(&mut self, name: &str, value: LhsValue<'a>) {
         let (index, name, prev_ty) = self.get_scheme_entry(name);
         let cur_ty = value.get_type();
@@ -55,8 +47,10 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn execute(&self, filter: &Filter) -> bool {
         match filter {
-            Filter::Op(field, op) => {
-                let lhs = self.get_field_value(field.path());
+            Filter::Op(FilterField { field, index }, op) => {
+                let lhs = self.values[*index].as_ref().unwrap_or_else(|| {
+                    panic!("Field {:?} was registered but not given a value", field)
+                });
 
                 match op {
                     FilterOp::Ordering(op, rhs) => lhs.try_cmp(*op, rhs).unwrap(),

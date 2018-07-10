@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use field::Field;
-use filter::{Filter, FilterOp};
+use filter::{Filter, FilterField, FilterOp};
 use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
@@ -49,12 +49,16 @@ impl<'s> Scheme {
 
         let (lhs, input) = Field::lex(input)?;
 
-        let (_, lhs, lhs_type) = self
+        let (index, lhs, lhs_type) = self
             .fields
             .get_full(lhs.path())
             .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?;
 
-        let lhs = Field::new(lhs.borrow());
+        let lhs = FilterField {
+            field: Field::new(lhs.borrow()),
+            index,
+        };
+
         let lhs_type = lhs_type.get_type();
 
         let input = input.trim_left();
@@ -208,15 +212,24 @@ mod tests {
                 CombiningOp::Or,
                 vec![
                     Filter::Op(
-                        Field::new("http.host"),
+                        FilterField {
+                            field: Field::new("http.host"),
+                            index: 0,
+                        },
                         FilterOp::Matches(Regex::new(r"(?u)t").unwrap()),
                     ),
                     Filter::Op(
-                        Field::new("http.host"),
+                        FilterField {
+                            field: Field::new("http.host"),
+                            index: 0,
+                        },
                         FilterOp::Matches(Regex::new(r"\xE0\xBE").unwrap()),
                     ),
                     Filter::Op(
-                        Field::new("http.host"),
+                        FilterField {
+                            field: Field::new("http.host"),
+                            index: 0,
+                        },
                         FilterOp::Matches(Regex::new(r"^\d+").unwrap()),
                     ),
                 ]
@@ -225,7 +238,10 @@ mod tests {
         assert_eq!(
             context.parse("port in { 80 443 }"),
             Ok(Filter::Op(
-                Field::new("port"),
+                FilterField {
+                    field: Field::new("port"),
+                    index: 1
+                },
                 FilterOp::OneOf(RhsValues::Unsigned(vec![80, 443]))
             ))
         );
@@ -242,7 +258,10 @@ mod tests {
                             Filter::Unary(
                                 UnaryOp::Not,
                                 Box::new(Filter::Op(
-                                    Field::new("ip.src"),
+                                    FilterField {
+                                        field: Field::new("ip.src"),
+                                        index: 2,
+                                    },
                                     FilterOp::OneOf(RhsValues::Ip(vec![
                                         IpCidr::V4(
                                             Ipv4Cidr::new(Ipv4Addr::new(127, 0, 0, 0), 8).unwrap(),
@@ -253,20 +272,29 @@ mod tests {
                                 )),
                             ),
                             Filter::Op(
-                                Field::new("port"),
+                                FilterField {
+                                    field: Field::new("port"),
+                                    index: 1,
+                                },
                                 FilterOp::Ordering(OrderingOp::Equal, RhsValue::Unsigned(80)),
                             ),
                             Filter::Unary(
                                 UnaryOp::Not,
                                 Box::new(Filter::Op(
-                                    Field::new("isTCP"),
+                                    FilterField {
+                                        field: Field::new("isTCP"),
+                                        index: 3,
+                                    },
                                     FilterOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true)),
                                 )),
                             ),
                         ],
                     ),
                     Filter::Op(
-                        Field::new("port"),
+                        FilterField {
+                            field: Field::new("port"),
+                            index: 1,
+                        },
                         FilterOp::Ordering(OrderingOp::GreaterThanEqual, RhsValue::Unsigned(1024)),
                     ),
                 ]

@@ -214,7 +214,7 @@ mod ffi_test {
     use wirefilter::{
         op::{CombiningOp, OrderingOp},
         types::RhsValue,
-        Field, FilterOp,
+        FilterField, FilterOp,
     };
 
     fn create_scheme() -> Box<Scheme> {
@@ -355,11 +355,17 @@ mod ffi_test {
                     CombiningOp::And,
                     vec![
                         Filter::Op(
-                            Field::new("num1"),
+                            FilterField {
+                                field: Field::new("num1"),
+                                index: 4,
+                            },
                             FilterOp::Ordering(OrderingOp::GreaterThan, RhsValue::Unsigned(3)),
                         ),
                         Filter::Op(
-                            Field::new("str2"),
+                            FilterField {
+                                field: Field::new("str2"),
+                                index: 3,
+                            },
                             FilterOp::Ordering(
                                 OrderingOp::Equal,
                                 RhsValue::Bytes("abc".to_owned().into()),
