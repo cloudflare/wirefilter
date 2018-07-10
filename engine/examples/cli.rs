@@ -1,7 +1,7 @@
 extern crate wirefilter;
 
-use wirefilter::Scheme;
 use wirefilter::types::Type;
+use wirefilter::Scheme;
 
 use std::cmp::max;
 use std::env::args;

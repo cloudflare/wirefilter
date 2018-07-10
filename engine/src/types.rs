@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use ip_addr::IpCidr;
-use lex::{Lex, LexResult};
 use lex::expect;
+use lex::{Lex, LexResult};
 use op::OrderingOp;
 
 use std::borrow::Cow;

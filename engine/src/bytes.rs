@@ -62,7 +62,8 @@ impl<'i> Lex<'i> for Bytes {
             let mut res = String::new();
             let mut iter = input.chars();
             loop {
-                match iter.next()
+                match iter
+                    .next()
                     .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
                 {
                     '\\' => {

@@ -10,15 +10,15 @@ extern crate regex;
 pub mod lex;
 
 mod bytes;
+mod execution_context;
 mod field;
 mod filter;
 mod ip_addr;
 mod number;
 pub mod op;
 mod re;
-pub mod types;
 mod scheme;
-mod execution_context;
+pub mod types;
 
 pub use self::bytes::Bytes;
 pub use self::execution_context::ExecutionContext;

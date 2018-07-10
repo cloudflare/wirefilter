@@ -51,7 +51,8 @@ impl<'c> Scheme {
 
         let (lhs, input) = Field::lex(input)?;
 
-        let (_, lhs, lhs_type) = self.fields
+        let (_, lhs, lhs_type) = self
+            .fields
             .get_full(lhs.path())
             .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?;
 

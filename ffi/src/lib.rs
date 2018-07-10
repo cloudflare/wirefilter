@@ -14,10 +14,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
-use wirefilter::{ExecutionContext, Filter, Scheme};
-use wirefilter::Field;
 use wirefilter::lex::LexErrorKind;
 use wirefilter::types::{LhsValue, Type};
+use wirefilter::Field;
+use wirefilter::{ExecutionContext, Filter, Scheme};
 
 #[cfg(test)]
 use regex::Regex;
@@ -213,9 +213,9 @@ pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
 #[cfg(test)]
 mod ffi_test {
     use super::*;
-    use wirefilter::{Field, FilterOp};
     use wirefilter::op::{CombiningOp, OrderingOp};
     use wirefilter::types::RhsValue;
+    use wirefilter::{Field, FilterOp};
 
     fn create_scheme() -> Box<Scheme> {
         let mut scheme = unsafe { Box::from_raw(wirefilter_create_scheme()) };

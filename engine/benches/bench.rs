@@ -6,8 +6,8 @@ extern crate wirefilter;
 use std::net::IpAddr;
 use std::str::FromStr;
 use test::{black_box, Bencher};
-use wirefilter::{ExecutionContext, Filter, Scheme};
 use wirefilter::types::{LhsValue, Type};
+use wirefilter::{ExecutionContext, Filter, Scheme};
 
 fn create_scheme() -> Scheme {
     [

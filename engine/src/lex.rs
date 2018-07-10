@@ -32,7 +32,12 @@ pub enum LexErrorKind {
     #[fail(display = "could not find an ending quote")]
     MissingEndingQuote,
 
-    #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
+    #[fail(
+        display = "expected {} {}s, but found {}",
+        expected,
+        name,
+        actual
+    )]
     CountMismatch {
         name: &'static str,
         actual: usize,

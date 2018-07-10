@@ -36,7 +36,7 @@ macro_rules! cast_field {
     ($field:ident, $lhs:ident, $ty:ident) => {
         match $lhs {
             &LhsValue::$ty(ref value) => value,
-            other => panic_type!($field, other, Type::$ty)
+            other => panic_type!($field, other, Type::$ty),
         }
     };
 }
