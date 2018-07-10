@@ -26,9 +26,9 @@ fn create_scheme() -> Scheme {
         .collect()
 }
 
-fn create_exec_contexts() -> Vec<ExecutionContext<'static>> {
-    [
-        [
+fn create_exec_contexts(scheme: &Scheme) -> Vec<ExecutionContext> {
+    vec![
+        vec![
             (
                 "http.cookie",
                 LhsValue::Bytes(r#"test=321;access_token=123"#.as_bytes().into()),
@@ -63,7 +63,7 @@ fn create_exec_contexts() -> Vec<ExecutionContext<'static>> {
             ("ssl", LhsValue::Bool(true)),
             ("tcp.port", LhsValue::Unsigned(443)),
         ],
-        [
+        vec![
             (
                 "http.cookie",
                 LhsValue::Bytes(r#"foo=bar"#.as_bytes().into()),
@@ -98,8 +98,14 @@ fn create_exec_contexts() -> Vec<ExecutionContext<'static>> {
             ("ssl", LhsValue::Bool(false)),
             ("tcp.port", LhsValue::Unsigned(80)),
         ],
-    ].iter()
-        .map(|values| values.iter().cloned().collect())
+    ].into_iter()
+        .map(|values| {
+            let mut context = ExecutionContext::new(scheme);
+            for (name, value) in values {
+                context.set_field_value(name, value);
+            }
+            context
+        })
         .collect()
 }
 
@@ -123,7 +129,7 @@ fn parsing(b: &mut Bencher) {
 fn matching(b: &mut Bencher) {
     let scheme = create_scheme();
     let filters = parse_filters(&scheme);
-    let exec_contexts = create_exec_contexts();
+    let exec_contexts = create_exec_contexts(&scheme);
 
     b.iter(|| {
         for exec_ctx in exec_contexts.iter() {

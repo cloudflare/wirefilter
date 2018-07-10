@@ -1,52 +1,56 @@
 use filter::{Filter, FilterOp};
-use fnv::FnvBuildHasher;
-use indexmap::IndexMap;
 use op::{CombiningOp, UnaryOp, UnsignedOp};
-use std::iter::FromIterator;
+use scheme::Scheme;
 use types::{GetType, LhsValue, Type};
 
-#[derive(Default)]
 pub struct ExecutionContext<'a> {
-    values: IndexMap<&'a str, LhsValue<'a>, FnvBuildHasher>,
-}
-
-impl<'a> FromIterator<(&'a str, LhsValue<'a>)> for ExecutionContext<'a> {
-    fn from_iter<I: IntoIterator<Item = (&'a str, LhsValue<'a>)>>(iter: I) -> Self {
-        ExecutionContext {
-            values: IndexMap::from_iter(iter),
-        }
-    }
-}
-
-macro_rules! panic_type {
-    ($field:expr, $actual:expr, $expected:expr) => {
-        panic!(
-            "Field {:?} was previously registered with type {:?} but now contains {:?}",
-            $field,
-            $expected.get_type(),
-            $actual.get_type()
-        );
-    };
+    scheme: &'a Scheme,
+    values: Vec<Option<LhsValue<'a>>>,
 }
 
 macro_rules! cast_field {
     ($field:ident, $lhs:ident, $ty:ident) => {
         match $lhs {
             LhsValue::$ty(value) => value,
-            other => panic_type!($field, other, Type::$ty),
+            _ => unreachable!(),
         }
     };
 }
 
 impl<'a> ExecutionContext<'a> {
-    fn get_field_value(&self, field_name: &str) -> &LhsValue<'a> {
-        self.values
-            .get(field_name)
-            .unwrap_or_else(|| panic!("Could not find previously registered field {}", field_name))
+    pub fn new(scheme: &'a Scheme) -> Self {
+        ExecutionContext {
+            scheme,
+            values: vec![None; scheme.get_field_count()],
+        }
     }
 
-    pub fn set_field_value(&mut self, field_name: &'a str, value: LhsValue<'a>) {
-        self.values.insert(field_name, value);
+    fn get_scheme_entry(&self, name: &str) -> (usize, &'a str, Type) {
+        self.scheme
+            .get_field_entry(name)
+            .unwrap_or_else(|| panic!("Could not find previously registered field {}", name))
+    }
+
+    pub fn get_field_value(&self, name: &str) -> &LhsValue<'a> {
+        let (index, name, _ty) = self.get_scheme_entry(name);
+
+        self.values[index]
+            .as_ref()
+            .unwrap_or_else(|| panic!("Field {} was registered but not given a value", name))
+    }
+
+    pub fn set_field_value(&mut self, name: &str, value: LhsValue<'a>) {
+        let (index, name, prev_ty) = self.get_scheme_entry(name);
+        let cur_ty = value.get_type();
+
+        if prev_ty != cur_ty {
+            panic!(
+                "Field {} was previously registered with type {:?} but now contains {:?}",
+                name, prev_ty, cur_ty
+            );
+        }
+
+        self.values[index] = Some(value);
     }
 
     pub fn execute(&self, filter: &Filter) -> bool {
@@ -55,16 +59,12 @@ impl<'a> ExecutionContext<'a> {
                 let lhs = self.get_field_value(field.path());
 
                 match op {
-                    FilterOp::Ordering(op, rhs) => lhs.try_cmp(*op, rhs).unwrap_or_else(|()| {
-                        panic_type!(field, lhs, rhs);
-                    }),
+                    FilterOp::Ordering(op, rhs) => lhs.try_cmp(*op, rhs).unwrap(),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
                     FilterOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-                    FilterOp::OneOf(values) => values
-                        .try_contains(lhs)
-                        .unwrap_or_else(|()| panic_type!(field, lhs, values)),
+                    FilterOp::OneOf(values) => values.try_contains(lhs).unwrap(),
                 }
             }
             Filter::Combine(op, filters) => {
@@ -83,18 +83,11 @@ impl<'a> ExecutionContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::LhsValue;
 
-    use scheme::Scheme;
     use std::net::{IpAddr, Ipv6Addr};
 
-    fn assert_filter(
-        scheme: &Scheme,
-        execution_context: &ExecutionContext,
-        filter: &str,
-        expect: bool,
-    ) {
-        let filter = scheme.parse(filter).unwrap();
+    fn assert_filter(execution_context: &ExecutionContext, filter: &str, expect: bool) {
+        let filter = execution_context.scheme.parse(filter).unwrap();
         assert_eq!(execution_context.execute(&filter), expect);
     }
 
@@ -103,21 +96,20 @@ mod tests {
         let mut scheme = Scheme::default();
         scheme.add_field("ip".to_owned(), Type::Ip);
 
-        let mut execution_context = ExecutionContext::default();
+        let mut execution_context = ExecutionContext::new(&scheme);
         execution_context.set_field_value("ip", LhsValue::Ip(IpAddr::V6(Ipv6Addr::from(2))));
 
-        assert_filter(&scheme, &execution_context, "ip > ::1", true);
-        assert_filter(&scheme, &execution_context, "ip <= ::3", true);
-        assert_filter(&scheme, &execution_context, "ip > ::2", false);
-        assert_filter(&scheme, &execution_context, "ip < 127.0.0.3", false);
+        assert_filter(&execution_context, "ip > ::1", true);
+        assert_filter(&execution_context, "ip <= ::3", true);
+        assert_filter(&execution_context, "ip > ::2", false);
+        assert_filter(&execution_context, "ip < 127.0.0.3", false);
         assert_filter(
-            &scheme,
             &execution_context,
             "ip >= 127.0.0.1 and ip < 127.0.0.255",
             false,
         );
-        assert_filter(&scheme, &execution_context, "ip == 127.0.0.0/8", false);
-        assert_filter(&scheme, &execution_context, "ip != 127.0.0.0/8", true);
+        assert_filter(&execution_context, "ip == 127.0.0.0/8", false);
+        assert_filter(&execution_context, "ip != 127.0.0.0/8", true);
     }
 
     #[test]
@@ -126,13 +118,13 @@ mod tests {
         scheme.add_field("true".to_owned(), Type::Bool);
         scheme.add_field("false".to_owned(), Type::Bool);
 
-        let mut execution_context = ExecutionContext::default();
+        let mut execution_context = ExecutionContext::new(&scheme);
         execution_context.set_field_value("true", LhsValue::Bool(true));
         execution_context.set_field_value("false", LhsValue::Bool(false));
 
-        assert_filter(&scheme, &execution_context, "true", true);
-        assert_filter(&scheme, &execution_context, "not true", false);
-        assert_filter(&scheme, &execution_context, "false", false);
-        assert_filter(&scheme, &execution_context, "!false", true);
+        assert_filter(&execution_context, "true", true);
+        assert_filter(&execution_context, "not true", false);
+        assert_filter(&execution_context, "false", false);
+        assert_filter(&execution_context, "!false", true);
     }
 }

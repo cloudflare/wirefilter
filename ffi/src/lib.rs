@@ -130,14 +130,11 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
     hasher.finish()
 }
 
-// NOTE: we bind lifetime of the ExecutionContext to the Scheme here to
-// get rid of unbounded lifetime.
-// See: https://doc.rust-lang.org/beta/nomicon/unbounded-lifetimes.html
 #[no_mangle]
 pub unsafe extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
-    _scheme: &'s Scheme,
+    scheme: &'s Scheme,
 ) -> *mut ExecutionContext<'e> {
-    Box::into_raw(Box::new(ExecutionContext::default()))
+    Box::into_raw(Box::new(ExecutionContext::new(scheme)))
 }
 
 #[no_mangle]

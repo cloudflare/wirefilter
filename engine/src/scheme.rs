@@ -162,6 +162,16 @@ impl<'s> Scheme {
         self.fields.insert(name, ty);
     }
 
+    pub fn get_field_entry(&'s self, name: &str) -> Option<(usize, &'s str, Type)> {
+        self.fields
+            .get_full(name)
+            .map(|(index, name, ty)| (index, name.as_str(), *ty))
+    }
+
+    pub fn get_field_count(&self) -> usize {
+        self.fields.len()
+    }
+
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
         let (res, input) = self.combined_filter(input)?;
         if input.is_empty() {
