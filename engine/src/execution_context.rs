@@ -1,7 +1,7 @@
 use filter::{Filter, FilterField, FilterOp};
 use op::{CombiningOp, UnaryOp, UnsignedOp};
 use scheme::Scheme;
-use types::{GetType, LhsValue, Type};
+use types::{GetType, LhsValue};
 
 pub struct ExecutionContext<'a> {
     scheme: &'a Scheme,
@@ -25,14 +25,12 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
-    fn get_scheme_entry(&self, name: &str) -> (usize, &'a str, Type) {
-        self.scheme
-            .get_field_entry(name)
-            .unwrap_or_else(|| panic!("Could not find previously registered field {}", name))
-    }
-
     pub fn set_field_value(&mut self, name: &str, value: LhsValue<'a>) {
-        let (index, name, prev_ty) = self.get_scheme_entry(name);
+        let (FilterField { index, .. }, prev_ty) = self
+            .scheme
+            .get_field_entry(name)
+            .unwrap_or_else(|| panic!("Could not find previously registered field {}", name));
+
         let cur_ty = value.get_type();
 
         if prev_ty != cur_ty {
@@ -77,6 +75,7 @@ impl<'a> ExecutionContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use types::Type;
 
     use std::net::{IpAddr, Ipv6Addr};
 

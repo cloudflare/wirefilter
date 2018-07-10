@@ -166,10 +166,16 @@ impl<'s> Scheme {
         self.fields.insert(name, ty);
     }
 
-    pub fn get_field_entry(&'s self, name: &str) -> Option<(usize, &'s str, Type)> {
-        self.fields
-            .get_full(name)
-            .map(|(index, name, ty)| (index, name.as_str(), *ty))
+    pub fn get_field_entry(&'s self, name: &str) -> Option<(FilterField<'s>, Type)> {
+        self.fields.get_full(name).map(|(index, name, ty)| {
+            (
+                FilterField {
+                    index,
+                    field: Field::new(name.as_str()),
+                },
+                *ty,
+            )
+        })
     }
 
     pub fn get_field_count(&self) -> usize {
