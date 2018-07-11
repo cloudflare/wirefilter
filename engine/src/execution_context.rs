@@ -5,7 +5,7 @@ use types::{GetType, LhsValue};
 
 pub struct ExecutionContext<'a> {
     scheme: &'a Scheme,
-    values: Vec<Option<LhsValue<'a>>>,
+    values: Box<[Option<LhsValue<'a>>]>,
 }
 
 macro_rules! cast_field {
@@ -21,7 +21,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn new(scheme: &'a Scheme) -> Self {
         ExecutionContext {
             scheme,
-            values: vec![None; scheme.get_field_count()],
+            values: vec![None; scheme.get_field_count()].into(),
         }
     }
 
