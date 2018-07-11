@@ -6,8 +6,8 @@ use indexmap::IndexMap;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp};
 use re::Regex;
-use std::{borrow::Borrow, iter::FromIterator};
-use types::{GetType, RhsValue, RhsValues, Type};
+use std::iter::FromIterator;
+use types::{RhsValue, RhsValues, Type};
 
 #[derive(Default)]
 pub struct Scheme {
@@ -49,17 +49,9 @@ impl<'s> Scheme {
 
         let (lhs, input) = Field::lex(input)?;
 
-        let (index, lhs, lhs_type) = self
-            .fields
-            .get_full(lhs.path())
+        let (lhs, lhs_type) = self
+            .get_field_entry(lhs.path())
             .ok_or_else(|| (LexErrorKind::UnknownField, lhs.path()))?;
-
-        let lhs = FilterField {
-            field: Field::new(lhs.borrow()),
-            index,
-        };
-
-        let lhs_type = lhs_type.get_type();
 
         let input = input.trim_left();
 
