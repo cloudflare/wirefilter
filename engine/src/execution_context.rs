@@ -1,11 +1,9 @@
-use field::Field;
 use filter::{Filter, FilterOp};
 use fnv::FnvBuildHasher;
 use op::{CombiningOp, UnaryOp, UnsignedOp};
 use ordermap::OrderMap;
 use types::{GetType, LhsValue, Type};
 
-use std::borrow::Borrow;
 use std::iter::FromIterator;
 
 #[derive(Default)]
@@ -42,11 +40,10 @@ macro_rules! cast_field {
 }
 
 impl<'a> ExecutionContext<'a> {
-    fn get_field(&self, field: Field) -> &LhsValue<'a> {
+    fn get_field_value(&self, field_name: &str) -> &LhsValue<'a> {
         self.values
-            .get(field.path())
-            .unwrap_or_else(|| panic!("Could not find previously registered field {:?}", field))
-            .borrow()
+            .get(field_name)
+            .unwrap_or_else(|| panic!("Could not find previously registered field {}", field_name))
     }
 
     pub fn set_field_value(&mut self, field_name: &'a str, value: LhsValue<'a>) {
@@ -56,7 +53,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn execute(&self, filter: &Filter) -> bool {
         match *filter {
             Filter::Op(field, ref op) => {
-                let lhs = self.get_field(field);
+                let lhs = self.get_field_value(field.path());
 
                 match *op {
                     FilterOp::Ordering(op, ref rhs) => lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
