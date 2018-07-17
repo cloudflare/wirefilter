@@ -3,7 +3,7 @@ extern crate failure;
 
 extern crate cidr;
 extern crate fnv;
-extern crate ordermap;
+extern crate indexmap;
 extern crate regex;
 
 #[macro_use]

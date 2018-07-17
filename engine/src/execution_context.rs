@@ -1,20 +1,20 @@
 use filter::{Filter, FilterOp};
 use fnv::FnvBuildHasher;
+use indexmap::IndexMap;
 use op::{CombiningOp, UnaryOp, UnsignedOp};
-use ordermap::OrderMap;
 use types::{GetType, LhsValue, Type};
 
 use std::iter::FromIterator;
 
 #[derive(Default)]
 pub struct ExecutionContext<'a> {
-    values: OrderMap<&'a str, LhsValue<'a>, FnvBuildHasher>,
+    values: IndexMap<&'a str, LhsValue<'a>, FnvBuildHasher>,
 }
 
 impl<'a> FromIterator<(&'a str, LhsValue<'a>)> for ExecutionContext<'a> {
     fn from_iter<I: IntoIterator<Item = (&'a str, LhsValue<'a>)>>(iter: I) -> Self {
         ExecutionContext {
-            values: OrderMap::from_iter(iter),
+            values: IndexMap::from_iter(iter),
         }
     }
 }

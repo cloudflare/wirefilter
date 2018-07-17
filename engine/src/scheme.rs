@@ -2,9 +2,9 @@ use bytes::Bytes;
 use field::Field;
 use filter::{Filter, FilterOp};
 use fnv::FnvBuildHasher;
+use indexmap::IndexMap;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp};
-use ordermap::OrderMap;
 use re::Regex;
 use types::{GetType, RhsValue, RhsValues, Type};
 
@@ -13,13 +13,13 @@ use std::iter::FromIterator;
 
 #[derive(Default)]
 pub struct Scheme {
-    fields: OrderMap<String, Type, FnvBuildHasher>,
+    fields: IndexMap<String, Type, FnvBuildHasher>,
 }
 
 impl FromIterator<(String, Type)> for Scheme {
     fn from_iter<I: IntoIterator<Item = (String, Type)>>(iter: I) -> Self {
         Scheme {
-            fields: OrderMap::from_iter(iter),
+            fields: IndexMap::from_iter(iter),
         }
     }
 }
