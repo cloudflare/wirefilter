@@ -31,8 +31,8 @@ fn combining_op(input: &str) -> (Option<CombiningOp>, &str) {
     }
 }
 
-impl<'c> Scheme {
-    fn simple_filter<'i>(&'c self, input: &'i str) -> LexResult<'i, Filter<'c>> {
+impl<'s> Scheme {
+    fn simple_filter<'i>(&'s self, input: &'i str) -> LexResult<'i, Filter<'s>> {
         if let Ok((op, input)) = UnaryOp::lex(input) {
             let input = input.trim_left();
             let (arg, input) = self.simple_filter(input)?;
@@ -116,11 +116,11 @@ impl<'c> Scheme {
     }
 
     fn filter_prec<'i>(
-        &'c self,
-        mut lhs: Filter<'c>,
+        &'s self,
+        mut lhs: Filter<'s>,
         min_prec: Option<CombiningOp>,
         mut lookahead: (Option<CombiningOp>, &'i str),
-    ) -> LexResult<'i, Filter<'c>> {
+    ) -> LexResult<'i, Filter<'s>> {
         while let Some(op) = lookahead.0 {
             let mut rhs = self.simple_filter(lookahead.1)?;
             loop {
@@ -147,7 +147,7 @@ impl<'c> Scheme {
         Ok((lhs, lookahead.1))
     }
 
-    fn combined_filter<'i>(&'c self, input: &'i str) -> LexResult<'i, Filter<'c>> {
+    fn combined_filter<'i>(&'s self, input: &'i str) -> LexResult<'i, Filter<'s>> {
         let (lhs, input) = self.simple_filter(input)?;
         let lookahead = combining_op(input);
         self.filter_prec(lhs, None, lookahead)
@@ -157,7 +157,7 @@ impl<'c> Scheme {
         self.fields.insert(name, ty);
     }
 
-    pub fn parse<'i>(&'c self, input: &'i str) -> Result<Filter<'c>, LexError<'i>> {
+    pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
         let (res, input) = self.combined_filter(input)?;
         if input.is_empty() {
             Ok(res)
