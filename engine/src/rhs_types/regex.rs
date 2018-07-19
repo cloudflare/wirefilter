@@ -1,5 +1,5 @@
-use bytes::Bytes;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
+use rhs_types::Bytes;
 use std::{
     fmt::{self, Debug, Formatter, Write},
     hash::{Hash, Hasher},

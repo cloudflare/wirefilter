@@ -10,11 +10,8 @@ extern crate regex;
 mod lex;
 
 mod ast;
-mod bytes;
 mod execution_context;
-mod ip_addr;
-mod number;
-mod re;
+mod rhs_types;
 mod scheme;
 mod types;
 

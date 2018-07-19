@@ -1,6 +1,5 @@
-use bytes::Bytes;
-use ip_addr::IpCidr;
 use lex::{expect, Lex, LexResult};
+use rhs_types::{Bytes, IpCidr};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},

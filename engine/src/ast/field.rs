@@ -1,8 +1,7 @@
 use super::Expr;
-use bytes::Bytes;
 use execution_context::ExecutionContext;
 use lex::{span, Lex, LexErrorKind, LexResult};
-use re::Regex;
+use rhs_types::{Bytes, Regex};
 use scheme::{FieldIndex, Scheme};
 use std::cmp::Ordering;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
