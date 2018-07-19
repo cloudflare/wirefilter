@@ -1,4 +1,4 @@
-use lex::{expect, hex_byte, oct_byte, Lex, LexErrorKind, LexResult};
+use lex::{expect, take, Lex, LexErrorKind, LexResult};
 
 use std::fmt::{self, Debug, Formatter};
 use std::ops::Deref;
@@ -48,6 +48,22 @@ impl Deref for Bytes {
             Bytes::Raw(ref b) => b,
         }
     }
+}
+
+fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
+    let (digits, rest) = take(input, digits)?;
+    match u8::from_str_radix(digits, radix) {
+        Ok(b) => Ok((b, rest)),
+        Err(err) => Err((LexErrorKind::ParseInt { err, radix }, digits)),
+    }
+}
+
+fn hex_byte(input: &str) -> LexResult<u8> {
+    fixed_byte(input, 2, 16)
+}
+
+fn oct_byte(input: &str) -> LexResult<u8> {
+    fixed_byte(input, 3, 8)
 }
 
 lex_enum!(ByteSeparator {

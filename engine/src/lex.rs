@@ -164,22 +164,6 @@ pub fn take(input: &str, expected: usize) -> LexResult<&str> {
     }
 }
 
-fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
-    let (digits, rest) = take(input, digits)?;
-    match u8::from_str_radix(digits, radix) {
-        Ok(b) => Ok((b, rest)),
-        Err(err) => Err((LexErrorKind::ParseInt { err, radix }, digits)),
-    }
-}
-
-pub fn hex_byte(input: &str) -> LexResult<u8> {
-    fixed_byte(input, 2, 16)
-}
-
-pub fn oct_byte(input: &str) -> LexResult<u8> {
-    fixed_byte(input, 3, 8)
-}
-
 #[cfg(test)]
 macro_rules! assert_ok {
     ($s:expr, $res:expr, $rest:expr) => {
