@@ -7,24 +7,21 @@ extern crate indexmap;
 extern crate regex;
 
 #[macro_use]
-pub mod lex;
+mod lex;
 
+mod ast;
 mod bytes;
 mod execution_context;
-mod field;
-mod filter;
 mod ip_addr;
 mod number;
-pub mod op;
 mod re;
 mod scheme;
-pub mod types;
+mod types;
 
 pub use self::{
-    bytes::Bytes,
+    ast::Filter,
     execution_context::ExecutionContext,
-    field::Field,
-    filter::{Filter, FilterField, FilterOp},
-    re::Regex,
+    lex::{LexErrorKind, LexResult},
     scheme::Scheme,
+    types::{LhsValue, Type},
 };

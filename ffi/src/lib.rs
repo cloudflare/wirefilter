@@ -16,11 +16,7 @@ use std::{
     net::IpAddr,
 };
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
-use wirefilter::{
-    lex::LexErrorKind,
-    types::{LhsValue, Type},
-    ExecutionContext, Field, Filter, Scheme,
-};
+use wirefilter::{ExecutionContext, Filter, LexErrorKind, LhsValue, Scheme, Type};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -190,7 +186,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_match(filter: &Filter, exec_context: &ExecutionContext) -> bool {
-    exec_context.execute(filter)
+    filter.execute(exec_context)
 }
 
 #[no_mangle]
@@ -198,8 +194,7 @@ pub extern "C" fn wirefilter_filter_uses(
     filter: &Filter,
     field_name: ExternallyAllocatedByteArr,
 ) -> bool {
-    let field = Field::new(field_name.into());
-    filter.uses(field)
+    filter.uses(field_name.into())
 }
 
 #[no_mangle]
@@ -211,11 +206,6 @@ pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
 mod ffi_test {
     use super::*;
     use regex::Regex;
-    use wirefilter::{
-        op::{CombiningOp, OrderingOp},
-        types::RhsValue,
-        FilterField, FilterOp,
-    };
 
     fn create_scheme() -> Box<Scheme> {
         let mut scheme = unsafe { Box::from_raw(wirefilter_create_scheme()) };
@@ -347,34 +337,7 @@ mod ffi_test {
         let scheme = create_scheme();
 
         {
-            let (filter, parsing_result) = create_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
-
-            assert_eq!(
-                *filter,
-                Filter::Combine(
-                    CombiningOp::And,
-                    vec![
-                        Filter::Op(
-                            FilterField {
-                                field: Field::new("num1"),
-                                index: 4,
-                            },
-                            FilterOp::Ordering(OrderingOp::GreaterThan, RhsValue::Unsigned(3)),
-                        ),
-                        Filter::Op(
-                            FilterField {
-                                field: Field::new("str2"),
-                                index: 3,
-                            },
-                            FilterOp::Ordering(
-                                OrderingOp::Equal,
-                                RhsValue::Bytes("abc".to_owned().into()),
-                            ),
-                        ),
-                    ]
-                )
-            );
-
+            let (_filter, parsing_result) = create_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
             wirefilter_free_parsing_result(parsing_result);
         }
 

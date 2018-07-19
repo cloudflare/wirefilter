@@ -5,10 +5,7 @@ extern crate wirefilter;
 
 use std::{net::IpAddr, str::FromStr};
 use test::{black_box, Bencher};
-use wirefilter::{
-    types::{LhsValue, Type},
-    ExecutionContext, Filter, Scheme,
-};
+use wirefilter::{ExecutionContext, Filter, LhsValue, Scheme, Type};
 
 fn create_scheme() -> Scheme {
     [
@@ -134,7 +131,7 @@ fn matching(b: &mut Bencher) {
     b.iter(|| {
         for exec_ctx in exec_contexts.iter() {
             for filter in filters.iter() {
-                black_box(exec_ctx.execute(filter));
+                black_box(filter.execute(exec_ctx));
             }
         }
     });

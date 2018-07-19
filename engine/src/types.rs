@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use ip_addr::IpCidr;
 use lex::{expect, Lex, LexResult};
-use op::OrderingOp;
 use std::{
+    cmp::Ordering,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
     ops::Deref,
@@ -16,7 +16,7 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
         res.push(item);
         input = rest.trim_left();
         if let Ok(input) = expect(input, "}") {
-            return Ok((res, input.trim_left()));
+            return Ok((res, input));
         }
     }
 }
@@ -75,14 +75,13 @@ macro_rules! declare_types {
         });
 
         impl<'a> LhsValue<'a> {
-            pub fn try_cmp(&self, op: OrderingOp, other: &RhsValue) -> Result<bool, ()> {
-                let opt_ordering = match (self, other) {
+            pub fn try_cmp(&self, other: &RhsValue) -> Result<Option<Ordering>, ()> {
+                Ok(match (self, other) {
                     $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
                         lhs.deref().partial_cmp(rhs.deref())
                     },)*
                     _ => return Err(()),
-                };
-                Ok(op.matches_opt(opt_ordering))
+                })
             }
         }
 

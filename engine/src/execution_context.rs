@@ -1,35 +1,34 @@
-use filter::{Filter, FilterField, FilterOp};
-use op::{CombiningOp, UnaryOp, UnsignedOp};
 use scheme::Scheme;
 use types::{GetType, LhsValue};
 
-pub struct ExecutionContext<'a> {
-    scheme: &'a Scheme,
-    values: Box<[Option<LhsValue<'a>>]>,
+pub struct ExecutionContext<'e> {
+    scheme: &'e Scheme,
+    values: Box<[Option<LhsValue<'e>>]>,
 }
 
-macro_rules! cast_field {
-    ($field:ident, $lhs:ident, $ty:ident) => {
-        match $lhs {
-            LhsValue::$ty(value) => value,
-            _ => unreachable!(),
-        }
-    };
-}
-
-impl<'a> ExecutionContext<'a> {
-    pub fn new(scheme: &'a Scheme) -> Self {
+impl<'e> ExecutionContext<'e> {
+    pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self {
         ExecutionContext {
             scheme,
             values: vec![None; scheme.get_field_count()].into(),
         }
     }
 
-    pub fn set_field_value(&mut self, name: &str, value: LhsValue<'a>) {
-        let (FilterField { index, .. }, prev_ty) = self
+    pub fn scheme(&self) -> &'e Scheme {
+        self.scheme
+    }
+
+    pub fn get_field_value_unchecked(&self, index: usize) -> &LhsValue<'e> {
+        self.values[index].as_ref().unwrap_or_else(|| {
+            panic!("Field {} was registered but not given a value");
+        })
+    }
+
+    pub fn set_field_value(&mut self, name: &str, value: LhsValue<'e>) {
+        let (field, prev_ty) = self
             .scheme
             .get_field_entry(name)
-            .unwrap_or_else(|| panic!("Could not find previously registered field {}", name));
+            .unwrap_or_else(|| panic!("Field {} was not found in associated scheme", name));
 
         let cur_ty = value.get_type();
 
@@ -40,35 +39,7 @@ impl<'a> ExecutionContext<'a> {
             );
         }
 
-        self.values[index] = Some(value);
-    }
-
-    pub fn execute(&self, filter: &Filter) -> bool {
-        match filter {
-            Filter::Op(FilterField { field, index }, op) => {
-                let lhs = self.values[*index].as_ref().unwrap_or_else(|| {
-                    panic!("Field {:?} was registered but not given a value", field)
-                });
-
-                match op {
-                    FilterOp::Ordering(op, rhs) => lhs.try_cmp(*op, rhs).unwrap(),
-                    FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
-                        cast_field!(field, lhs, Unsigned) & rhs != 0
-                    }
-                    FilterOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-                    FilterOp::OneOf(values) => values.try_contains(lhs).unwrap(),
-                }
-            }
-            Filter::Combine(op, filters) => {
-                let mut results = filters.iter().map(|filter| self.execute(filter));
-                match op {
-                    CombiningOp::And => results.all(|res| res),
-                    CombiningOp::Or => results.any(|res| res),
-                    CombiningOp::Xor => results.fold(false, |acc, res| acc ^ res),
-                }
-            }
-            Filter::Unary(UnaryOp::Not, filter) => !self.execute(filter),
-        }
+        self.values[field.index()] = Some(value);
     }
 }
 
@@ -81,7 +52,7 @@ mod tests {
 
     fn assert_filter(execution_context: &ExecutionContext, filter: &str, expect: bool) {
         let filter = execution_context.scheme.parse(filter).unwrap();
-        assert_eq!(execution_context.execute(&filter), expect);
+        assert_eq!(filter.execute(execution_context), expect);
     }
 
     #[test]
