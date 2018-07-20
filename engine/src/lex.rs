@@ -173,9 +173,11 @@ pub fn complete<T>(res: LexResult<T>) -> Result<T, LexError> {
 
 #[cfg(test)]
 macro_rules! assert_ok {
-    ($s:expr, $res:expr, $rest:expr) => {
-        assert_eq!($s, Ok(($res, $rest)))
-    };
+    ($s:expr, $res:expr, $rest:expr) => {{
+        let expr = $s.unwrap();
+        assert_eq!(expr, ($res, $rest));
+        expr.0
+    }};
 
     ($s:expr, $res:expr) => {
         assert_ok!($s, $res, "")

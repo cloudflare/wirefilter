@@ -138,5 +138,5 @@ fn test() {
         Ipv6Cidr::new(Ipv6Addr::new(0x1234, 0, 0, 0, 0, 0, 0, 0x5678), 128)
             .unwrap()
             .into()
-    )
+    );
 }

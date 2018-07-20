@@ -163,7 +163,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 fn test() {
     use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
 
-    let scheme = &[
+    let scheme: &Scheme = &[
         ("http.host", Type::Bytes),
         ("ip.addr", Type::Ip),
         ("ssl", Type::Bool),
@@ -172,32 +172,64 @@ fn test() {
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 
-    assert_ok!(
-        FieldExpr::lex(scheme, "ssl"),
-        FieldExpr {
-            field: scheme.get_field_index("ssl").unwrap(),
-            op: FieldOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true))
-        }
-    );
+    let field = |name| scheme.get_field_index(name).unwrap();
 
-    assert_ok!(
-        FieldExpr::lex(scheme, "ip.addr >= 10:20:30:40:50:60:70:80"),
-        FieldExpr {
-            field: scheme.get_field_index("ip.addr").unwrap(),
-            op: FieldOp::Ordering(
-                OrderingOp::GreaterThanEqual,
-                RhsValue::Ip(
-                    Ipv6Cidr::new_host([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into())
-                        .into()
-                )
-            ),
-        }
-    );
+    let ctx = &mut ExecutionContext::new(scheme);
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, "ssl"),
+            FieldExpr {
+                field: field("ssl"),
+                op: FieldOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true))
+            }
+        );
+
+        ctx.set_field_value("ssl", LhsValue::Bool(true));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("ssl", LhsValue::Bool(false));
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, "ip.addr >= 10:20:30:40:50:60:70:80"),
+            FieldExpr {
+                field: field("ip.addr"),
+                op: FieldOp::Ordering(
+                    OrderingOp::GreaterThanEqual,
+                    RhsValue::Ip(
+                        Ipv6Cidr::new_host([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into())
+                            .into()
+                    )
+                ),
+            }
+        );
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 1].into()));
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value(
+            "ip.addr",
+            LhsValue::Ip([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()),
+        );
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value(
+            "ip.addr",
+            LhsValue::Ip([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81].into()),
+        );
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 1].into()));
+        assert_eq!(expr.execute(ctx), false);
+    }
 
     assert_ok!(
         FieldExpr::lex(scheme, "http.host >= 10:20:30:40:50:60:70:80"),
         FieldExpr {
-            field: scheme.get_field_index("http.host").unwrap(),
+            field: field("http.host"),
             op: FieldOp::Ordering(
                 OrderingOp::GreaterThanEqual,
                 RhsValue::Bytes(vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into())
@@ -205,65 +237,144 @@ fn test() {
         }
     );
 
-    assert_ok!(
-        FieldExpr::lex(scheme, "tcp.port & 1"),
-        FieldExpr {
-            field: scheme.get_field_index("tcp.port").unwrap(),
-            op: FieldOp::Unsigned(UnsignedOp::BitwiseAnd, 1),
-        }
-    );
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, "tcp.port & 1"),
+            FieldExpr {
+                field: field("tcp.port"),
+                op: FieldOp::Unsigned(UnsignedOp::BitwiseAnd, 1),
+            }
+        );
 
-    assert_ok!(
-        FieldExpr::lex(scheme, r#"http.host in { "example.org" "example.com" }"#),
-        FieldExpr {
-            field: scheme.get_field_index("http.host").unwrap(),
-            op: FieldOp::OneOf(RhsValues::Bytes(vec![
-                "example.org".to_owned().into(),
-                "example.com".to_owned().into(),
-            ])),
-        }
-    );
+        ctx.set_field_value("tcp.port", LhsValue::Unsigned(80));
+        assert_eq!(expr.execute(ctx), false);
 
-    assert_ok!(
-        FieldExpr::lex(scheme, r#"ip.addr in { 127.0.0.0/8 ::1 }"#),
-        FieldExpr {
-            field: scheme.get_field_index("ip.addr").unwrap(),
-            op: FieldOp::OneOf(RhsValues::Ip(vec![
-                Ipv4Cidr::new([127, 0, 0, 0].into(), 8).unwrap().into(),
-                Ipv6Cidr::new_host(1.into()).into(),
-            ])),
-        }
-    );
+        ctx.set_field_value("tcp.port", LhsValue::Unsigned(443));
+        assert_eq!(expr.execute(ctx), true);
+    }
 
-    assert_ok!(
-        FieldExpr::lex(scheme, r#"http.host contains "abc""#),
-        FieldExpr {
-            field: scheme.get_field_index("http.host").unwrap(),
-            op: FieldOp::Matches(Regex::new(r#"(?u)abc"#).unwrap())
-        }
-    );
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"http.host == "example.org""#),
+            FieldExpr {
+                field: field("http.host"),
+                op: FieldOp::Ordering(
+                    OrderingOp::Equal,
+                    RhsValue::Bytes("example.org".to_owned().into())
+                )
+            }
+        );
 
-    assert_ok!(
-        FieldExpr::lex(scheme, r#"http.host contains 1D:A4"#),
-        FieldExpr {
-            field: scheme.get_field_index("http.host").unwrap(),
-            op: FieldOp::Matches(Regex::new(r#"\x1D\xA4"#).unwrap())
-        }
-    );
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"http.host in { "example.org" "example.com" }"#),
+            FieldExpr {
+                field: field("http.host"),
+                op: FieldOp::OneOf(RhsValues::Bytes(vec![
+                    "example.org".to_owned().into(),
+                    "example.com".to_owned().into(),
+                ])),
+            }
+        );
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.net"[..].into()));
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"ip.addr in { 127.0.0.0/8 ::1 }"#),
+            FieldExpr {
+                field: field("ip.addr"),
+                op: FieldOp::OneOf(RhsValues::Ip(vec![
+                    Ipv4Cidr::new([127, 0, 0, 0].into(), 8).unwrap().into(),
+                    Ipv6Cidr::new_host(1.into()).into(),
+                ])),
+            }
+        );
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 1].into()));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 3].into()));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([255, 255, 255, 255].into()));
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 1].into()));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 2].into()));
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"http.host contains "abc""#),
+            FieldExpr {
+                field: field("http.host"),
+                op: FieldOp::Matches(Regex::new(r#"(?u)abc"#).unwrap())
+            }
+        );
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"abc.net.au"[..].into()));
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"http.host contains 6F:72:67"#),
+            FieldExpr {
+                field: field("http.host"),
+                op: FieldOp::Matches(Regex::new(r#"\x6F\x72\x67"#).unwrap())
+            }
+        );
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        assert_eq!(expr.execute(ctx), true);
+    }
 
     assert_ok!(
         FieldExpr::lex(scheme, r#"http.host < 12"#),
         FieldExpr {
-            field: scheme.get_field_index("http.host").unwrap(),
+            field: field("http.host"),
             op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Bytes(vec![0x12].into())),
         }
     );
 
-    assert_ok!(
-        FieldExpr::lex(scheme, r#"tcp.port < 12"#),
-        FieldExpr {
-            field: scheme.get_field_index("tcp.port").unwrap(),
-            op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Unsigned(12)),
-        }
-    );
+    {
+        let expr = assert_ok!(
+            FieldExpr::lex(scheme, r#"tcp.port < 8000"#),
+            FieldExpr {
+                field: field("tcp.port"),
+                op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Unsigned(8000)),
+            }
+        );
+
+        ctx.set_field_value("tcp.port", LhsValue::Unsigned(80));
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("tcp.port", LhsValue::Unsigned(8080));
+        assert_eq!(expr.execute(ctx), false);
+    }
 }
