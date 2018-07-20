@@ -105,15 +105,46 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
     }
 }
 
-// #[test]
-// fn test() {
-//     use lex::complete;
-//     use types::Type;
+#[test]
+fn test() {
+    use super::field::FieldExpr;
+    use lex::complete;
+    use types::Type;
 
-//     let scheme = &[("x", Type::Bool)]
-//         .iter()
-//         .map(|&(k, t)| (k.to_owned(), t))
-//         .collect();
+    let scheme = &[("x", Type::Bool)]
+        .iter()
+        .map(|&(k, t)| (k.to_owned(), t))
+        .collect();
 
-//     let field_expr = || CombinedExpr::Simple(SimpleExpr::Field(complete(FieldExpr::lex(scheme, "x")).unwrap()));
-// }
+    let field_expr = CombinedExpr::Simple(SimpleExpr::Field(
+        complete(FieldExpr::lex(scheme, "x")).unwrap(),
+    ));
+    let field_expr = || field_expr.clone();
+
+    assert_ok!(CombinedExpr::lex(scheme, "x"), field_expr());
+
+    assert_ok!(
+        CombinedExpr::lex(scheme, "x or x and x and x or x xor x and x or x"),
+        CombinedExpr::Combining {
+            op: CombiningOp::Or,
+            items: vec![
+                field_expr(),
+                CombinedExpr::Combining {
+                    op: CombiningOp::And,
+                    items: vec![field_expr(), field_expr(), field_expr()],
+                },
+                CombinedExpr::Combining {
+                    op: CombiningOp::Xor,
+                    items: vec![
+                        field_expr(),
+                        CombinedExpr::Combining {
+                            op: CombiningOp::And,
+                            items: vec![field_expr(), field_expr()],
+                        },
+                    ],
+                },
+                field_expr(),
+            ],
+        }
+    );
+}
