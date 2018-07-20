@@ -162,6 +162,15 @@ pub fn take(input: &str, expected: usize) -> LexResult<&str> {
     }
 }
 
+pub fn complete<T>(res: LexResult<T>) -> Result<T, LexError> {
+    let (res, input) = res?;
+    if input.is_empty() {
+        Ok(res)
+    } else {
+        Err((LexErrorKind::EOF, input))
+    }
+}
+
 #[cfg(test)]
 macro_rules! assert_ok {
     ($s:expr, $res:expr, $rest:expr) => {

@@ -1,7 +1,7 @@
 use ast::Filter;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
-use lex::{expect, span, take_while, LexError, LexErrorKind, LexResult};
+use lex::{complete, expect, span, take_while, LexError, LexErrorKind, LexResult};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -121,12 +121,7 @@ impl<'s> Scheme {
     }
 
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
-        let (res, input) = Filter::lex(self, input)?;
-        if input.is_empty() {
-            Ok(res)
-        } else {
-            Err((LexErrorKind::EOF, input))
-        }
+        complete(Filter::lex(self, input))
     }
 }
 
