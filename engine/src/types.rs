@@ -73,14 +73,20 @@ macro_rules! declare_types {
             $($name(Vec<$rhs_ty>),)*
         });
 
-        impl<'a> LhsValue<'a> {
-            pub fn try_cmp(&self, other: &RhsValue) -> Result<Option<Ordering>, ()> {
-                Ok(match (self, other) {
+        impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
+            fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
+                match (self, other) {
                     $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
                         lhs.deref().partial_cmp(rhs.deref())
                     },)*
-                    _ => return Err(()),
-                })
+                    _ => None,
+                }
+            }
+        }
+
+        impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
+            fn eq(&self, other: &RhsValue) -> bool {
+                self.partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 
@@ -105,13 +111,13 @@ macro_rules! declare_types {
                 })
             }
 
-            pub fn try_contains(&self, lhs: &LhsValue) -> Result<bool, ()> {
-                Ok(match (self, lhs) {
+            pub fn contains(&self, lhs: &LhsValue) -> bool {
+                match (self, lhs) {
                     $((RhsValues::$name(values), LhsValue::$name(lhs)) => {
                         values.iter().any(|rhs| lhs.deref() == rhs.deref())
                     })*
-                    _ => return Err(()),
-                })
+                    _ => false,
+                }
             }
         }
     };

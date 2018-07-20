@@ -149,12 +149,12 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = ctx.get_field_value_unchecked(self.field.index());
 
         match &self.op {
-            FieldOp::Ordering(op, rhs) => op.matches_opt(lhs.try_cmp(rhs).unwrap()),
+            FieldOp::Ordering(op, rhs) => op.matches_opt(lhs.partial_cmp(rhs)),
             FieldOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                 cast_field!(field, lhs, Unsigned) & rhs != 0
             }
             FieldOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-            FieldOp::OneOf(values) => values.try_contains(lhs).unwrap(),
+            FieldOp::OneOf(values) => values.contains(lhs),
         }
     }
 }
