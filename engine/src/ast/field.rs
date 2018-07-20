@@ -55,7 +55,7 @@ lex_enum!(ComparisonOp {
     BytesOp => Bytes,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 enum FieldOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
@@ -63,7 +63,7 @@ enum FieldOp {
     OneOf(RhsValues),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct FieldExpr<'s> {
     field: FieldIndex<'s>,
     op: FieldOp,

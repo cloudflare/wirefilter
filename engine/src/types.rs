@@ -65,11 +65,11 @@ macro_rules! declare_types {
             $($name($lhs_ty),)*
         });
 
-        declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValue {
+        declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValue {
             $($name($rhs_ty),)*
         });
 
-        declare_types!(@enum #[derive(PartialEq, Eq, Hash)] RhsValues {
+        declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValues {
             $($name(Vec<$rhs_ty>),)*
         });
 

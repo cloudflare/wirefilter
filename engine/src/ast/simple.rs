@@ -7,7 +7,7 @@ lex_enum!(UnaryOp {
     "not" | "!" => Not,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum SimpleExpr<'s> {
     Field(FieldExpr<'s>),
     Parenthesized(Box<CombinedExpr<'s>>),
@@ -70,7 +70,8 @@ fn test() {
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 
-    let field_expr = || SimpleExpr::Field(complete(FieldExpr::lex(scheme, "x")).unwrap());
+    let field_expr = SimpleExpr::Field(complete(FieldExpr::lex(scheme, "x")).unwrap());
+    let field_expr = || field_expr.clone();
 
     assert_ok!(SimpleExpr::lex(scheme, "x"), field_expr());
 

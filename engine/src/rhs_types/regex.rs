@@ -5,6 +5,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+#[derive(Clone)]
 pub struct Regex(::regex::bytes::Regex);
 
 impl Regex {

@@ -7,7 +7,7 @@ use std::{
     str::FromStr,
 };
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct IpCidr(::cidr::IpCidr);
 
 impl<T: Into<::cidr::IpCidr>> From<T> for IpCidr {
