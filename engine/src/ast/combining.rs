@@ -109,41 +109,137 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 fn test() {
     use super::field::FieldExpr;
     use lex::complete;
-    use types::Type;
+    use types::{LhsValue, Type};
 
-    let scheme = &[("x", Type::Bool)]
+    let scheme = &[("t", Type::Bool), ("f", Type::Bool)]
         .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 
-    let field_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex(scheme, "x")).unwrap(),
-    ));
-    let field_expr = || field_expr.clone();
+    let ctx = &mut ExecutionContext::new(scheme);
 
-    assert_ok!(CombinedExpr::lex(scheme, "x"), field_expr());
+    let t_expr = CombinedExpr::Simple(SimpleExpr::Field(
+        complete(FieldExpr::lex(scheme, "t")).unwrap(),
+    ));
+
+    let t_expr = || t_expr.clone();
+
+    let f_expr = CombinedExpr::Simple(SimpleExpr::Field(
+        complete(FieldExpr::lex(scheme, "f")).unwrap(),
+    ));
+
+    let f_expr = || f_expr.clone();
+
+    assert_ok!(CombinedExpr::lex(scheme, "t"), t_expr());
+
+    ctx.set_field_value("t", LhsValue::Bool(true));
+    ctx.set_field_value("f", LhsValue::Bool(false));
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "t and t"),
+            CombinedExpr::Combining {
+                op: CombiningOp::And,
+                items: vec![t_expr(), t_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "t and f"),
+            CombinedExpr::Combining {
+                op: CombiningOp::And,
+                items: vec![t_expr(), f_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "t or f"),
+            CombinedExpr::Combining {
+                op: CombiningOp::Or,
+                items: vec![t_expr(), f_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "f or f"),
+            CombinedExpr::Combining {
+                op: CombiningOp::Or,
+                items: vec![f_expr(), f_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "t xor f"),
+            CombinedExpr::Combining {
+                op: CombiningOp::Xor,
+                items: vec![t_expr(), f_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "f xor f"),
+            CombinedExpr::Combining {
+                op: CombiningOp::Xor,
+                items: vec![f_expr(), f_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex(scheme, "f xor t"),
+            CombinedExpr::Combining {
+                op: CombiningOp::Xor,
+                items: vec![f_expr(), t_expr()],
+            }
+        );
+
+        assert_eq!(expr.execute(ctx), true);
+    }
 
     assert_ok!(
-        CombinedExpr::lex(scheme, "x or x and x and x or x xor x and x or x"),
+        CombinedExpr::lex(scheme, "t or t && t and t or t ^^ t and t || t"),
         CombinedExpr::Combining {
             op: CombiningOp::Or,
             items: vec![
-                field_expr(),
+                t_expr(),
                 CombinedExpr::Combining {
                     op: CombiningOp::And,
-                    items: vec![field_expr(), field_expr(), field_expr()],
+                    items: vec![t_expr(), t_expr(), t_expr()],
                 },
                 CombinedExpr::Combining {
                     op: CombiningOp::Xor,
                     items: vec![
-                        field_expr(),
+                        t_expr(),
                         CombinedExpr::Combining {
                             op: CombiningOp::And,
-                            items: vec![field_expr(), field_expr()],
+                            items: vec![t_expr(), t_expr()],
                         },
                     ],
                 },
-                field_expr(),
+                t_expr(),
             ],
         }
     );
