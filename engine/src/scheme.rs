@@ -94,8 +94,15 @@ impl<'s> Scheme {
                 (Type::Bytes, ComparisonOp::Bytes(op)) => {
                     let (regex, input) = match op {
                         BytesOp::Contains => {
+                            let input_before_rhs = input;
                             let (rhs, input) = Bytes::lex(input)?;
-                            (Regex::from(rhs), input)
+                            let regex = Regex::try_from(rhs).map_err(|err| {
+                                // This is very, very, very unlikely as we're just converting
+                                // a literal into a regex and not using any repetitions etc.,
+                                // but better to be safe than sorry and report such error.
+                                (LexErrorKind::ParseRegex(err), span(input_before_rhs, input))
+                            })?;
+                            (regex, input)
                         }
                         BytesOp::Matches => Regex::lex(input)?,
                     };

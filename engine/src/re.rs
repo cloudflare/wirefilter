@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
 
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Formatter, Write};
 use std::hash::{Hash, Hasher};
 
 pub struct Regex(::regex::bytes::Regex);
@@ -18,15 +18,7 @@ impl Regex {
         self.0.is_match(text)
     }
 
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl From<Bytes> for Regex {
-    fn from(bytes: Bytes) -> Self {
-        use std::fmt::Write;
-
+    pub fn try_from(bytes: Bytes) -> Result<Self, ::regex::Error> {
         Regex::new(&match bytes {
             Bytes::Raw(bytes) => {
                 let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
@@ -36,7 +28,7 @@ impl From<Bytes> for Regex {
                 regex_str
             }
             Bytes::Str(s) => format!("(?u){}", ::regex::escape(&s)),
-        }).unwrap() // can't fail because it's escaped
+        })
     }
 }
 
