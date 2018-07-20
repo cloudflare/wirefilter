@@ -55,7 +55,7 @@ impl<'s> FieldIndex<'s> {
 
         let field = scheme
             .get_field_index(name)
-            .ok_or_else(|| (LexErrorKind::UnknownField, name))?;
+            .map_err(|err| (LexErrorKind::UnknownField(err), name))?;
 
         Ok((field, input))
     }
@@ -66,6 +66,10 @@ impl<'s> GetType for FieldIndex<'s> {
         *self.scheme.fields.get_index(self.index).unwrap().1
     }
 }
+
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "unknown field")]
+pub struct UnknownFieldError;
 
 #[derive(Default)]
 pub struct Scheme {
@@ -100,19 +104,25 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_entry(&'s self, name: &str) -> Option<(FieldIndex<'s>, Type)> {
-        self.fields.get_full(name).map(|(index, _, ty)| {
-            (
-                FieldIndex {
-                    scheme: self,
-                    index,
-                },
-                *ty,
-            )
-        })
+    pub fn get_field_entry(
+        &'s self,
+        name: &str,
+    ) -> Result<(FieldIndex<'s>, Type), UnknownFieldError> {
+        self.fields
+            .get_full(name)
+            .map(|(index, _, ty)| {
+                (
+                    FieldIndex {
+                        scheme: self,
+                        index,
+                    },
+                    *ty,
+                )
+            })
+            .ok_or(UnknownFieldError)
     }
 
-    pub fn get_field_index(&'s self, name: &str) -> Option<FieldIndex<'s>> {
+    pub fn get_field_index(&'s self, name: &str) -> Result<FieldIndex<'s>, UnknownFieldError> {
         self.get_field_entry(name).map(|(field, _)| field)
     }
 
@@ -167,7 +177,7 @@ fn test_field() {
 
     assert_err!(
         FieldIndex::lex(&scheme, "x.y.z;"),
-        LexErrorKind::UnknownField,
+        LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );
 }

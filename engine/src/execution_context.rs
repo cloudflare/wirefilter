@@ -25,10 +25,7 @@ impl<'e> ExecutionContext<'e> {
     }
 
     pub fn set_field_value(&mut self, name: &str, value: LhsValue<'e>) {
-        let (field, prev_ty) = self
-            .scheme
-            .get_field_entry(name)
-            .unwrap_or_else(|| panic!("Field {} was not found in associated scheme", name));
+        let (field, prev_ty) = self.scheme.get_field_entry(name).unwrap();
 
         let cur_ty = value.get_type();
 

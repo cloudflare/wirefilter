@@ -5,7 +5,7 @@ mod simple;
 use self::combining::CombinedExpr;
 use execution_context::ExecutionContext;
 use lex::LexResult;
-use scheme::{FieldIndex, Scheme};
+use scheme::{FieldIndex, Scheme, UnknownFieldError};
 use std::{
     fmt::{self, Debug},
     hash::{Hash, Hasher},
@@ -38,11 +38,10 @@ impl<'s> Debug for Filter<'s> {
 }
 
 impl<'s> Filter<'s> {
-    pub fn uses(&self, field_name: &str) -> bool {
-        match self.scheme.get_field_index(field_name) {
-            Some(field) => self.op.uses(field),
-            None => false, // TODO: maybe we should panic on unknown field?
-        }
+    pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
+        self.scheme
+            .get_field_index(field_name)
+            .map(|field| self.op.uses(field))
     }
 
     pub fn lex<'i>(scheme: &'s Scheme, input: &'i str) -> LexResult<'i, Self> {

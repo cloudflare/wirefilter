@@ -194,7 +194,7 @@ pub extern "C" fn wirefilter_filter_uses(
     filter: &Filter,
     field_name: ExternallyAllocatedByteArr,
 ) -> bool {
-    filter.uses(field_name.into())
+    filter.uses(field_name.into()).unwrap()
 }
 
 #[no_mangle]

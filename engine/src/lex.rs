@@ -1,5 +1,6 @@
 use cidr::NetworkParseError;
 use regex::Error as RegexError;
+use scheme::UnknownFieldError;
 use std::num::ParseIntError;
 use types::Type;
 
@@ -42,8 +43,8 @@ pub enum LexErrorKind {
         expected: usize,
     },
 
-    #[fail(display = "unknown field")]
-    UnknownField,
+    #[fail(display = "{}", _0)]
+    UnknownField(#[cause] UnknownFieldError),
 
     #[fail(display = "cannot use this operation type {:?}", field_type)]
     UnsupportedOp { field_type: Type },
