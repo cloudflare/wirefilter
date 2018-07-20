@@ -59,3 +59,49 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 }
+
+#[test]
+fn test() {
+    use lex::complete;
+    use types::Type;
+
+    let scheme = &[("x", Type::Bool)]
+        .iter()
+        .map(|&(k, t)| (k.to_owned(), t))
+        .collect();
+
+    let field_expr = || SimpleExpr::Field(complete(FieldExpr::lex(scheme, "x")).unwrap());
+
+    assert_ok!(SimpleExpr::lex(scheme, "x"), field_expr());
+
+    let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
+
+    assert_ok!(
+        SimpleExpr::lex(scheme, "(x)"),
+        parenthesized_expr(field_expr())
+    );
+
+    assert_ok!(
+        SimpleExpr::lex(scheme, "((x))"),
+        parenthesized_expr(parenthesized_expr(field_expr()))
+    );
+
+    let not_expr = |expr| SimpleExpr::Unary {
+        op: UnaryOp::Not,
+        arg: Box::new(expr),
+    };
+
+    assert_ok!(SimpleExpr::lex(scheme, "not x"), not_expr(field_expr()));
+
+    assert_ok!(SimpleExpr::lex(scheme, "!x"), not_expr(field_expr()));
+
+    assert_ok!(
+        SimpleExpr::lex(scheme, "!!x"),
+        not_expr(not_expr(field_expr()))
+    );
+
+    assert_ok!(
+        SimpleExpr::lex(scheme, "!(not !x)"),
+        not_expr(parenthesized_expr(not_expr(not_expr(field_expr()))))
+    );
+}
