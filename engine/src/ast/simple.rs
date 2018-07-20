@@ -63,46 +63,53 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 #[test]
 fn test() {
     use lex::complete;
-    use types::Type;
+    use types::{LhsValue, Type};
 
-    let scheme = &[("x", Type::Bool)]
+    let scheme = &[("t", Type::Bool)]
         .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 
-    let field_expr = SimpleExpr::Field(complete(FieldExpr::lex(scheme, "x")).unwrap());
-    let field_expr = || field_expr.clone();
+    let ctx = &mut ExecutionContext::new(scheme);
+    ctx.set_field_value("t", LhsValue::Bool(true));
 
-    assert_ok!(SimpleExpr::lex(scheme, "x"), field_expr());
+    let t_expr = SimpleExpr::Field(complete(FieldExpr::lex(scheme, "t")).unwrap());
+    let t_expr = || t_expr.clone();
+
+    {
+        let expr = assert_ok!(SimpleExpr::lex(scheme, "t"), t_expr());
+        assert_eq!(expr.execute(ctx), true);
+    }
 
     let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
 
-    assert_ok!(
-        SimpleExpr::lex(scheme, "(x)"),
-        parenthesized_expr(field_expr())
-    );
-
-    assert_ok!(
-        SimpleExpr::lex(scheme, "((x))"),
-        parenthesized_expr(parenthesized_expr(field_expr()))
-    );
+    {
+        let expr = assert_ok!(
+            SimpleExpr::lex(scheme, "((t))"),
+            parenthesized_expr(parenthesized_expr(t_expr()))
+        );
+        assert_eq!(expr.execute(ctx), true);
+    }
 
     let not_expr = |expr| SimpleExpr::Unary {
         op: UnaryOp::Not,
         arg: Box::new(expr),
     };
 
-    assert_ok!(SimpleExpr::lex(scheme, "not x"), not_expr(field_expr()));
+    {
+        let expr = assert_ok!(SimpleExpr::lex(scheme, "not t"), not_expr(t_expr()));
+        assert_eq!(expr.execute(ctx), false);
+    }
 
-    assert_ok!(SimpleExpr::lex(scheme, "!x"), not_expr(field_expr()));
+    assert_ok!(SimpleExpr::lex(scheme, "!t"), not_expr(t_expr()));
+
+    {
+        let expr = assert_ok!(SimpleExpr::lex(scheme, "!!t"), not_expr(not_expr(t_expr())));
+        assert_eq!(expr.execute(ctx), true);
+    }
 
     assert_ok!(
-        SimpleExpr::lex(scheme, "!!x"),
-        not_expr(not_expr(field_expr()))
-    );
-
-    assert_ok!(
-        SimpleExpr::lex(scheme, "!(not !x)"),
-        not_expr(parenthesized_expr(not_expr(not_expr(field_expr()))))
+        SimpleExpr::lex(scheme, "! (not !t)"),
+        not_expr(parenthesized_expr(not_expr(not_expr(t_expr()))))
     );
 }
