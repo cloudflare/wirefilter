@@ -2,7 +2,7 @@ use super::Expr;
 use execution_context::ExecutionContext;
 use lex::{span, Lex, LexErrorKind, LexResult, LexWith};
 use rhs_types::{Bytes, Regex};
-use scheme::{FieldIndex, Scheme};
+use scheme::{Field, Scheme};
 use std::cmp::Ordering;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
@@ -65,7 +65,7 @@ enum FieldOp {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct FieldExpr<'s> {
-    field: FieldIndex<'s>,
+    field: Field<'s>,
     op: FieldOp,
 }
 
@@ -73,7 +73,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
     fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
-        let (field, input) = FieldIndex::lex(input, scheme)?;
+        let (field, input) = Field::lex(input, scheme)?;
         let field_type = field.get_type();
 
         let (op, input) = if field_type == Type::Bool {
@@ -132,7 +132,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 }
 
 impl<'s> Expr<'s> for FieldExpr<'s> {
-    fn uses(&self, field: FieldIndex<'s>) -> bool {
+    fn uses(&self, field: Field<'s>) -> bool {
         self.field == field
     }
 

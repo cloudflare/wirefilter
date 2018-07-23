@@ -5,14 +5,14 @@ mod simple;
 use self::combining::CombinedExpr;
 use execution_context::ExecutionContext;
 use lex::{LexResult, LexWith};
-use scheme::{FieldIndex, Scheme, UnknownFieldError};
+use scheme::{Field, Scheme, UnknownFieldError};
 use std::{
     fmt::{self, Debug},
     hash::{Hash, Hasher},
 };
 
 trait Expr<'s>: Sized + Eq + Hash + Debug + for<'i> LexWith<'i, &'s Scheme> {
-    fn uses(&self, field: FieldIndex<'s>) -> bool;
+    fn uses(&self, field: Field<'s>) -> bool;
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool;
 }
 

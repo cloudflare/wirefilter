@@ -1,7 +1,7 @@
 use super::{simple::SimpleExpr, Expr};
 use execution_context::ExecutionContext;
 use lex::{Lex, LexResult, LexWith};
-use scheme::{FieldIndex, Scheme};
+use scheme::{Field, Scheme};
 
 lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
     "or" | "||" => Or,
@@ -85,7 +85,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for CombinedExpr<'s> {
 }
 
 impl<'s> Expr<'s> for CombinedExpr<'s> {
-    fn uses(&self, field: FieldIndex<'s>) -> bool {
+    fn uses(&self, field: Field<'s>) -> bool {
         match self {
             CombinedExpr::Simple(op) => op.uses(field),
             CombinedExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),

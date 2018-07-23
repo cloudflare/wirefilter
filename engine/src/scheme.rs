@@ -11,24 +11,24 @@ use std::{
 use types::{GetType, Type};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct FieldIndex<'s> {
+pub struct Field<'s> {
     scheme: &'s Scheme,
     index: usize,
 }
 
-impl<'s> fmt::Debug for FieldIndex<'s> {
+impl<'s> fmt::Debug for Field<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name())
     }
 }
 
-impl<'s> Hash for FieldIndex<'s> {
+impl<'s> Hash for Field<'s> {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.name().hash(h)
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for FieldIndex<'s> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
     fn lex(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
@@ -53,7 +53,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldIndex<'s> {
     }
 }
 
-impl<'s> FieldIndex<'s> {
+impl<'s> Field<'s> {
     pub fn name(&self) -> &'s str {
         self.scheme.fields.get_index(self.index).unwrap().0
     }
@@ -63,7 +63,7 @@ impl<'s> FieldIndex<'s> {
     }
 }
 
-impl<'s> GetType for FieldIndex<'s> {
+impl<'s> GetType for Field<'s> {
     fn get_type(&self) -> Type {
         *self.scheme.fields.get_index(self.index).unwrap().1
     }
@@ -106,9 +106,9 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_index(&'s self, name: &str) -> Result<FieldIndex<'s>, UnknownFieldError> {
+    pub fn get_field_index(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
         match self.fields.get_full(name) {
-            Some((index, ..)) => Ok(FieldIndex {
+            Some((index, ..)) => Ok(Field {
                 scheme: self,
                 index,
             }),
@@ -136,37 +136,37 @@ fn test_field() {
         .collect();
 
     assert_ok!(
-        FieldIndex::lex("x;", scheme),
+        Field::lex("x;", scheme),
         scheme.get_field_index("x").unwrap(),
         ";"
     );
 
     assert_ok!(
-        FieldIndex::lex("x.y.z0-", scheme),
+        Field::lex("x.y.z0-", scheme),
         scheme.get_field_index("x.y.z0").unwrap(),
         "-"
     );
 
     assert_ok!(
-        FieldIndex::lex("is_TCP", scheme),
+        Field::lex("is_TCP", scheme),
         scheme.get_field_index("is_TCP").unwrap(),
         ""
     );
 
     assert_err!(
-        FieldIndex::lex("x..y", scheme),
+        Field::lex("x..y", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         ".y"
     );
 
     assert_err!(
-        FieldIndex::lex("x.#", scheme),
+        Field::lex("x.#", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         "#"
     );
 
     assert_err!(
-        FieldIndex::lex("x.y.z;", scheme),
+        Field::lex("x.y.z;", scheme),
         LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );
