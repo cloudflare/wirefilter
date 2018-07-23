@@ -59,7 +59,7 @@ impl<'s> CombinedExpr<'s> {
                 }
                 _ => {
                     lhs = CombinedExpr::Combining {
-                        op: op,
+                        op,
                         items: vec![lhs, rhs.0],
                     };
                 }

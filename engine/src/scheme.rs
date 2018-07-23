@@ -106,26 +106,21 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_entry(
-        &'s self,
-        name: &str,
-    ) -> Result<(FieldIndex<'s>, Type), UnknownFieldError> {
-        self.fields
-            .get_full(name)
-            .map(|(index, _, ty)| {
-                (
-                    FieldIndex {
-                        scheme: self,
-                        index,
-                    },
-                    *ty,
-                )
-            })
-            .ok_or(UnknownFieldError)
+    pub fn get_field_name(&'s self, index: usize) -> Result<&'s str, UnknownFieldError> {
+        match self.fields.get_index(index) {
+            Some((name, ..)) => Ok(name),
+            _ => Err(UnknownFieldError),
+        }
     }
 
     pub fn get_field_index(&'s self, name: &str) -> Result<FieldIndex<'s>, UnknownFieldError> {
-        self.get_field_entry(name).map(|(field, _)| field)
+        match self.fields.get_full(name) {
+            Some((index, ..)) => Ok(FieldIndex {
+                scheme: self,
+                index,
+            }),
+            None => Err(UnknownFieldError),
+        }
     }
 
     pub fn get_field_count(&self) -> usize {

@@ -20,19 +20,23 @@ impl<'e> ExecutionContext<'e> {
 
     pub fn get_field_value_unchecked(&self, index: usize) -> &LhsValue<'e> {
         self.values[index].as_ref().unwrap_or_else(|| {
-            panic!("Field {} was registered but not given a value");
+            panic!(
+                "Field {} was registered but not given a value",
+                self.scheme.get_field_name(index).unwrap()
+            );
         })
     }
 
     pub fn set_field_value(&mut self, name: &str, value: LhsValue<'e>) {
-        let (field, prev_ty) = self.scheme.get_field_entry(name).unwrap();
+        let field = self.scheme.get_field_index(name).unwrap();
 
-        let cur_ty = value.get_type();
+        let field_ty = field.get_type();
+        let value_ty = value.get_type();
 
-        if prev_ty != cur_ty {
+        if field_ty != value_ty {
             panic!(
-                "Field {} was previously registered with type {:?} but now contains {:?}",
-                name, prev_ty, cur_ty
+                "Field {} was previously registered with type {:?} but tried to set to {:?}",
+                name, field_ty, value_ty
             );
         }
 
