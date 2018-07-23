@@ -24,9 +24,9 @@ impl From<String> for Bytes {
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match *self {
-            Bytes::Str(ref s) => s.fmt(f),
-            Bytes::Raw(ref b) => {
+        match self {
+            Bytes::Str(s) => s.fmt(f),
+            Bytes::Raw(b) => {
                 for (i, b) in b.iter().cloned().enumerate() {
                     if i != 0 {
                         write!(f, ":")?;
@@ -43,9 +43,9 @@ impl Deref for Bytes {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        match *self {
-            Bytes::Str(ref s) => s.as_bytes(),
-            Bytes::Raw(ref b) => b,
+        match self {
+            Bytes::Str(s) => s.as_bytes(),
+            Bytes::Raw(b) => b,
         }
     }
 }

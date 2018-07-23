@@ -28,14 +28,14 @@ impl From<Bytes> for Regex {
         use std::fmt::Write;
 
         Regex::new(&match bytes {
-            Bytes::Raw(ref bytes) => {
+            Bytes::Raw(bytes) => {
                 let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
-                for b in bytes.iter() {
+                for b in &*bytes {
                     write!(regex_str, r"\x{:02X}", b).unwrap();
                 }
                 regex_str
             }
-            Bytes::Str(ref s) => format!("(?u){}", ::regex::escape(s)),
+            Bytes::Str(s) => format!("(?u){}", ::regex::escape(&s)),
         }).unwrap() // can't fail because it's escaped
     }
 }

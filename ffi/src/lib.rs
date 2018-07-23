@@ -307,7 +307,7 @@ mod ffi_test {
 
         match result {
             ParsingResult::Ok(filter) => (unsafe { &*filter }, result),
-            ParsingResult::Err(ref err) => panic!("{}", err.as_str()),
+            ParsingResult::Err(err) => panic!("{}", err.as_str()),
         }
     }
 
@@ -330,7 +330,7 @@ mod ffi_test {
 
             match result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
-                ParsingResult::Err(ref err) => assert_eq!(
+                ParsingResult::Err(err) => assert_eq!(
                     err.as_str(),
                     "Filter parsing error:\n`num1 == \"abc\"`\n         ^^^^^ expected digit\n"
                 ),

@@ -31,7 +31,7 @@ macro_rules! declare_types {
 
         impl $(<$lt>)* GetType for $name $(<$lt>)* {
             fn get_type(&self) -> Type {
-                match *self {
+                match self {
                     $($name::$variant(_) => Type::$variant,)*
                 }
             }
@@ -39,8 +39,8 @@ macro_rules! declare_types {
 
         impl $(<$lt>)* Debug for $name $(<$lt>)* {
             fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-                match *self {
-                    $($name::$variant(ref inner) => Debug::fmt(inner, f),)*
+                match self {
+                    $($name::$variant(inner) => Debug::fmt(inner, f),)*
                 }
             }
         }
@@ -78,7 +78,7 @@ macro_rules! declare_types {
         impl<'a> LhsValue<'a> {
             pub fn try_cmp(&self, op: OrderingOp, other: &RhsValue) -> Result<bool, ()> {
                 let opt_ordering = match (self, other) {
-                    $((&LhsValue::$name(ref lhs), &RhsValue::$name(ref rhs)) => {
+                    $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
                         lhs.deref().partial_cmp(rhs.deref())
                     },)*
                     _ => return Err(()),
@@ -110,7 +110,7 @@ macro_rules! declare_types {
 
             pub fn try_contains(&self, lhs: &LhsValue) -> Result<bool, ()> {
                 Ok(match (self, lhs) {
-                    $((&RhsValues::$name(ref values), &LhsValue::$name(ref lhs)) => {
+                    $((RhsValues::$name(values), LhsValue::$name(lhs)) => {
                         values.iter().any(|rhs| lhs.deref() == rhs.deref())
                     })*
                     _ => return Err(()),

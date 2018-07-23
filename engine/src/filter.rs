@@ -20,10 +20,10 @@ pub enum Filter<'a> {
 
 impl<'a> Filter<'a> {
     pub fn uses(&self, field: Field) -> bool {
-        match *self {
-            Filter::Op(lhs, ..) => field == lhs,
-            Filter::Combine(_, ref filters) => filters.iter().any(|filter| filter.uses(field)),
-            Filter::Unary(_, ref filter) => filter.uses(field),
+        match self {
+            Filter::Op(lhs, ..) => field == *lhs,
+            Filter::Combine(_, filters) => filters.iter().any(|filter| filter.uses(field)),
+            Filter::Unary(_, filter) => filter.uses(field),
         }
     }
 }

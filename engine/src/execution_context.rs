@@ -33,7 +33,7 @@ macro_rules! panic_type {
 macro_rules! cast_field {
     ($field:ident, $lhs:ident, $ty:ident) => {
         match $lhs {
-            &LhsValue::$ty(ref value) => value,
+            LhsValue::$ty(value) => value,
             other => panic_type!($field, other, Type::$ty),
         }
     };
@@ -51,24 +51,24 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn execute(&self, filter: &Filter) -> bool {
-        match *filter {
-            Filter::Op(field, ref op) => {
+        match filter {
+            Filter::Op(field, op) => {
                 let lhs = self.get_field_value(field.path());
 
-                match *op {
-                    FilterOp::Ordering(op, ref rhs) => lhs.try_cmp(op, rhs).unwrap_or_else(|()| {
+                match op {
+                    FilterOp::Ordering(op, rhs) => lhs.try_cmp(*op, rhs).unwrap_or_else(|()| {
                         panic_type!(field, lhs, rhs);
                     }),
                     FilterOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                         cast_field!(field, lhs, Unsigned) & rhs != 0
                     }
-                    FilterOp::Matches(ref regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
-                    FilterOp::OneOf(ref values) => values
+                    FilterOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
+                    FilterOp::OneOf(values) => values
                         .try_contains(lhs)
                         .unwrap_or_else(|()| panic_type!(field, lhs, values)),
                 }
             }
-            Filter::Combine(op, ref filters) => {
+            Filter::Combine(op, filters) => {
                 let mut results = filters.iter().map(|filter| self.execute(filter));
                 match op {
                     CombiningOp::And => results.all(|res| res),
@@ -76,7 +76,7 @@ impl<'a> ExecutionContext<'a> {
                     CombiningOp::Xor => results.fold(false, |acc, res| acc ^ res),
                 }
             }
-            Filter::Unary(UnaryOp::Not, ref filter) => !self.execute(filter),
+            Filter::Unary(UnaryOp::Not, filter) => !self.execute(filter),
         }
     }
 }

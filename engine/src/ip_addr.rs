@@ -37,10 +37,10 @@ where
 impl PartialOrd<IpCidr> for IpAddr {
     fn partial_cmp(&self, network: &IpCidr) -> Option<Ordering> {
         match (self, network) {
-            (&IpAddr::V4(ref addr), &IpCidr(::cidr::IpCidr::V4(ref network))) => {
+            (IpAddr::V4(addr), IpCidr(::cidr::IpCidr::V4(network))) => {
                 Some(cmp_addr_network(addr, network))
             }
-            (&IpAddr::V6(ref addr), &IpCidr(::cidr::IpCidr::V6(ref network))) => {
+            (IpAddr::V6(addr), IpCidr(::cidr::IpCidr::V6(network))) => {
                 Some(cmp_addr_network(addr, network))
             }
             _ => None,
