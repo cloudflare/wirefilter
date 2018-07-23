@@ -4,18 +4,15 @@ mod simple;
 
 use self::combining::CombinedExpr;
 use execution_context::ExecutionContext;
-use lex::LexResult;
+use lex::{LexResult, LexWith};
 use scheme::{FieldIndex, Scheme, UnknownFieldError};
 use std::{
     fmt::{self, Debug},
     hash::{Hash, Hasher},
 };
 
-trait Expr<'s>: Sized {
+trait Expr<'s>: Sized + Eq + Hash + Debug + for<'i> LexWith<'i, &'s Scheme> {
     fn uses(&self, field: FieldIndex<'s>) -> bool;
-
-    fn lex<'i>(scheme: &'s Scheme, input: &'i str) -> LexResult<'i, Self>;
-
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool;
 }
 
@@ -37,16 +34,18 @@ impl<'s> Debug for Filter<'s> {
     }
 }
 
+impl<'i, 's> LexWith<'i, &'s Scheme> for Filter<'s> {
+    fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        let (op, input) = CombinedExpr::lex(input, scheme)?;
+        Ok((Filter { scheme, op }, input))
+    }
+}
+
 impl<'s> Filter<'s> {
     pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
         self.scheme
             .get_field_index(field_name)
             .map(|field| self.op.uses(field))
-    }
-
-    pub fn lex<'i>(scheme: &'s Scheme, input: &'i str) -> LexResult<'i, Self> {
-        let (op, input) = CombinedExpr::lex(scheme, input)?;
-        Ok((Filter { scheme, op }, input))
     }
 
     pub fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {

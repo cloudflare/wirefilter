@@ -1,6 +1,6 @@
 use super::{simple::SimpleExpr, Expr};
 use execution_context::ExecutionContext;
-use lex::{Lex, LexResult};
+use lex::{Lex, LexResult, LexWith};
 use scheme::{FieldIndex, Scheme};
 
 lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
@@ -35,7 +35,7 @@ impl<'s> CombinedExpr<'s> {
         let mut lhs = self;
 
         while let Some(op) = lookahead.0 {
-            let mut rhs = SimpleExpr::lex(scheme, lookahead.1)
+            let mut rhs = SimpleExpr::lex(lookahead.1, scheme)
                 .map(|(op, input)| ((CombinedExpr::Simple(op), input)))?;
 
             loop {
@@ -76,18 +76,20 @@ impl<'s> CombinedExpr<'s> {
     }
 }
 
+impl<'i, 's> LexWith<'i, &'s Scheme> for CombinedExpr<'s> {
+    fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        let (lhs, input) = SimpleExpr::lex(input, scheme)?;
+        let lookahead = Self::lex_combining_op(input);
+        CombinedExpr::Simple(lhs).lex_more_with_precedence(scheme, None, lookahead)
+    }
+}
+
 impl<'s> Expr<'s> for CombinedExpr<'s> {
     fn uses(&self, field: FieldIndex<'s>) -> bool {
         match self {
             CombinedExpr::Simple(op) => op.uses(field),
             CombinedExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),
         }
-    }
-
-    fn lex<'i>(scheme: &'s Scheme, input: &'i str) -> LexResult<'i, Self> {
-        let (lhs, input) = SimpleExpr::lex(scheme, input)?;
-        let lookahead = Self::lex_combining_op(input);
-        CombinedExpr::Simple(lhs).lex_more_with_precedence(scheme, None, lookahead)
     }
 
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
@@ -119,25 +121,25 @@ fn test() {
     let ctx = &mut ExecutionContext::new(scheme);
 
     let t_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex(scheme, "t")).unwrap(),
+        complete(FieldExpr::lex("t", scheme)).unwrap(),
     ));
 
     let t_expr = || t_expr.clone();
 
     let f_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex(scheme, "f")).unwrap(),
+        complete(FieldExpr::lex("f", scheme)).unwrap(),
     ));
 
     let f_expr = || f_expr.clone();
 
-    assert_ok!(CombinedExpr::lex(scheme, "t"), t_expr());
+    assert_ok!(CombinedExpr::lex("t", scheme), t_expr());
 
     ctx.set_field_value("t", LhsValue::Bool(true));
     ctx.set_field_value("f", LhsValue::Bool(false));
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "t and t"),
+            CombinedExpr::lex("t and t", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::And,
                 items: vec![t_expr(), t_expr()],
@@ -149,7 +151,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "t and f"),
+            CombinedExpr::lex("t and f", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::And,
                 items: vec![t_expr(), f_expr()],
@@ -161,7 +163,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "t or f"),
+            CombinedExpr::lex("t or f", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::Or,
                 items: vec![t_expr(), f_expr()],
@@ -173,7 +175,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "f or f"),
+            CombinedExpr::lex("f or f", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::Or,
                 items: vec![f_expr(), f_expr()],
@@ -185,7 +187,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "t xor f"),
+            CombinedExpr::lex("t xor f", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
                 items: vec![t_expr(), f_expr()],
@@ -197,7 +199,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "f xor f"),
+            CombinedExpr::lex("f xor f", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
                 items: vec![f_expr(), f_expr()],
@@ -209,7 +211,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex(scheme, "f xor t"),
+            CombinedExpr::lex("f xor t", scheme),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
                 items: vec![f_expr(), t_expr()],
@@ -220,7 +222,7 @@ fn test() {
     }
 
     assert_ok!(
-        CombinedExpr::lex(scheme, "t or t && t and t or t ^^ t and t || t"),
+        CombinedExpr::lex("t or t && t and t or t ^^ t and t || t", scheme),
         CombinedExpr::Combining {
             op: CombiningOp::Or,
             items: vec![

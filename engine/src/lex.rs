@@ -61,6 +61,10 @@ pub trait Lex<'i>: Sized {
     fn lex(input: &'i str) -> LexResult<'i, Self>;
 }
 
+pub trait LexWith<'i, E>: Sized {
+    fn lex(input: &'i str, extra: E) -> LexResult<'i, Self>;
+}
+
 pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'i>> {
     if input.starts_with(s) {
         Ok(&input[s.len()..])

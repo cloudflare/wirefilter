@@ -1,4 +1,4 @@
-use lex::{expect, Lex, LexResult};
+use lex::{expect, Lex, LexResult, LexWith};
 use rhs_types::{Bytes, IpCidr};
 use std::{
     cmp::Ordering,
@@ -90,8 +90,8 @@ macro_rules! declare_types {
             }
         }
 
-        impl RhsValue {
-            pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
+        impl<'i> LexWith<'i, Type> for RhsValue {
+            fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = <$rhs_ty>::lex(input)?;
@@ -101,8 +101,8 @@ macro_rules! declare_types {
             }
         }
 
-        impl RhsValues {
-            pub fn lex(input: &str, ty: Type) -> LexResult<Self> {
+        impl<'i> LexWith<'i, Type> for RhsValues {
+            fn lex(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = lex_rhs_values(input)?;
@@ -110,7 +110,9 @@ macro_rules! declare_types {
                     })*
                 })
             }
+        }
 
+        impl RhsValues {
             pub fn contains(&self, lhs: &LhsValue) -> bool {
                 match (self, lhs) {
                     $((RhsValues::$name(values), LhsValue::$name(lhs)) => {

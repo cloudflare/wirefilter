@@ -1,6 +1,6 @@
 use super::Expr;
 use execution_context::ExecutionContext;
-use lex::{span, Lex, LexErrorKind, LexResult};
+use lex::{span, Lex, LexErrorKind, LexResult, LexWith};
 use rhs_types::{Bytes, Regex};
 use scheme::{FieldIndex, Scheme};
 use std::cmp::Ordering;
@@ -69,15 +69,11 @@ pub struct FieldExpr<'s> {
     op: FieldOp,
 }
 
-impl<'s> Expr<'s> for FieldExpr<'s> {
-    fn uses(&self, field: FieldIndex<'s>) -> bool {
-        self.field == field
-    }
-
-    fn lex<'i>(scheme: &'s Scheme, input: &'i str) -> LexResult<'i, Self> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
+    fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
-        let (field, input) = FieldIndex::lex(scheme, input)?;
+        let (field, input) = FieldIndex::lex(input, scheme)?;
         let field_type = field.get_type();
 
         let (op, input) = if field_type == Type::Bool {
@@ -133,6 +129,12 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
         Ok((FieldExpr { field, op }, input))
     }
+}
+
+impl<'s> Expr<'s> for FieldExpr<'s> {
+    fn uses(&self, field: FieldIndex<'s>) -> bool {
+        self.field == field
+    }
 
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
         macro_rules! cast_field {
@@ -178,7 +180,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, "ssl"),
+            FieldExpr::lex("ssl", scheme),
             FieldExpr {
                 field: field("ssl"),
                 op: FieldOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true))
@@ -194,7 +196,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, "ip.addr >= 10:20:30:40:50:60:70:80"),
+            FieldExpr::lex("ip.addr >= 10:20:30:40:50:60:70:80", scheme),
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::Ordering(
@@ -227,7 +229,7 @@ fn test() {
     }
 
     assert_ok!(
-        FieldExpr::lex(scheme, "http.host >= 10:20:30:40:50:60:70:80"),
+        FieldExpr::lex("http.host >= 10:20:30:40:50:60:70:80", scheme),
         FieldExpr {
             field: field("http.host"),
             op: FieldOp::Ordering(
@@ -239,7 +241,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, "tcp.port & 1"),
+            FieldExpr::lex("tcp.port & 1", scheme),
             FieldExpr {
                 field: field("tcp.port"),
                 op: FieldOp::Unsigned(UnsignedOp::BitwiseAnd, 1),
@@ -255,7 +257,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"http.host == "example.org""#),
+            FieldExpr::lex(r#"http.host == "example.org""#, scheme),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Ordering(
@@ -274,7 +276,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"http.host in { "example.org" "example.com" }"#),
+            FieldExpr::lex(r#"http.host in { "example.org" "example.com" }"#, scheme),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::OneOf(RhsValues::Bytes(vec![
@@ -296,7 +298,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"ip.addr in { 127.0.0.0/8 ::1 }"#),
+            FieldExpr::lex(r#"ip.addr in { 127.0.0.0/8 ::1 }"#, scheme),
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::OneOf(RhsValues::Ip(vec![
@@ -324,7 +326,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"http.host contains "abc""#),
+            FieldExpr::lex(r#"http.host contains "abc""#, scheme),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Matches(Regex::new(r#"(?u)abc"#).unwrap())
@@ -340,7 +342,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"http.host contains 6F:72:67"#),
+            FieldExpr::lex(r#"http.host contains 6F:72:67"#, scheme),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Matches(Regex::new(r#"\x6F\x72\x67"#).unwrap())
@@ -355,7 +357,7 @@ fn test() {
     }
 
     assert_ok!(
-        FieldExpr::lex(scheme, r#"http.host < 12"#),
+        FieldExpr::lex(r#"http.host < 12"#, scheme),
         FieldExpr {
             field: field("http.host"),
             op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Bytes(vec![0x12].into())),
@@ -364,7 +366,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex(scheme, r#"tcp.port < 8000"#),
+            FieldExpr::lex(r#"tcp.port < 8000"#, scheme),
             FieldExpr {
                 field: field("tcp.port"),
                 op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Unsigned(8000)),

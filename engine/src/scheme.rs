@@ -1,7 +1,7 @@
 use ast::Filter;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
-use lex::{complete, expect, span, take_while, LexError, LexErrorKind, LexResult};
+use lex::{complete, expect, span, take_while, LexError, LexErrorKind, LexResult, LexWith};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -28,16 +28,8 @@ impl<'s> Hash for FieldIndex<'s> {
     }
 }
 
-impl<'s> FieldIndex<'s> {
-    pub fn name(&self) -> &'s str {
-        self.scheme.fields.get_index(self.index).unwrap().0
-    }
-
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    pub fn lex<'i>(scheme: &'s Scheme, mut input: &'i str) -> LexResult<'i, Self> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for FieldIndex<'s> {
+    fn lex(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
         loop {
@@ -58,6 +50,16 @@ impl<'s> FieldIndex<'s> {
             .map_err(|err| (LexErrorKind::UnknownField(err), name))?;
 
         Ok((field, input))
+    }
+}
+
+impl<'s> FieldIndex<'s> {
+    pub fn name(&self) -> &'s str {
+        self.scheme.fields.get_index(self.index).unwrap().0
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 }
 
@@ -131,13 +133,13 @@ impl<'s> Scheme {
     }
 
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
-        complete(Filter::lex(self, input))
+        complete(Filter::lex(input, self))
     }
 }
 
 #[test]
 fn test_field() {
-    let scheme: Scheme = [
+    let scheme = &[
         ("x", Type::Bytes),
         ("x.y.z0", Type::Unsigned),
         ("is_TCP", Type::Bool),
@@ -146,37 +148,37 @@ fn test_field() {
         .collect();
 
     assert_ok!(
-        FieldIndex::lex(&scheme, "x;"),
+        FieldIndex::lex("x;", scheme),
         scheme.get_field_index("x").unwrap(),
         ";"
     );
 
     assert_ok!(
-        FieldIndex::lex(&scheme, "x.y.z0-"),
+        FieldIndex::lex("x.y.z0-", scheme),
         scheme.get_field_index("x.y.z0").unwrap(),
         "-"
     );
 
     assert_ok!(
-        FieldIndex::lex(&scheme, "is_TCP"),
+        FieldIndex::lex("is_TCP", scheme),
         scheme.get_field_index("is_TCP").unwrap(),
         ""
     );
 
     assert_err!(
-        FieldIndex::lex(&scheme, "x..y"),
+        FieldIndex::lex("x..y", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         ".y"
     );
 
     assert_err!(
-        FieldIndex::lex(&scheme, "x.#"),
+        FieldIndex::lex("x.#", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         "#"
     );
 
     assert_err!(
-        FieldIndex::lex(&scheme, "x.y.z;"),
+        FieldIndex::lex("x.y.z;", scheme),
         LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );
