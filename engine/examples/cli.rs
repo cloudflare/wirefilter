@@ -18,8 +18,7 @@ fn main() {
         ("unsigned", Type::Unsigned),
         ("bool", Type::Bool),
     ].iter()
-        .cloned()
-        .map(|(k, t)| (k.to_owned(), t))
+        .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 
     match scheme.parse(&filter) {

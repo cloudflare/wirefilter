@@ -182,8 +182,7 @@ mod tests {
             ("ip.src", Type::Ip),
             ("isTCP", Type::Bool),
         ].iter()
-            .cloned()
-            .map(|(k, v)| (k.to_owned(), v))
+            .map(|&(k, t)| (k.to_owned(), t))
             .collect();
 
         assert_eq!(

@@ -21,8 +21,7 @@ fn create_scheme() -> Scheme {
         ("ssl", Type::Bool),
         ("tcp.port", Type::Unsigned),
     ].iter()
-        .cloned()
-        .map(|(k, t)| (k.to_owned(), t))
+        .map(|&(k, t)| (k.to_owned(), t))
         .collect()
 }
 
