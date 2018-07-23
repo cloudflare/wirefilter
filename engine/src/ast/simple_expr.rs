@@ -1,4 +1,4 @@
-use super::{combining::CombinedExpr, field::FieldExpr, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
 use execution_context::ExecutionContext;
 use lex::{expect, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};

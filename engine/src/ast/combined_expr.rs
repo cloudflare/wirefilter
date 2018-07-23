@@ -1,4 +1,4 @@
-use super::{simple::SimpleExpr, Expr};
+use super::{simple_expr::SimpleExpr, Expr};
 use execution_context::ExecutionContext;
 use lex::{Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
@@ -109,7 +109,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 
 #[test]
 fn test() {
-    use super::field::FieldExpr;
+    use super::field_expr::FieldExpr;
     use lex::complete;
     use types::{LhsValue, Type};
 

@@ -1,8 +1,8 @@
-mod combining;
-mod field;
-mod simple;
+mod combined_expr;
+mod field_expr;
+mod simple_expr;
 
-use self::combining::CombinedExpr;
+use self::combined_expr::CombinedExpr;
 use execution_context::ExecutionContext;
 use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
