@@ -106,13 +106,6 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_name(&'s self, index: usize) -> Result<&'s str, UnknownFieldError> {
-        match self.fields.get_index(index) {
-            Some((name, ..)) => Ok(name),
-            _ => Err(UnknownFieldError),
-        }
-    }
-
     pub fn get_field_index(&'s self, name: &str) -> Result<FieldIndex<'s>, UnknownFieldError> {
         match self.fields.get_full(name) {
             Some((index, ..)) => Ok(FieldIndex {

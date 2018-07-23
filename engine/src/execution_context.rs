@@ -1,4 +1,4 @@
-use scheme::Scheme;
+use scheme::{FieldIndex, Scheme};
 use types::{GetType, LhsValue};
 
 pub struct ExecutionContext<'e> {
@@ -18,11 +18,11 @@ impl<'e> ExecutionContext<'e> {
         self.scheme
     }
 
-    pub fn get_field_value_unchecked(&self, index: usize) -> &LhsValue<'e> {
-        self.values[index].as_ref().unwrap_or_else(|| {
+    pub fn get_field_value_unchecked(&self, field: FieldIndex<'e>) -> &LhsValue<'e> {
+        self.values[field.index()].as_ref().unwrap_or_else(|| {
             panic!(
                 "Field {} was registered but not given a value",
-                self.scheme.get_field_name(index).unwrap()
+                field.name()
             );
         })
     }
