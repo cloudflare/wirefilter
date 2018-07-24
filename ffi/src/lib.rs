@@ -307,7 +307,7 @@ mod ffi_test {
 
         match result {
             ParsingResult::Ok(filter) => (unsafe { &*filter }, result),
-            ParsingResult::Err(err) => panic!("{}", err.as_str()),
+            ParsingResult::Err(ref err) => panic!("{}", err.as_str()),
         }
     }
 
@@ -328,7 +328,7 @@ mod ffi_test {
         {
             let result = wirefilter_parse_filter(&scheme, ExternallyAllocatedByteArr::from(src));
 
-            match result {
+            match &result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
                 ParsingResult::Err(err) => assert_eq!(
                     err.as_str(),
