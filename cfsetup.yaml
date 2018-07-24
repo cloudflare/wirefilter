@@ -1,6 +1,6 @@
 everything: &everything
   build: &build
-    builddeps: &builddeps
+    builddeps:
       - rust
       - cargo-deb
     pre-cache-copy-paths: &paths
@@ -21,7 +21,8 @@ everything: &everything
     <<: *build
     target-arch: arm64
   test:
-    builddeps: *builddeps
+    builddeps:
+      - rust
     pre-cache-copy-paths: *paths
     pre-cache: &test-pre-cache
       - ./cfsetup-cargo.sh prebuild
