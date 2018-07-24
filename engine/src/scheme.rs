@@ -121,7 +121,7 @@ impl<'s> Scheme {
     }
 
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
-        complete(Filter::lex(input, self))
+        complete(Filter::lex(input.trim(), self))
     }
 }
 
