@@ -1,7 +1,6 @@
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
-use rhs_types::Bytes;
 use std::{
-    fmt::{self, Debug, Formatter, Write},
+    fmt::{self, Debug, Formatter},
     hash::{Hash, Hasher},
 };
 
@@ -18,14 +17,6 @@ impl Regex {
 
     pub fn is_match(&self, text: &[u8]) -> bool {
         self.0.is_match(text)
-    }
-
-    pub fn try_from(bytes: &Bytes) -> Result<Self, ::regex::Error> {
-        let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
-        for b in bytes {
-            write!(regex_str, r"\x{:02X}", b).unwrap();
-        }
-        Regex::new(&regex_str)
     }
 }
 

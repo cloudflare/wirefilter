@@ -8,6 +8,7 @@ extern crate indoc;
 extern crate cidr;
 extern crate fnv;
 extern crate indexmap;
+extern crate memmem;
 extern crate regex;
 
 #[macro_use]

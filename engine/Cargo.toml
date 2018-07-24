@@ -20,6 +20,7 @@ failure = "0.1.1"
 fnv = "1.0.6"
 indexmap = "1.0.1"
 regex = "1.0.1"
+memmem = "0.1.1"
 
 [dev-dependencies]
 indoc = "0.2.6"

@@ -1,6 +1,10 @@
+mod contains_op;
+
+use self::contains_op::ContainsOp;
 use super::Expr;
 use execution_context::ExecutionContext;
 use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
+use memmem::Searcher;
 use rhs_types::{Bytes, Regex};
 use scheme::{Field, Scheme};
 use std::cmp::Ordering;
@@ -59,6 +63,7 @@ lex_enum!(ComparisonOp {
 enum FieldOp {
     Ordering(OrderingOp, RhsValue),
     Unsigned(UnsignedOp, u64),
+    Contains(ContainsOp),
     Matches(Regex),
     OneOf(RhsValues),
 }
@@ -101,23 +106,16 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                     let (rhs, input) = u64::lex(input)?;
                     (FieldOp::Unsigned(op, rhs), input)
                 }
-                (Type::Bytes, ComparisonOp::Bytes(op)) => {
-                    let (regex, input) = match op {
-                        BytesOp::Contains => {
-                            let input_before_rhs = input;
-                            let (rhs, input) = Bytes::lex(input)?;
-                            let regex = Regex::try_from(&rhs).map_err(|err| {
-                                // This is very, very, very unlikely as we're just converting
-                                // a literal into a regex and not using any repetitions etc.,
-                                // but better to be safe than sorry and report such error.
-                                (LexErrorKind::ParseRegex(err), span(input_before_rhs, input))
-                            })?;
-                            (regex, input)
-                        }
-                        BytesOp::Matches => Regex::lex(input)?,
-                    };
-                    (FieldOp::Matches(regex), input)
-                }
+                (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
+                    BytesOp::Contains => {
+                        let (bytes, input) = Bytes::lex(input)?;
+                        (FieldOp::Contains(bytes.into()), input)
+                    }
+                    BytesOp::Matches => {
+                        let (regex, input) = Regex::lex(input)?;
+                        (FieldOp::Matches(regex), input)
+                    }
+                },
                 _ => {
                     return Err((
                         LexErrorKind::UnsupportedOp { field_type },
@@ -153,6 +151,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
                 cast_field!(field, lhs, Unsigned) & rhs != 0
             }
+            FieldOp::Contains(op) => op.search_in(cast_field!(field, lhs, Bytes)).is_some(),
             FieldOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
             FieldOp::OneOf(values) => values.contains(lhs),
         }
@@ -374,7 +373,7 @@ fn test() {
             FieldExpr::lex_with(r#"http.host contains "abc""#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::Matches(Regex::new(r#"\x61\x62\x63"#).unwrap())
+                op: FieldOp::Contains("abc".to_owned().into())
             }
         );
 
@@ -390,7 +389,7 @@ fn test() {
             FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::Matches(Regex::new(r#"\x6F\x72\x67"#).unwrap())
+                op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into())
             }
         );
 
