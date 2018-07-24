@@ -1,8 +1,9 @@
 use bytes::Bytes;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
-
-use std::fmt::{self, Debug, Formatter, Write};
-use std::hash::{Hash, Hasher};
+use std::{
+    fmt::{self, Debug, Formatter, Write},
+    hash::{Hash, Hasher},
+};
 
 pub struct Regex(::regex::bytes::Regex);
 

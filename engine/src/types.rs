@@ -1,13 +1,13 @@
 use bytes::Bytes;
 use ip_addr::IpCidr;
-use lex::expect;
-use lex::{Lex, LexResult};
+use lex::{expect, Lex, LexResult};
 use op::OrderingOp;
-
-use std::borrow::Cow;
-use std::fmt::{self, Debug, Formatter};
-use std::net::IpAddr;
-use std::ops::Deref;
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug, Formatter},
+    net::IpAddr,
+    ops::Deref,
+};
 
 fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
     let mut input = expect(input, "{")?.trim_left();

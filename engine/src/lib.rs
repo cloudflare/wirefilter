@@ -20,9 +20,11 @@ mod re;
 mod scheme;
 pub mod types;
 
-pub use self::bytes::Bytes;
-pub use self::execution_context::ExecutionContext;
-pub use self::field::Field;
-pub use self::filter::{Filter, FilterOp};
-pub use self::re::Regex;
-pub use self::scheme::Scheme;
+pub use self::{
+    bytes::Bytes,
+    execution_context::ExecutionContext,
+    field::Field,
+    filter::{Filter, FilterOp},
+    re::Regex,
+    scheme::Scheme,
+};

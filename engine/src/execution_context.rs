@@ -2,9 +2,8 @@ use filter::{Filter, FilterOp};
 use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
 use op::{CombiningOp, UnaryOp, UnsignedOp};
-use types::{GetType, LhsValue, Type};
-
 use std::iter::FromIterator;
+use types::{GetType, LhsValue, Type};
 
 #[derive(Default)]
 pub struct ExecutionContext<'a> {

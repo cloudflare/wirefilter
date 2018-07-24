@@ -1,8 +1,9 @@
 use lex::{expect, take, Lex, LexErrorKind, LexResult};
-
-use std::fmt::{self, Debug, Formatter};
-use std::ops::Deref;
-use std::str;
+use std::{
+    fmt::{self, Debug, Formatter},
+    ops::Deref,
+    str,
+};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Bytes {

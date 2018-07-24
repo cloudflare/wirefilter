@@ -1,10 +1,7 @@
 extern crate wirefilter;
 
-use wirefilter::types::Type;
-use wirefilter::Scheme;
-
-use std::cmp::max;
-use std::env::args;
+use std::{cmp::max, env::args};
+use wirefilter::{types::Type, Scheme};
 
 fn main() {
     let filter = args()

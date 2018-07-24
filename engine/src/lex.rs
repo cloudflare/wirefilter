@@ -1,9 +1,8 @@
 use cidr::NetworkParseError;
 use op::ComparisonOp;
 use regex::Error as RegexError;
-use types::Type;
-
 use std::num::ParseIntError;
+use types::Type;
 
 #[derive(Debug, PartialEq, Fail)]
 pub enum LexErrorKind {

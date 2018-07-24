@@ -1,5 +1,4 @@
 use lex::{expect, span, take_while, Lex, LexResult};
-
 use std::fmt;
 
 fn ident(input: &str) -> LexResult<&str> {

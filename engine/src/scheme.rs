@@ -6,10 +6,8 @@ use indexmap::IndexMap;
 use lex::{expect, span, Lex, LexError, LexErrorKind, LexResult};
 use op::{BytesOp, CombiningOp, ComparisonOp, OrderingOp, UnaryOp};
 use re::Regex;
+use std::{borrow::Borrow, iter::FromIterator};
 use types::{GetType, RhsValue, RhsValues, Type};
-
-use std::borrow::Borrow;
-use std::iter::FromIterator;
 
 #[derive(Default)]
 pub struct Scheme {

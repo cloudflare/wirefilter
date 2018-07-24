@@ -1,10 +1,11 @@
 use cidr::{Cidr, NetworkParseError};
 use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
-
-use std::cmp::Ordering;
-use std::fmt::{self, Debug, Formatter};
-use std::net::IpAddr;
-use std::str::FromStr;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Debug, Formatter},
+    net::IpAddr,
+    str::FromStr,
+};
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct IpCidr(::cidr::IpCidr);
