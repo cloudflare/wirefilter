@@ -13,8 +13,7 @@ everything: &everything
       - ./cfsetup-cargo.sh prebuild --release
     post-cache:
       - cd ffi
-      - sudo ../cfsetup-cargo.sh build --release --frozen
-      - sudo ../cfsetup-cargo.sh deb --no-build
+      - sudo ../cfsetup-cargo.sh deb -- --release --frozen
     artifacts:
       - /var/lib/cargo/target/debian/*.deb
   build-arm64:
