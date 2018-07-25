@@ -62,7 +62,13 @@ pub trait Lex<'i>: Sized {
 }
 
 pub trait LexWith<'i, E>: Sized {
-    fn lex(input: &'i str, extra: E) -> LexResult<'i, Self>;
+    fn lex_with(input: &'i str, extra: E) -> LexResult<'i, Self>;
+}
+
+impl<'i, T: Lex<'i>, E> LexWith<'i, E> for T {
+    fn lex_with(input: &'i str, _extra: E) -> LexResult<'i, Self> {
+        Self::lex(input)
+    }
 }
 
 pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'i>> {

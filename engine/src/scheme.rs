@@ -29,7 +29,7 @@ impl<'s> Hash for Field<'s> {
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
-    fn lex(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+    fn lex_with(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
         loop {
@@ -121,7 +121,7 @@ impl<'s> Scheme {
     }
 
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
-        complete(Filter::lex(input.trim(), self))
+        complete(Filter::lex_with(input.trim(), self))
     }
 }
 
@@ -136,37 +136,37 @@ fn test_field() {
         .collect();
 
     assert_ok!(
-        Field::lex("x;", scheme),
+        Field::lex_with("x;", scheme),
         scheme.get_field_index("x").unwrap(),
         ";"
     );
 
     assert_ok!(
-        Field::lex("x.y.z0-", scheme),
+        Field::lex_with("x.y.z0-", scheme),
         scheme.get_field_index("x.y.z0").unwrap(),
         "-"
     );
 
     assert_ok!(
-        Field::lex("is_TCP", scheme),
+        Field::lex_with("is_TCP", scheme),
         scheme.get_field_index("is_TCP").unwrap(),
         ""
     );
 
     assert_err!(
-        Field::lex("x..y", scheme),
+        Field::lex_with("x..y", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         ".y"
     );
 
     assert_err!(
-        Field::lex("x.#", scheme),
+        Field::lex_with("x.#", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         "#"
     );
 
     assert_err!(
-        Field::lex("x.y.z;", scheme),
+        Field::lex_with("x.y.z;", scheme),
         LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );

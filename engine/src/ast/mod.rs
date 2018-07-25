@@ -35,8 +35,8 @@ impl<'s> Debug for Filter<'s> {
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for Filter<'s> {
-    fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
-        let (op, input) = CombinedExpr::lex(input, scheme)?;
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        let (op, input) = CombinedExpr::lex_with(input, scheme)?;
         Ok((Filter { scheme, op }, input))
     }
 }

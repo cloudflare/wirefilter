@@ -18,16 +18,16 @@ pub enum SimpleExpr<'s> {
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
-    fn lex(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         Ok(if let Ok(input) = expect(input, "(") {
             let input = input.trim_left();
-            let (op, input) = CombinedExpr::lex(input, scheme)?;
+            let (op, input) = CombinedExpr::lex_with(input, scheme)?;
             let input = input.trim_left();
             let input = expect(input, ")")?;
             (SimpleExpr::Parenthesized(Box::new(op)), input)
         } else if let Ok((op, input)) = UnaryOp::lex(input) {
             let input = input.trim_left();
-            let (arg, input) = SimpleExpr::lex(input, scheme)?;
+            let (arg, input) = SimpleExpr::lex_with(input, scheme)?;
             (
                 SimpleExpr::Unary {
                     op,
@@ -36,7 +36,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
                 input,
             )
         } else {
-            let (op, input) = FieldExpr::lex(input, scheme)?;
+            let (op, input) = FieldExpr::lex_with(input, scheme)?;
             (SimpleExpr::Field(op), input)
         })
     }
@@ -75,11 +75,11 @@ fn test() {
     let ctx = &mut ExecutionContext::new(scheme);
     ctx.set_field_value("t", LhsValue::Bool(true));
 
-    let t_expr = SimpleExpr::Field(complete(FieldExpr::lex("t", scheme)).unwrap());
+    let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
 
     {
-        let expr = assert_ok!(SimpleExpr::lex("t", scheme), t_expr());
+        let expr = assert_ok!(SimpleExpr::lex_with("t", scheme), t_expr());
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -87,7 +87,7 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            SimpleExpr::lex("((t))", scheme),
+            SimpleExpr::lex_with("((t))", scheme),
             parenthesized_expr(parenthesized_expr(t_expr()))
         );
         assert_eq!(expr.execute(ctx), true);
@@ -99,19 +99,19 @@ fn test() {
     };
 
     {
-        let expr = assert_ok!(SimpleExpr::lex("not t", scheme), not_expr(t_expr()));
+        let expr = assert_ok!(SimpleExpr::lex_with("not t", scheme), not_expr(t_expr()));
         assert_eq!(expr.execute(ctx), false);
     }
 
-    assert_ok!(SimpleExpr::lex("!t", scheme), not_expr(t_expr()));
+    assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
 
     {
-        let expr = assert_ok!(SimpleExpr::lex("!!t", scheme), not_expr(not_expr(t_expr())));
+        let expr = assert_ok!(SimpleExpr::lex_with("!!t", scheme), not_expr(not_expr(t_expr())));
         assert_eq!(expr.execute(ctx), true);
     }
 
     assert_ok!(
-        SimpleExpr::lex("! (not !t)", scheme),
+        SimpleExpr::lex_with("! (not !t)", scheme),
         not_expr(parenthesized_expr(not_expr(not_expr(t_expr()))))
     );
 }

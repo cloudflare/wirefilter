@@ -91,7 +91,7 @@ macro_rules! declare_types {
         }
 
         impl<'i> LexWith<'i, Type> for RhsValue {
-            fn lex(input: &str, ty: Type) -> LexResult<Self> {
+            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = <$rhs_ty>::lex(input)?;
@@ -102,7 +102,7 @@ macro_rules! declare_types {
         }
 
         impl<'i> LexWith<'i, Type> for RhsValues {
-            fn lex(input: &str, ty: Type) -> LexResult<Self> {
+            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = lex_rhs_values(input)?;
