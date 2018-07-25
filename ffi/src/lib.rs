@@ -16,7 +16,7 @@ use std::{
     net::IpAddr,
 };
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
-use wirefilter::{ExecutionContext, Filter, LexErrorKind, LhsValue, Scheme, Type};
+use wirefilter::{ExecutionContext, Filter, LexErrorKind, Scheme, Type};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -144,7 +144,7 @@ pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: u64,
 ) {
-    exec_context.set_field_value(name.into(), LhsValue::Unsigned(value));
+    exec_context.set_field_value(name.into(), value);
 }
 
 #[no_mangle]
@@ -154,7 +154,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &'a [u8] = value.into();
-    exec_context.set_field_value(name.into(), LhsValue::Bytes(slice.into()));
+    exec_context.set_field_value(name.into(), slice);
 }
 
 #[no_mangle]
@@ -163,7 +163,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: &[u8; 16],
 ) {
-    exec_context.set_field_value(name.into(), LhsValue::Ip(IpAddr::from(*value)));
+    exec_context.set_field_value(name.into(), IpAddr::from(*value));
 }
 
 #[no_mangle]
@@ -172,7 +172,7 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: &[u8; 4],
 ) {
-    exec_context.set_field_value(name.into(), LhsValue::Ip(IpAddr::from(*value)));
+    exec_context.set_field_value(name.into(), IpAddr::from(*value));
 }
 
 #[no_mangle]
@@ -181,7 +181,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
     name: ExternallyAllocatedByteArr<'a>,
     value: bool,
 ) {
-    exec_context.set_field_value(name.into(), LhsValue::Bool(value));
+    exec_context.set_field_value(name.into(), value);
 }
 
 #[no_mangle]

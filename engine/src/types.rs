@@ -65,6 +65,12 @@ macro_rules! declare_types {
             $($name($lhs_ty),)*
         });
 
+        $(impl<'a> From<$lhs_ty> for LhsValue<'a> {
+            fn from(value: $lhs_ty) -> Self {
+                LhsValue::$name(value)
+            }
+        })*
+
         declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValue {
             $($name($rhs_ty),)*
         });
@@ -123,6 +129,13 @@ macro_rules! declare_types {
             }
         }
     };
+}
+
+// special case for simply passing strings
+impl<'a> From<&'a str> for LhsValue<'a> {
+    fn from(s: &'a str) -> Self {
+        s.as_bytes().into()
+    }
 }
 
 impl<'i> Lex<'i> for bool {

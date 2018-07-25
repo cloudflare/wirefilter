@@ -3,9 +3,9 @@
 extern crate test;
 extern crate wirefilter;
 
-use std::{net::IpAddr, str::FromStr};
+use std::net::IpAddr;
 use test::{black_box, Bencher};
-use wirefilter::{ExecutionContext, Filter, LhsValue, Scheme, Type};
+use wirefilter::{ExecutionContext, Filter, Scheme, Type};
 
 fn create_scheme() -> Scheme {
     [
@@ -25,85 +25,38 @@ fn create_scheme() -> Scheme {
 
 fn create_exec_contexts(scheme: &Scheme) -> Vec<ExecutionContext> {
     vec![
-        vec![
-            (
-                "http.cookie",
-                LhsValue::Bytes(r#"test=321;access_token=123"#.as_bytes().into()),
-            ),
-            (
-                "http.host",
-                LhsValue::Bytes(r#"www.lfgss.com"#.as_bytes().into()),
-            ),
-            (
-                "http.request.uri.path",
-                LhsValue::Bytes(r#"/static/imgs/1.jpeg"#.as_bytes().into()),
-            ),
-            (
+        {
+            let mut ctx = ExecutionContext::new(scheme);
+            ctx.set_field_value("http.cookie", "test=321;access_token=123");
+            ctx.set_field_value("http.host", "www.lfgss.com");
+            ctx.set_field_value("http.request.uri.path", "/static/imgs/1.jpeg");
+            ctx.set_field_value(
                 "http.user_agent",
-                LhsValue::Bytes(
-                    r#"Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)"#.as_bytes()
-                        .into(),
-                ),
-            ),
-            (
-                "ip.addr",
-                LhsValue::Ip(IpAddr::from_str("212.71.253.211").unwrap()),
-            ),
-            (
-                "ip.geoip.asnum",
-                LhsValue::Bytes(r#"AS30992"#.as_bytes().into()),
-            ),
-            (
-                "ip.geoip.country",
-                LhsValue::Bytes(r#"VN"#.as_bytes().into()),
-            ),
-            ("ssl", LhsValue::Bool(true)),
-            ("tcp.port", LhsValue::Unsigned(443)),
-        ],
-        vec![
-            (
-                "http.cookie",
-                LhsValue::Bytes(r#"foo=bar"#.as_bytes().into()),
-            ),
-            (
-                "http.host",
-                LhsValue::Bytes(r#"static.lfgss.com""#.as_bytes().into()),
-            ),
-            (
-                "http.request.uri.path",
-                LhsValue::Bytes(r#"test/isogram-123"#.as_bytes().into()),
-            ),
-            (
+                "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)",
+            );
+            ctx.set_field_value("ip.addr", IpAddr::from([212, 71, 253, 211]));
+            ctx.set_field_value("ip.geoip.asnum", "AS30992");
+            ctx.set_field_value("ip.geoip.country", "VN");
+            ctx.set_field_value("ssl", true);
+            ctx.set_field_value("tcp.port", 443);
+            ctx
+        },
+        {
+            let mut ctx = ExecutionContext::new(scheme);
+            ctx.set_field_value("http.cookie", "foo=bar");
+            ctx.set_field_value("http.host", "static.lfgss.com");
+            ctx.set_field_value(
                 "http.user_agent",
-                LhsValue::Bytes(
-                    r#"Mozilla/5.0 (compatible; SomeBot/3.0; +http://yandex.com/bots)"#.as_bytes()
-                        .into(),
-                ),
-            ),
-            (
-                "ip.addr",
-                LhsValue::Ip(IpAddr::from_str("176.58.105.63").unwrap()),
-            ),
-            (
-                "ip.geoip.asnum",
-                LhsValue::Bytes(r#"AS30993"#.as_bytes().into()),
-            ),
-            (
-                "ip.geoip.country",
-                LhsValue::Bytes(r#"JP"#.as_bytes().into()),
-            ),
-            ("ssl", LhsValue::Bool(false)),
-            ("tcp.port", LhsValue::Unsigned(80)),
-        ],
-    ].into_iter()
-        .map(|values| {
-            let mut context = ExecutionContext::new(scheme);
-            for (name, value) in values {
-                context.set_field_value(name, value);
-            }
-            context
-        })
-        .collect()
+                "Mozilla/5.0 (compatible; SomeBot/3.0; +http://yandex.com/bots)",
+            );
+            ctx.set_field_value("ip.addr", IpAddr::from([176, 58, 105, 63]));
+            ctx.set_field_value("ip.geoip.asnum", "AS30993");
+            ctx.set_field_value("ip.geoip.country", "JP");
+            ctx.set_field_value("ssl", false);
+            ctx.set_field_value("tcp.port", 80);
+            ctx
+        },
+    ]
 }
 
 fn parse_filters<'s>(scheme: &'s Scheme) -> Vec<Filter<'s>> {

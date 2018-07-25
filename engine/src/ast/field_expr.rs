@@ -162,6 +162,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 #[test]
 fn test() {
     use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
+    use std::net::IpAddr;
 
     let scheme: &Scheme = &[
         ("http.host", Type::Bytes),
@@ -185,10 +186,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("ssl", LhsValue::Bool(true));
+        ctx.set_field_value("ssl", true);
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("ssl", LhsValue::Bool(false));
+        ctx.set_field_value("ssl", false);
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -207,22 +208,22 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 1].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value(
             "ip.addr",
-            LhsValue::Ip([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()),
+            IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]),
         );
         assert_eq!(expr.execute(ctx), true);
 
         ctx.set_field_value(
             "ip.addr",
-            LhsValue::Ip([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81].into()),
+            IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81]),
         );
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 1].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -246,10 +247,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("tcp.port", LhsValue::Unsigned(80));
+        ctx.set_field_value("tcp.port", 80);
         assert_eq!(expr.execute(ctx), false);
 
-        ctx.set_field_value("tcp.port", LhsValue::Unsigned(443));
+        ctx.set_field_value("tcp.port", 443);
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -265,10 +266,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), false);
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -284,13 +285,13 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.net"[..].into()));
+        ctx.set_field_value("http.host", "example.net");
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -306,19 +307,19 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 1].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([127, 0, 0, 3].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 3]));
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([255, 255, 255, 255].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([255, 255, 255, 255]));
         assert_eq!(expr.execute(ctx), false);
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 1].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("ip.addr", LhsValue::Ip([0, 0, 0, 0, 0, 0, 0, 2].into()));
+        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]));
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -331,10 +332,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), false);
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"abc.net.au"[..].into()));
+        ctx.set_field_value("http.host", "abc.net.au");
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -347,10 +348,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.com"[..].into()));
+        ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), false);
 
-        ctx.set_field_value("http.host", LhsValue::Bytes(b"example.org"[..].into()));
+        ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -371,10 +372,10 @@ fn test() {
             }
         );
 
-        ctx.set_field_value("tcp.port", LhsValue::Unsigned(80));
+        ctx.set_field_value("tcp.port", 80);
         assert_eq!(expr.execute(ctx), true);
 
-        ctx.set_field_value("tcp.port", LhsValue::Unsigned(8080));
+        ctx.set_field_value("tcp.port", 8080);
         assert_eq!(expr.execute(ctx), false);
     }
 }

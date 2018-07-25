@@ -111,7 +111,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 fn test() {
     use super::field_expr::FieldExpr;
     use lex::complete;
-    use types::{LhsValue, Type};
+    use types::Type;
 
     let scheme = &[("t", Type::Bool), ("f", Type::Bool)]
         .iter()
@@ -134,8 +134,8 @@ fn test() {
 
     assert_ok!(CombinedExpr::lex_with("t", scheme), t_expr());
 
-    ctx.set_field_value("t", LhsValue::Bool(true));
-    ctx.set_field_value("f", LhsValue::Bool(false));
+    ctx.set_field_value("t", true);
+    ctx.set_field_value("f", false);
 
     {
         let expr = assert_ok!(

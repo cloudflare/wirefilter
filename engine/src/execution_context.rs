@@ -32,8 +32,9 @@ impl<'e> ExecutionContext<'e> {
         })
     }
 
-    pub fn set_field_value(&mut self, name: &str, value: LhsValue<'e>) {
+    pub fn set_field_value<V: Into<LhsValue<'e>>>(&mut self, name: &str, value: V) {
         let field = self.scheme.get_field_index(name).unwrap();
+        let value = value.into();
 
         let field_ty = field.get_type();
         let value_ty = value.get_type();

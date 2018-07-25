@@ -65,7 +65,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 #[test]
 fn test() {
     use lex::complete;
-    use types::{LhsValue, Type};
+    use types::Type;
 
     let scheme = &[("t", Type::Bool)]
         .iter()
@@ -73,7 +73,7 @@ fn test() {
         .collect();
 
     let ctx = &mut ExecutionContext::new(scheme);
-    ctx.set_field_value("t", LhsValue::Bool(true));
+    ctx.set_field_value("t", true);
 
     let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
@@ -106,7 +106,10 @@ fn test() {
     assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
 
     {
-        let expr = assert_ok!(SimpleExpr::lex_with("!!t", scheme), not_expr(not_expr(t_expr())));
+        let expr = assert_ok!(
+            SimpleExpr::lex_with("!!t", scheme),
+            not_expr(not_expr(t_expr()))
+        );
         assert_eq!(expr.execute(ctx), true);
     }
 
