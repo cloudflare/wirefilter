@@ -3,7 +3,6 @@ use ip_addr::IpCidr;
 use lex::{expect, Lex, LexResult};
 use op::OrderingOp;
 use std::{
-    borrow::Cow,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
     ops::Deref,
@@ -129,7 +128,7 @@ impl<'i> Lex<'i> for bool {
 
 declare_types!(
     Ip(IpAddr | IpCidr),
-    Bytes(Cow<'a, [u8]> | Bytes),
+    Bytes(&'a [u8] | Bytes),
     Unsigned(u64 | u64),
     Bool(bool | bool),
 );
