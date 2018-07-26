@@ -19,6 +19,11 @@ impl<'e> ExecutionContext<'e> {
     }
 
     pub fn get_field_value_unchecked(&self, field: Field<'e>) -> &LhsValue<'e> {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
         self.values[field.index()].as_ref().unwrap_or_else(|| {
             panic!(
                 "Field {} was registered but not given a value",

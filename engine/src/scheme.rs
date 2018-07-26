@@ -61,6 +61,10 @@ impl<'s> Field<'s> {
     pub fn index(&self) -> usize {
         self.index
     }
+
+    pub fn scheme(&self) -> &'s Scheme {
+        self.scheme
+    }
 }
 
 impl<'s> GetType for Field<'s> {

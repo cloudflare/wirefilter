@@ -146,8 +146,6 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             };
         }
 
-        // this is safe because this code is reachable only from Filter::execute
-        // which already performs the scheme compatibility check
         let lhs = ctx.get_field_value_unchecked(self.field);
 
         match &self.op {
