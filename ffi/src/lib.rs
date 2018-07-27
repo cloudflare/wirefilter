@@ -12,97 +12,34 @@ extern crate indoc;
 mod transfer_types;
 
 use fnv::FnvHasher;
-use libc::size_t;
 use std::{
-    cmp::{max, min},
-    fmt,
     hash::{Hash, Hasher},
     net::IpAddr,
 };
 use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
-use wirefilter::{ExecutionContext, Filter, LexErrorKind, Scheme, Type};
+use wirefilter::{ExecutionContext, Filter, ParseError, Scheme, Type};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-pub struct ParseError<'a> {
-    kind: LexErrorKind,
-    span_start: size_t,
-    span_len: size_t,
-    input: &'a str,
-}
-
-impl<'a> ParseError<'a> {
-    pub fn new(input: &'a str, (err, span): (LexErrorKind, &str)) -> Self {
-        ParseError {
-            kind: err,
-            span_start: span.as_ptr() as usize - input.as_ptr() as usize,
-            span_len: span.len(),
-            input,
-        }
-    }
-}
-
-impl<'a> fmt::Display for ParseError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (line_number, line_start) = self.input[..self.span_start]
-            .match_indices('\n')
-            .map(|(pos, _)| pos + 1)
-            .scan(0, |line_number, line_start| {
-                *line_number += 1;
-                Some((*line_number, line_start))
-            }).last()
-            .unwrap_or_default();
-
-        let mut input = &self.input[line_start..];
-        let span_start = self.span_start - line_start;
-        let mut span_len = self.span_len;
-
-        if let Some(line_end) = input.find('\n') {
-            input = &input[..line_end];
-            span_len = min(span_len, line_end - span_start);
-        }
-
-        writeln!(
-            f,
-            "Filter parsing error ({}:{}):",
-            line_number + 1,
-            span_start + 1
-        );
-
-        writeln!(f, "{}", input);
-
-        for _ in 0..span_start {
-            write!(f, " ");
-        }
-
-        for _ in 0..max(1, span_len) {
-            write!(f, "^");
-        }
-
-        writeln!(f, " {}", self.kind)
-    }
-}
-
 #[repr(u8)]
-pub enum ParsingResult<'a> {
+pub enum ParsingResult<'s> {
     Err(RustAllocatedString),
-    Ok(*mut Filter<'a>),
+    Ok(*mut Filter<'s>),
 }
 
-impl<'a> From<Filter<'a>> for ParsingResult<'a> {
-    fn from(filter: Filter<'a>) -> Self {
+impl<'s> From<Filter<'s>> for ParsingResult<'s> {
+    fn from(filter: Filter<'s>) -> Self {
         ParsingResult::Ok(Box::into_raw(Box::new(filter)))
     }
 }
 
-impl<'a, 'b> From<ParseError<'b>> for ParsingResult<'a> {
-    fn from(err: ParseError<'b>) -> Self {
-        let msg = RustAllocatedString::from(err.to_string());
-        ParsingResult::Err(msg)
+impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
+    fn from(err: ParseError<'a>) -> Self {
+        ParsingResult::Err(RustAllocatedString::from(err.to_string()))
     }
 }
 
-impl<'a> Drop for ParsingResult<'a> {
+impl<'s> Drop for ParsingResult<'s> {
     fn drop(&mut self) {
         if let ParsingResult::Ok(filter) = *self {
             drop(unsafe { Box::from_raw(filter) });
@@ -143,7 +80,7 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
 
     match scheme.parse(input) {
         Ok(filter) => ParsingResult::from(filter),
-        Err(err) => ParsingResult::from(ParseError::new(input, err)),
+        Err(err) => ParsingResult::from(err),
     }
 }
 
@@ -362,7 +299,7 @@ mod ffi_test {
 
                     let expected_err = indoc!(
                         r#"
-                    Filter parsing error:
+                    Filter parsing error (4:13):
                         num1 == "abc"
                                 ^^^^^ expected digit
                     "#

@@ -1,6 +1,6 @@
 extern crate wirefilter;
 
-use std::{cmp::max, env::args};
+use std::env::args;
 use wirefilter::{Scheme, Type};
 
 fn main() {
@@ -20,18 +20,7 @@ fn main() {
         .collect();
 
     match scheme.parse(&filter) {
-        Ok(res) => {
-            println!("{:#?}", res);
-        }
-        Err((err, span)) => {
-            println!("`{}`", filter);
-            for _ in 0..1 + span.as_ptr() as usize - filter.as_ptr() as usize {
-                print!(" ");
-            }
-            for _ in 0..max(1, span.len()) {
-                print!("^");
-            }
-            println!(" {}", err);
-        }
+        Ok(res) => println!("{:#?}", res),
+        Err(err) => println!("{}", err),
     }
 }

@@ -18,7 +18,6 @@ mod types;
 pub use self::{
     ast::Filter,
     execution_context::ExecutionContext,
-    lex::{LexErrorKind, LexResult},
-    scheme::Scheme,
+    scheme::{ParseError, Scheme},
     types::{LhsValue, Type},
 };

@@ -1,9 +1,11 @@
 use ast::Filter;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
-use lex::{complete, expect, span, take_while, LexError, LexErrorKind, LexResult, LexWith};
+use lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith};
 use std::{
-    fmt,
+    cmp::{max, min},
+    error::Error,
+    fmt::{self, Debug, Display, Formatter},
     hash::{Hash, Hasher},
     iter::FromIterator,
     ptr,
@@ -16,8 +18,8 @@ pub(crate) struct Field<'s> {
     index: usize,
 }
 
-impl<'s> fmt::Debug for Field<'s> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<'s> Debug for Field<'s> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.name())
     }
 }
@@ -77,6 +79,73 @@ impl<'s> GetType for Field<'s> {
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
+#[derive(Debug)]
+pub struct ParseError<'i> {
+    kind: LexErrorKind,
+    input: &'i str,
+    line_number: usize,
+    span_start: usize,
+    span_len: usize,
+}
+
+impl<'i> Error for ParseError<'i> {}
+
+impl<'i> ParseError<'i> {
+    pub(crate) fn new(mut input: &'i str, (kind, span): (LexErrorKind, &'i str)) -> Self {
+        let mut span_start = span.as_ptr() as usize - input.as_ptr() as usize;
+
+        let (line_number, line_start) = input[..span_start]
+            .match_indices('\n')
+            .map(|(pos, _)| pos + 1)
+            .scan(0, |line_number, line_start| {
+                *line_number += 1;
+                Some((*line_number, line_start))
+            }).last()
+            .unwrap_or_default();
+
+        input = &input[line_start..];
+
+        span_start -= line_start;
+        let mut span_len = span.len();
+
+        if let Some(line_end) = input.find('\n') {
+            input = &input[..line_end];
+            span_len = min(span_len, line_end - span_start);
+        }
+
+        ParseError {
+            kind,
+            input,
+            line_number,
+            span_start,
+            span_len,
+        }
+    }
+}
+
+impl<'i> Display for ParseError<'i> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "Filter parsing error ({}:{}):",
+            self.line_number + 1,
+            self.span_start + 1
+        );
+
+        writeln!(f, "{}", self.input);
+
+        for _ in 0..self.span_start {
+            write!(f, " ");
+        }
+
+        for _ in 0..max(1, self.span_len) {
+            write!(f, "^");
+        }
+
+        writeln!(f, " {}", self.kind)
+    }
+}
+
 #[derive(Default)]
 pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
@@ -124,8 +193,8 @@ impl<'s> Scheme {
         self.fields.len()
     }
 
-    pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, LexError<'i>> {
-        complete(Filter::lex_with(input.trim(), self))
+    pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, ParseError<'i>> {
+        complete(Filter::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
     }
 }
 
