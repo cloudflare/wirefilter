@@ -11,7 +11,7 @@ use std::{
 use types::{GetType, Type};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Field<'s> {
+pub(crate) struct Field<'s> {
     scheme: &'s Scheme,
     index: usize,
 }
@@ -110,7 +110,7 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_index(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
+    pub(crate) fn get_field_index(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
         match self.fields.get_full(name) {
             Some((index, ..)) => Ok(Field {
                 scheme: self,
@@ -120,7 +120,7 @@ impl<'s> Scheme {
         }
     }
 
-    pub fn get_field_count(&self) -> usize {
+    pub(crate) fn get_field_count(&self) -> usize {
         self.fields.len()
     }
 
