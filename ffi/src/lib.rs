@@ -5,6 +5,10 @@ extern crate wirefilter;
 #[cfg(test)]
 extern crate regex;
 
+#[cfg(test)]
+#[macro_use]
+extern crate indoc;
+
 mod transfer_types;
 
 use fnv::FnvHasher;
@@ -322,7 +326,13 @@ mod ffi_test {
                 ParsingResult::Ok(_) => panic!("Error expected"),
                 ParsingResult::Err(err) => assert_eq!(
                     err.as_str(),
-                    "Filter parsing error:\n`num1 == \"abc\"`\n         ^^^^^ expected digit\n"
+                    indoc!(
+                        r#"
+                    Filter parsing error:
+                    `num1 == "abc"`
+                             ^^^^^ expected digit
+                    "#
+                    )
                 ),
             }
 

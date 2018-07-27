@@ -5,18 +5,19 @@ version = "0.2.2"
 description = "Shared library for the Segments Filter engine FFI"
 publish = false
 
+[package.metadata.deb]
+assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]
+
 [dependencies]
 fnv = "1.0.6"
 libc = "0.2.42"
 
-[dev-dependencies]
-regex = "1.0.1"
-
 [dependencies.wirefilter-engine]
 path = "../engine"
 
+[dev-dependencies]
+regex = "1.0.1"
+indoc = "0.2.6"
+
 [lib]
 crate-type = ["cdylib"]
-
-[package.metadata.deb]
-assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]
