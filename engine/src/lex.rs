@@ -79,6 +79,10 @@ pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'
     }
 }
 
+pub fn skip_space(input: &str) -> &str {
+    input.trim_left()
+}
+
 macro_rules! lex_enum {
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
         $ty:ty => $item:ident,

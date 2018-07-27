@@ -1,6 +1,6 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use execution_context::ExecutionContext;
-use lex::{Lex, LexResult, LexWith};
+use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 
 lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
@@ -20,8 +20,8 @@ pub enum CombinedExpr<'s> {
 
 impl<'s> CombinedExpr<'s> {
     fn lex_combining_op(input: &str) -> (Option<CombiningOp>, &str) {
-        match CombiningOp::lex(input.trim_left()) {
-            Ok((op, input)) => (Some(op), input.trim_left()),
+        match CombiningOp::lex(skip_space(input)) {
+            Ok((op, input)) => (Some(op), skip_space(input)),
             Err(_) => (None, input),
         }
     }

@@ -1,4 +1,4 @@
-use lex::{expect, Lex, LexResult, LexWith};
+use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use rhs_types::{Bytes, IpCidr};
 use std::{
     cmp::Ordering,
@@ -8,15 +8,16 @@ use std::{
 };
 
 fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
-    let mut input = expect(input, "{")?.trim_left();
+    let mut input = expect(input, "{")?;
     let mut res = Vec::new();
     loop {
-        let (item, rest) = T::lex(input)?;
-        res.push(item);
-        input = rest.trim_left();
+        input = skip_space(input);
         if let Ok(input) = expect(input, "}") {
             return Ok((res, input));
         }
+        let (item, rest) = T::lex(input)?;
+        res.push(item);
+        input = rest;
     }
 }
 

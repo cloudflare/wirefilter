@@ -1,6 +1,6 @@
 use super::Expr;
 use execution_context::ExecutionContext;
-use lex::{span, Lex, LexErrorKind, LexResult, LexWith};
+use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
 use rhs_types::{Bytes, Regex};
 use scheme::{Field, Scheme};
 use std::cmp::Ordering;
@@ -82,11 +82,11 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                 input,
             )
         } else {
-            let (op, input) = ComparisonOp::lex(input.trim_left())?;
+            let (op, input) = ComparisonOp::lex(skip_space(input))?;
 
             let input_after_op = input;
 
-            let input = input.trim_left();
+            let input = skip_space(input);
 
             match (field_type, op) {
                 (_, ComparisonOp::In) => {

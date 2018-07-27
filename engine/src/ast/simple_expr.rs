@@ -1,6 +1,6 @@
 use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
 use execution_context::ExecutionContext;
-use lex::{expect, Lex, LexResult, LexWith};
+use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 
 lex_enum!(UnaryOp {
@@ -20,13 +20,13 @@ pub enum SimpleExpr<'s> {
 impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         Ok(if let Ok(input) = expect(input, "(") {
-            let input = input.trim_left();
+            let input = skip_space(input);
             let (op, input) = CombinedExpr::lex_with(input, scheme)?;
-            let input = input.trim_left();
+            let input = skip_space(input);
             let input = expect(input, ")")?;
             (SimpleExpr::Parenthesized(Box::new(op)), input)
         } else if let Ok((op, input)) = UnaryOp::lex(input) {
-            let input = input.trim_left();
+            let input = skip_space(input);
             let (arg, input) = SimpleExpr::lex_with(input, scheme)?;
             (
                 SimpleExpr::Unary {
