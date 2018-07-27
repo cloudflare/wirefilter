@@ -79,8 +79,16 @@ pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'
     }
 }
 
+// Tabs are harder to format as part of the error message because they have
+// a different printable width than other characters, and so become a common
+// source of issues in different compilers.
+//
+// It's not impossible to work around that limitation, but let's not bother
+// for now until someone really needs them (tabs vs spaces all the way down...).
+const SPACE_CHARS: &[char] = &[' ', '\r', '\n'];
+
 pub fn skip_space(input: &str) -> &str {
-    input.trim_left()
+    input.trim_left_matches(SPACE_CHARS)
 }
 
 macro_rules! lex_enum {

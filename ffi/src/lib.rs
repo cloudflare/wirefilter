@@ -14,7 +14,7 @@ mod transfer_types;
 use fnv::FnvHasher;
 use libc::size_t;
 use std::{
-    cmp::max,
+    cmp::{max, min},
     fmt,
     hash::{Hash, Hasher},
     net::IpAddr,
@@ -25,7 +25,7 @@ use wirefilter::{ExecutionContext, Filter, LexErrorKind, Scheme, Type};
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 pub struct ParseError<'a> {
-    msg: String,
+    kind: LexErrorKind,
     span_start: size_t,
     span_len: size_t,
     input: &'a str,
@@ -34,7 +34,7 @@ pub struct ParseError<'a> {
 impl<'a> ParseError<'a> {
     pub fn new(input: &'a str, (err, span): (LexErrorKind, &str)) -> Self {
         ParseError {
-            msg: err.to_string(),
+            kind: err,
             span_start: span.as_ptr() as usize - input.as_ptr() as usize,
             span_len: span.len(),
             input,
@@ -44,18 +44,42 @@ impl<'a> ParseError<'a> {
 
 impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Filter parsing error:")?;
-        writeln!(f, "`{}`", self.input)?;
+        let (line_number, line_start) = self.input[..self.span_start]
+            .match_indices('\n')
+            .map(|(pos, _)| pos + 1)
+            .scan(0, |line_number, line_start| {
+                *line_number += 1;
+                Some((*line_number, line_start))
+            }).last()
+            .unwrap_or_default();
 
-        for _ in 0..1 + self.span_start {
-            write!(f, " ")?;
+        let mut input = &self.input[line_start..];
+        let span_start = self.span_start - line_start;
+        let mut span_len = self.span_len;
+
+        if let Some(line_end) = input.find('\n') {
+            input = &input[..line_end];
+            span_len = min(span_len, line_end - span_start);
         }
 
-        for _ in 0..max(1, self.span_len) {
-            write!(f, "^")?;
+        writeln!(
+            f,
+            "Filter parsing error ({}:{}):",
+            line_number + 1,
+            span_start + 1
+        );
+
+        writeln!(f, "{}", input);
+
+        for _ in 0..span_start {
+            write!(f, " ");
         }
 
-        writeln!(f, " {}", self.msg)
+        for _ in 0..max(1, span_len) {
+            write!(f, "^");
+        }
+
+        writeln!(f, " {}", self.kind)
     }
 }
 
@@ -316,7 +340,16 @@ mod ffi_test {
 
     #[test]
     fn parse_error() {
-        let src = r#"num1 == "abc""#;
+        let src = indoc!(
+            r#"
+        (
+            num1 == 42
+            or
+            num1 == "abc"
+        )
+        "#
+        );
+
         let scheme = create_scheme();
 
         {
@@ -324,16 +357,24 @@ mod ffi_test {
 
             match &result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
-                ParsingResult::Err(err) => assert_eq!(
-                    err.as_str(),
-                    indoc!(
+                ParsingResult::Err(err) => {
+                    let actual_err = err.as_str();
+
+                    let expected_err = indoc!(
                         r#"
                     Filter parsing error:
-                    `num1 == "abc"`
-                             ^^^^^ expected digit
+                        num1 == "abc"
+                                ^^^^^ expected digit
                     "#
-                    )
-                ),
+                    );
+
+                    assert!(
+                        expected_err == actual_err,
+                        "Expected:\n{}Actual:\n{}",
+                        expected_err,
+                        actual_err
+                    );
+                }
             }
 
             wirefilter_free_parsing_result(result);
