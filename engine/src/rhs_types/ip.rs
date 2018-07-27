@@ -1,129 +1,149 @@
 use cidr::{Cidr, NetworkParseError};
-use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
+use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
+
 use std::{
-    cmp::Ordering,
-    fmt::{self, Debug, Formatter},
-    net::IpAddr,
+    net::{AddrParseError, IpAddr},
+    ops::RangeInclusive,
     str::FromStr,
 };
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct IpCidr(::cidr::IpCidr);
-
-impl<T: Into<::cidr::IpCidr>> From<T> for IpCidr {
-    fn from(cidr: T) -> Self {
-        IpCidr(cidr.into())
-    }
+fn match_addr_or_cidr(input: &str) -> LexResult<&str> {
+    take_while(input, "IP address character", |c| match c {
+        '0'...'9' | 'a'...'f' | 'A'...'F' | ':' | '.' | '/' => true,
+        _ => false,
+    })
 }
 
-impl Debug for IpCidr {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Debug::fmt(&self.0, f)
-    }
-}
-
-fn cmp_addr_network<C: Cidr>(addr: &C::Address, network: &C) -> Ordering
-where
-    C::Address: Ord,
-{
-    if addr > &network.last_address() {
-        Ordering::Greater
-    } else if addr < &network.first_address() {
-        Ordering::Less
-    } else {
-        Ordering::Equal
-    }
-}
-
-impl PartialOrd<IpCidr> for IpAddr {
-    fn partial_cmp(&self, network: &IpCidr) -> Option<Ordering> {
-        match (self, network) {
-            (IpAddr::V4(addr), IpCidr(::cidr::IpCidr::V4(network))) => {
-                Some(cmp_addr_network(addr, network))
-            }
-            (IpAddr::V6(addr), IpCidr(::cidr::IpCidr::V6(network))) => {
-                Some(cmp_addr_network(addr, network))
-            }
-            _ => None,
-        }
-    }
-}
-
-impl PartialEq<IpCidr> for IpAddr {
-    fn eq(&self, network: &IpCidr) -> bool {
-        network.0.contains(self)
-    }
+fn parse_addr<Addr: FromStr<Err = AddrParseError>>(input: &str) -> Result<Addr, LexError> {
+    Addr::from_str(input).map_err(|err| {
+        (
+            LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(err)),
+            input,
+        )
+    })
 }
 
 impl<'i> Lex<'i> for IpAddr {
     fn lex(input: &str) -> LexResult<Self> {
-        let (chunk, rest) = take_while(input, "IP address character", |c| match c {
-            '0'...'9' | 'a'...'f' | 'A'...'F' | ':' | '.' => true,
-            _ => false,
-        })?;
-        match Self::from_str(chunk) {
-            Ok(ip_addr) => Ok((ip_addr, rest)),
-            Err(err) => Err((
-                LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(err)),
-                chunk,
-            )),
-        }
+        let (input, rest) = match_addr_or_cidr(input)?;
+        parse_addr(input).map(|res| (res, rest))
     }
 }
 
-impl<'i> Lex<'i> for ::cidr::IpCidr {
+impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
     fn lex(input: &str) -> LexResult<Self> {
-        // We're not using IpCidr::from_str here since it supports short IPv4
-        // form which we don't want as it conflicts with singular numbers.
-        let (addr, rest) = IpAddr::lex(input)?;
+        let (chunk, rest) = match_addr_or_cidr(input)?;
 
-        Ok(if let Ok(rest) = expect(rest, "/") {
-            let (digits, rest) = take_while(rest, "digit", |c| c.is_digit(10))?;
-            let len = u8::from_str(digits)
-                .map_err(|err| (LexErrorKind::ParseInt { err, radix: 10 }, digits))?;
-            (
-                Self::new(addr, len)
-                    .map_err(|err| (LexErrorKind::ParseNetwork(err), span(input, rest)))?,
-                rest,
-            )
+        // check for ".." before trying to lex an address
+        let range = if let Some(split_pos) = chunk.find("..") {
+            let first = &chunk[..split_pos];
+            let first = parse_addr(first)?;
+
+            let last = &chunk[split_pos + "..".len()..];
+            let last = match first {
+                IpAddr::V4(_) => IpAddr::V4(parse_addr(last)?),
+                IpAddr::V6(_) => IpAddr::V6(parse_addr(last)?),
+            };
+
+            first..=last
         } else {
-            (Self::new_host(addr), rest)
-        })
-    }
-}
+            let cidr = ::cidr::IpCidr::from_str(chunk).map_err(|err| {
+                let split_pos = chunk.find('/').unwrap_or(chunk.len());
+                let err_span = match err {
+                    NetworkParseError::AddrParseError(_) | NetworkParseError::InvalidHostPart => {
+                        &chunk[..split_pos]
+                    }
+                    NetworkParseError::NetworkLengthParseError(_) => &chunk[split_pos + 1..],
+                    NetworkParseError::NetworkLengthTooLongError(_) => chunk,
+                };
+                (LexErrorKind::ParseNetwork(err), err_span)
+            })?;
 
-impl<'i> Lex<'i> for IpCidr {
-    fn lex(input: &str) -> LexResult<Self> {
-        let (value, input) = ::cidr::IpCidr::lex(input)?;
-        Ok((IpCidr(value), input))
+            cidr.first_address()..=cidr.last_address()
+        };
+
+        Ok((range, rest))
     }
 }
 
 #[test]
 fn test() {
-    use cidr::Cidr;
+    use cidr::IpCidr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
-    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> IpCidr {
-        ::cidr::IpCidr::new(addr.into(), len).unwrap().into()
+    type IpAddrs = RangeInclusive<IpAddr>;
+
+    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> RangeInclusive<IpAddr> {
+        let cidr = IpCidr::new(addr.into(), len).unwrap();
+        cidr.first_address()..=cidr.last_address()
     }
 
-    assert_ok!(IpCidr::lex("12.34.56.78;"), cidr([12, 34, 56, 78], 32), ";");
     assert_ok!(
-        IpCidr::lex("12.34.56.0/24;"),
+        IpAddrs::lex("12.34.56.78;"),
+        cidr([12, 34, 56, 78], 32),
+        ";"
+    );
+    assert_ok!(
+        IpAddrs::lex("12.34.56.0/24;"),
         cidr([12, 34, 56, 0], 24),
         ";"
     );
-    assert_ok!(IpCidr::lex("::/10;"), cidr([0; 16], 10), ";");
+    assert_ok!(IpAddrs::lex("::/10;"), cidr([0; 16], 10), ";");
     assert_ok!(
-        IpCidr::lex("::ffff:12.34.56.78/127/"),
+        IpAddrs::lex("::ffff:12.34.56.78/127;"),
         cidr(
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 12, 34, 56, 78],
             127
         ),
-        "/"
+        ";"
     );
     assert_ok!(
-        IpCidr::lex("1234::5678"),
+        IpAddrs::lex("1234::5678"),
         cidr([0x1234, 0, 0, 0, 0, 0, 0, 0x5678], 128)
+    );
+    assert_ok!(
+        IpAddrs::lex("10.0.0.0..127.0.0.1 "),
+        IpAddr::from([10, 0, 0, 0])..=IpAddr::from([127, 0, 0, 1]),
+        " "
+    );
+    assert_ok!(
+        IpAddrs::lex("::1..::2||"),
+        IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])..=IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]),
+        "||"
+    );
+    match IpAddrs::lex("10.0.0.0/100") {
+        Err((
+            LexErrorKind::ParseNetwork(NetworkParseError::NetworkLengthTooLongError(_)),
+            "10.0.0.0/100",
+        )) => {}
+        err => panic!("Expected NetworkLengthTooLongError, got {:?}", err),
+    }
+    assert_err!(
+        IpAddrs::lex("::/.1"),
+        LexErrorKind::ParseNetwork(NetworkParseError::NetworkLengthParseError(
+            u8::from_str(".1").unwrap_err()
+        )),
+        ".1"
+    );
+    assert_err!(
+        IpAddrs::lex("10.0.0.0..::1"),
+        LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(
+            Ipv4Addr::from_str("::1").unwrap_err()
+        )),
+        "::1"
+    );
+    assert_err!(
+        IpAddrs::lex("::1..10.0.0.0"),
+        LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(
+            Ipv6Addr::from_str("10.0.0.0").unwrap_err()
+        )),
+        "10.0.0.0"
+    );
+    assert_err!(
+        IpAddrs::lex("10.0.0.0.0/10"),
+        LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(
+            IpAddr::from_str("10.0.0.0.0").unwrap_err()
+        )),
+        "10.0.0.0.0"
     );
 }

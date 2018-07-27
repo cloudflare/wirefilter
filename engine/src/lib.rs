@@ -15,9 +15,11 @@ mod lex;
 
 mod ast;
 mod execution_context;
+mod range_set;
 mod rhs_types;
 mod scheme;
 mod types;
+mod vec_set;
 
 pub use self::{
     ast::Filter,

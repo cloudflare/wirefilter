@@ -1,23 +1,50 @@
-use lex::{expect, skip_space, Lex, LexResult, LexWith};
-use rhs_types::{Bytes, IpCidr};
+use lex::{expect, skip_space, Lex, LexError, LexResult, LexWith};
+use range_set::RangeSet;
+use rhs_types::Bytes;
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},
+    iter::FromIterator,
+    marker::PhantomData,
     net::IpAddr,
     ops::Deref,
 };
+use vec_set::VecSet;
 
-fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<Vec<T>> {
-    let mut input = expect(input, "{")?;
-    let mut res = Vec::new();
-    loop {
-        input = skip_space(input);
-        if let Ok(input) = expect(input, "}") {
-            return Ok((res, input));
+struct RhsValuesLexer<'i, T: Lex<'i>> {
+    input: &'i str,
+    phantom: PhantomData<T>,
+}
+
+impl<'i, T: Lex<'i>> RhsValuesLexer<'i, T> {
+    fn new(input: &'i str) -> Result<Self, LexError> {
+        Ok(RhsValuesLexer {
+            input: expect(input, "{")?,
+            phantom: PhantomData,
+        })
+    }
+
+    fn lex<R: FromIterator<T>>(input: &'i str) -> LexResult<'i, R> {
+        let mut iter = Self::new(input)?;
+        let res = iter.collect::<Result<_, _>>()?;
+        Ok((res, iter.input))
+    }
+}
+
+impl<'a, 'i, T: Lex<'i>> Iterator for &'a mut RhsValuesLexer<'i, T> {
+    type Item = Result<T, LexError<'i>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.input = skip_space(self.input);
+        if let Ok(input) = expect(self.input, "}") {
+            self.input = input;
+            None
+        } else {
+            Some(T::lex(self.input).map(|(res, input)| {
+                self.input = input;
+                res
+            }))
         }
-        let (item, rest) = T::lex(input)?;
-        res.push(item);
-        input = rest;
     }
 }
 
@@ -45,7 +72,7 @@ macro_rules! declare_types {
         }
     };
 
-    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty ) , )*) => {
+    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ident ) , )*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u8)]
         pub enum Type {
@@ -77,14 +104,14 @@ macro_rules! declare_types {
         });
 
         declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValues {
-            $($name(Vec<$rhs_ty>),)*
+            $($name($multi_rhs_ty<$rhs_ty>),)*
         });
 
         impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
             fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
                 match (self, other) {
                     $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
-                        lhs.deref().partial_cmp(rhs.deref())
+                        lhs.deref().partial_cmp(rhs)
                     },)*
                     _ => None,
                 }
@@ -112,7 +139,7 @@ macro_rules! declare_types {
             fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
                 Ok(match ty {
                     $(Type::$name => {
-                        let (value, input) = lex_rhs_values(input)?;
+                        let (value, input) = RhsValuesLexer::lex(input)?;
                         (RhsValues::$name(value), input)
                     })*
                 })
@@ -123,7 +150,7 @@ macro_rules! declare_types {
             pub fn contains(&self, lhs: &LhsValue) -> bool {
                 match (self, lhs) {
                     $((RhsValues::$name(values), LhsValue::$name(lhs)) => {
-                        values.iter().any(|rhs| lhs.deref() == rhs.deref())
+                        values.contains(lhs.deref())
                     })*
                     _ => false,
                 }
@@ -147,8 +174,8 @@ impl<'i> Lex<'i> for bool {
 }
 
 declare_types!(
-    Ip(IpAddr | IpCidr),
-    Bytes(&'a [u8] | Bytes),
-    Unsigned(u64 | u64),
-    Bool(bool | bool),
+    Ip(IpAddr | IpAddr | RangeSet),
+    Bytes(&'a [u8] | Bytes | VecSet),
+    Unsigned(u64 | u64 | VecSet),
+    Bool(bool | bool | VecSet),
 );

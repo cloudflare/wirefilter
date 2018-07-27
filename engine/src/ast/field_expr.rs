@@ -161,12 +161,12 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
 #[test]
 fn test() {
-    use cidr::Cidr;
-    use rhs_types::IpCidr;
-    use std::net::IpAddr;
+    use cidr::{Cidr, IpCidr};
+    use std::{net::IpAddr, ops::RangeInclusive};
 
-    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> IpCidr {
-        ::cidr::IpCidr::new(addr.into(), len).unwrap().into()
+    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> RangeInclusive<IpAddr> {
+        let cidr = IpCidr::new(addr.into(), len).unwrap();
+        cidr.first_address()..=cidr.last_address()
     }
 
     let scheme: &Scheme = &[
@@ -206,7 +206,9 @@ fn test() {
                 field: field("ip.addr"),
                 op: FieldOp::Ordering(
                     OrderingOp::GreaterThanEqual,
-                    RhsValue::Ip(cidr([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80], 128))
+                    RhsValue::Ip(IpAddr::from([
+                        0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
+                    ]))
                 ),
             }
         );
@@ -281,10 +283,12 @@ fn test() {
             FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::OneOf(RhsValues::Bytes(vec![
-                    "example.org".to_owned().into(),
-                    "example.com".to_owned().into(),
-                ])),
+                op: FieldOp::OneOf(RhsValues::Bytes(
+                    ["example.org", "example.com",]
+                        .iter()
+                        .map(|s| s.to_string().into())
+                        .collect()
+                )),
             }
         );
 
@@ -300,13 +304,19 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"ip.addr in { 127.0.0.0/8 ::1 }"#, scheme),
+            FieldExpr::lex_with(
+                r#"ip.addr in { 127.0.0.0/8 ::1 10.0.0.0..10.0.255.255 }"#,
+                scheme
+            ),
             FieldExpr {
                 field: field("ip.addr"),
-                op: FieldOp::OneOf(RhsValues::Ip(vec![
-                    cidr([127, 0, 0, 0], 8),
-                    cidr([0, 0, 0, 0, 0, 0, 0, 1], 128),
-                ])),
+                op: FieldOp::OneOf(RhsValues::Ip(
+                    vec![
+                        cidr([127, 0, 0, 0], 8),
+                        cidr([0, 0, 0, 0, 0, 0, 0, 1], 128),
+                        cidr([10, 0, 0, 0], 16),
+                    ].into()
+                )),
             }
         );
 
