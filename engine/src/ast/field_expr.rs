@@ -280,6 +280,39 @@ fn test() {
 
     {
         let expr = assert_ok!(
+            FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, scheme),
+            FieldExpr {
+                field: field("tcp.port"),
+                op: FieldOp::OneOf(RhsValues::Unsigned(
+                    vec![80..=80, 443..=443, 2082..=2083].into()
+                )),
+            }
+        );
+
+        ctx.set_field_value("tcp.port", 80);
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("tcp.port", 8080);
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("tcp.port", 443);
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("tcp.port", 2081);
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("tcp.port", 2082);
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("tcp.port", 2083);
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("tcp.port", 2084);
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    {
+        let expr = assert_ok!(
             FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, scheme),
             FieldExpr {
                 field: field("http.host"),

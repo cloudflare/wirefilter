@@ -1,4 +1,5 @@
 use lex::{expect, take_while, Lex, LexErrorKind, LexResult};
+use std::ops::RangeInclusive;
 
 fn number(input: &str, radix: u32) -> LexResult<u64> {
     let (digits, input) = take_while(input, "digit", |c| c.is_digit(radix))?;
@@ -9,7 +10,7 @@ fn number(input: &str, radix: u32) -> LexResult<u64> {
 }
 
 impl<'i> Lex<'i> for u64 {
-    fn lex(input: &str) -> LexResult<u64> {
+    fn lex(input: &str) -> LexResult<Self> {
         if let Ok(input) = expect(input, "0") {
             match input.chars().next() {
                 Some(c) if c.is_digit(8) => number(input, 8),
@@ -22,6 +23,18 @@ impl<'i> Lex<'i> for u64 {
     }
 }
 
+impl<'i> Lex<'i> for RangeInclusive<u64> {
+    fn lex(input: &str) -> LexResult<Self> {
+        let (first, input) = u64::lex(input)?;
+        let (last, input) = if let Ok(input) = expect(input, "..") {
+            u64::lex(input)?
+        } else {
+            (first, input)
+        };
+        Ok((first..=last, input))
+    }
+}
+
 #[test]
 fn test() {
     assert_ok!(u64::lex("0"), 0u64, "");
@@ -30,4 +43,7 @@ fn test() {
     assert_ok!(u64::lex("0123;"), 83u64, ";");
     assert_ok!(u64::lex("78!"), 78u64, "!");
     assert_ok!(u64::lex("0xefg"), 239u64, "g");
+    assert_ok!(RangeInclusive::lex("78!"), 78u64..=78u64, "!");
+    assert_ok!(RangeInclusive::lex("0..10"), 0u64..=10u64);
+    assert_ok!(RangeInclusive::lex("0123..0xefg"), 83u64..=239u64, "g");
 }

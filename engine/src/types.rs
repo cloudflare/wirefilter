@@ -176,6 +176,6 @@ impl<'i> Lex<'i> for bool {
 declare_types!(
     Ip(IpAddr | IpAddr | RangeSet),
     Bytes(&'a [u8] | Bytes | VecSet),
-    Unsigned(u64 | u64 | VecSet),
+    Unsigned(u64 | u64 | RangeSet),
     Bool(bool | bool | VecSet),
 );
