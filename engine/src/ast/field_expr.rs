@@ -161,8 +161,13 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
 #[test]
 fn test() {
-    use cidr::{Cidr, Ipv4Cidr, Ipv6Cidr};
+    use cidr::Cidr;
+    use rhs_types::IpCidr;
     use std::net::IpAddr;
+
+    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> IpCidr {
+        ::cidr::IpCidr::new(addr.into(), len).unwrap().into()
+    }
 
     let scheme: &Scheme = &[
         ("http.host", Type::Bytes),
@@ -201,10 +206,7 @@ fn test() {
                 field: field("ip.addr"),
                 op: FieldOp::Ordering(
                     OrderingOp::GreaterThanEqual,
-                    RhsValue::Ip(
-                        Ipv6Cidr::new_host([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into())
-                            .into()
-                    )
+                    RhsValue::Ip(cidr([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80], 128))
                 ),
             }
         );
@@ -302,8 +304,8 @@ fn test() {
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::OneOf(RhsValues::Ip(vec![
-                    Ipv4Cidr::new([127, 0, 0, 0].into(), 8).unwrap().into(),
-                    Ipv6Cidr::new_host(1.into()).into(),
+                    cidr([127, 0, 0, 0], 8),
+                    cidr([0, 0, 0, 0, 0, 0, 0, 1], 128),
                 ])),
             }
         );
