@@ -169,7 +169,8 @@ fn test() {
         ("ip.addr", Type::Ip),
         ("ssl", Type::Bool),
         ("tcp.port", Type::Unsigned),
-    ].iter()
+    ]
+        .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 

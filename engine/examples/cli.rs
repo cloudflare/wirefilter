@@ -14,7 +14,8 @@ fn main() {
         ("bytes", Type::Bytes),
         ("unsigned", Type::Unsigned),
         ("bool", Type::Bool),
-    ].iter()
+    ]
+        .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 

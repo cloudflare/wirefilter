@@ -135,7 +135,8 @@ fn test_field() {
         ("x", Type::Bytes),
         ("x.y.z0", Type::Unsigned),
         ("is_TCP", Type::Bool),
-    ].iter()
+    ]
+        .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
 

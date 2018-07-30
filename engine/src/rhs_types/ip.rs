@@ -130,7 +130,7 @@ fn test() {
             Ipv6Addr::from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 12, 34, 56, 78]),
             127
         ).unwrap()
-            .into(),
+        .into(),
         "/"
     );
     assert_ok!(

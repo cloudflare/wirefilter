@@ -18,7 +18,8 @@ fn create_scheme() -> Scheme {
         ("ip.geoip.country", Type::Bytes),
         ("ssl", Type::Bool),
         ("tcp.port", Type::Unsigned),
-    ].iter()
+    ]
+        .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect()
 }
