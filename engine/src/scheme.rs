@@ -79,7 +79,7 @@ impl<'s> GetType for Field<'s> {
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParseError<'i> {
     kind: LexErrorKind,
     input: &'i str,
@@ -195,6 +195,112 @@ impl<'s> Scheme {
 
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, ParseError<'i>> {
         complete(Filter::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
+    }
+}
+
+#[test]
+fn test_parse_error() {
+    let scheme: &Scheme = &[("num", Type::Unsigned)]
+        .iter()
+        .map(|&(k, t)| (k.to_owned(), t))
+        .collect();
+
+    {
+        let err = scheme.parse("xyz").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                input: "xyz",
+                line_number: 0,
+                span_start: 0,
+                span_len: 3
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                "
+            Filter parsing error (1:1):
+            xyz
+            ^^^ unknown field
+        "
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("xyz\n").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                input: "xyz",
+                line_number: 0,
+                span_start: 0,
+                span_len: 3
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                "
+            Filter parsing error (1:1):
+            xyz
+            ^^^ unknown field
+        "
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("\n\n    xyz").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                input: "    xyz",
+                line_number: 2,
+                span_start: 4,
+                span_len: 3
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                "
+            Filter parsing error (3:5):
+                xyz
+                ^^^ unknown field
+        "
+            )
+        );
+    }
+
+    {
+        let err = scheme
+            .parse("num == 10 or\nnum == true or\nnum == 20")
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("digit"),
+                input: "num == true or",
+                line_number: 1,
+                span_start: 7,
+                span_len: 7
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                "
+            Filter parsing error (2:8):
+            num == true or
+                   ^^^^^^^ expected digit
+        "
+            )
+        );
     }
 }
 

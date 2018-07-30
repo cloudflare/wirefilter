@@ -17,3 +17,6 @@ name = "wirefilter"
 
 # Avoid duplicate compilation error messages as we don't have doctests anyway
 doctest = false
+
+[dev-dependencies]
+indoc = "0.2.6"

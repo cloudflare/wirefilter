@@ -1,6 +1,10 @@
 #[macro_use]
 extern crate failure;
 
+#[cfg(test)]
+#[macro_use]
+extern crate indoc;
+
 extern crate cidr;
 extern crate fnv;
 extern crate indexmap;

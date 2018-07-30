@@ -295,21 +295,15 @@ mod ffi_test {
             match &result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
                 ParsingResult::Err(err) => {
-                    let actual_err = err.as_str();
-
-                    let expected_err = indoc!(
-                        r#"
-                    Filter parsing error (4:13):
-                        num1 == "abc"
-                                ^^^^^ expected digit
+                    assert_eq!(
+                        err.as_str(),
+                        indoc!(
+                            r#"
+                        Filter parsing error (4:13):
+                            num1 == "abc"
+                                    ^^^^^ expected digit
                     "#
-                    );
-
-                    assert!(
-                        expected_err == actual_err,
-                        "Expected:\n{}Actual:\n{}",
-                        expected_err,
-                        actual_err
+                        )
                     );
                 }
             }
