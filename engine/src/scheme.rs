@@ -130,19 +130,21 @@ impl<'i> Display for ParseError<'i> {
             "Filter parsing error ({}:{}):",
             self.line_number + 1,
             self.span_start + 1
-        );
+        )?;
 
-        writeln!(f, "{}", self.input);
+        writeln!(f, "{}", self.input)?;
 
         for _ in 0..self.span_start {
-            write!(f, " ");
+            write!(f, " ")?;
         }
 
         for _ in 0..max(1, self.span_len) {
-            write!(f, "^");
+            write!(f, "^")?;
         }
 
-        writeln!(f, " {}", self.kind)
+        writeln!(f, " {}", self.kind)?;
+
+        Ok(())
     }
 }
 
