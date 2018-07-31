@@ -222,11 +222,11 @@ fn test_parse_error() {
         assert_eq!(
             err.to_string(),
             indoc!(
-                "
-            Filter parsing error (1:1):
-            xyz
-            ^^^ unknown field
-        "
+                r#"
+                Filter parsing error (1:1):
+                xyz
+                ^^^ unknown field
+                "#
             )
         );
     }
@@ -246,11 +246,11 @@ fn test_parse_error() {
         assert_eq!(
             err.to_string(),
             indoc!(
-                "
-            Filter parsing error (1:1):
-            xyz
-            ^^^ unknown field
-        "
+                r#"
+                Filter parsing error (1:1):
+                xyz
+                ^^^ unknown field
+                "#
             )
         );
     }
@@ -270,19 +270,24 @@ fn test_parse_error() {
         assert_eq!(
             err.to_string(),
             indoc!(
-                "
-            Filter parsing error (3:5):
-                xyz
-                ^^^ unknown field
-        "
+                r#"
+                Filter parsing error (3:5):
+                    xyz
+                    ^^^ unknown field
+                "#
             )
         );
     }
 
     {
         let err = scheme
-            .parse("num == 10 or\nnum == true or\nnum == 20")
-            .unwrap_err();
+            .parse(indoc!(
+                r#"
+                num == 10 or
+                num == true or
+                num == 20
+                "#
+            )).unwrap_err();
         assert_eq!(
             err,
             ParseError {
@@ -296,11 +301,11 @@ fn test_parse_error() {
         assert_eq!(
             err.to_string(),
             indoc!(
-                "
-            Filter parsing error (2:8):
-            num == true or
-                   ^^^^^^^ expected digit
-        "
+                r#"
+                Filter parsing error (2:8):
+                num == true or
+                       ^^^^^^^ expected digit
+                "#
             )
         );
     }

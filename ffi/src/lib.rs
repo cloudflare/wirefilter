@@ -279,12 +279,12 @@ mod ffi_test {
     fn parse_error() {
         let src = indoc!(
             r#"
-        (
-            num1 == 42
-            or
-            num1 == "abc"
-        )
-        "#
+            (
+                num1 == 42
+                or
+                num1 == "abc"
+            )
+            "#
         );
 
         let scheme = create_scheme();
@@ -299,10 +299,10 @@ mod ffi_test {
                         err.as_str(),
                         indoc!(
                             r#"
-                        Filter parsing error (4:13):
-                            num1 == "abc"
-                                    ^^^^^ expected digit
-                    "#
+                            Filter parsing error (4:13):
+                                num1 == "abc"
+                                        ^^^^^ expected digit
+                            "#
                         )
                     );
                 }
