@@ -36,7 +36,8 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
             let last = parse_addr(&chunk[split_pos + "..".len()..])?;
 
             match (first, last) {
-                (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_)) => {}
+                (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
+                    if first <= last => {}
                 _ => {
                     return Err((LexErrorKind::IncompatibleRangeBounds, chunk));
                 }
@@ -130,6 +131,16 @@ fn test() {
         IpAddrs::lex("::1..10.0.0.0"),
         LexErrorKind::IncompatibleRangeBounds,
         "::1..10.0.0.0"
+    );
+    assert_err!(
+        IpAddrs::lex("127.0.0.1..10.0.0.0"),
+        LexErrorKind::IncompatibleRangeBounds,
+        "127.0.0.1..10.0.0.0"
+    );
+    assert_err!(
+        IpAddrs::lex("::2..::1"),
+        LexErrorKind::IncompatibleRangeBounds,
+        "::2..::1"
     );
     assert_err!(
         IpAddrs::lex("10.0.0.0.0/10"),

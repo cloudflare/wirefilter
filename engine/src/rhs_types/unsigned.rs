@@ -1,4 +1,4 @@
-use lex::{expect, take_while, Lex, LexErrorKind, LexResult};
+use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
 use std::ops::RangeInclusive;
 
 fn number(input: &str, radix: u32) -> LexResult<u64> {
@@ -25,12 +25,19 @@ impl<'i> Lex<'i> for u64 {
 
 impl<'i> Lex<'i> for RangeInclusive<u64> {
     fn lex(input: &str) -> LexResult<Self> {
+        let initial_input = input;
         let (first, input) = u64::lex(input)?;
         let (last, input) = if let Ok(input) = expect(input, "..") {
             u64::lex(input)?
         } else {
             (first, input)
         };
+        if last < first {
+            return Err((
+                LexErrorKind::IncompatibleRangeBounds,
+                span(initial_input, input),
+            ));
+        }
         Ok((first..=last, input))
     }
 }
@@ -46,4 +53,9 @@ fn test() {
     assert_ok!(RangeInclusive::lex("78!"), 78u64..=78u64, "!");
     assert_ok!(RangeInclusive::lex("0..10"), 0u64..=10u64);
     assert_ok!(RangeInclusive::lex("0123..0xefg"), 83u64..=239u64, "g");
+    assert_err!(
+        <RangeInclusive<u64>>::lex("10..0"),
+        LexErrorKind::IncompatibleRangeBounds,
+        "10..0"
+    );
 }
