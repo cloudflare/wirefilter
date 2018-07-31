@@ -49,6 +49,9 @@ pub enum LexErrorKind {
     #[fail(display = "cannot use this operation type {:?}", field_type)]
     UnsupportedOp { field_type: Type },
 
+    #[fail(display = "incompatible range bounds")]
+    IncompatibleRangeBounds,
+
     #[fail(display = "unrecognised input")]
     EOF,
 }

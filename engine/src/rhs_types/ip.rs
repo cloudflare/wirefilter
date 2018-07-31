@@ -1,11 +1,7 @@
 use cidr::{Cidr, NetworkParseError};
 use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
 
-use std::{
-    net::{AddrParseError, IpAddr},
-    ops::RangeInclusive,
-    str::FromStr,
-};
+use std::{net::IpAddr, ops::RangeInclusive, str::FromStr};
 
 fn match_addr_or_cidr(input: &str) -> LexResult<&str> {
     take_while(input, "IP address character", |c| match c {
@@ -14,8 +10,8 @@ fn match_addr_or_cidr(input: &str) -> LexResult<&str> {
     })
 }
 
-fn parse_addr<Addr: FromStr<Err = AddrParseError>>(input: &str) -> Result<Addr, LexError> {
-    Addr::from_str(input).map_err(|err| {
+fn parse_addr(input: &str) -> Result<IpAddr, LexError> {
+    IpAddr::from_str(input).map_err(|err| {
         (
             LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(err)),
             input,
@@ -36,14 +32,15 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
 
         // check for ".." before trying to lex an address
         let range = if let Some(split_pos) = chunk.find("..") {
-            let first = &chunk[..split_pos];
-            let first = parse_addr(first)?;
+            let first = parse_addr(&chunk[..split_pos])?;
+            let last = parse_addr(&chunk[split_pos + "..".len()..])?;
 
-            let last = &chunk[split_pos + "..".len()..];
-            let last = match first {
-                IpAddr::V4(_) => IpAddr::V4(parse_addr(last)?),
-                IpAddr::V6(_) => IpAddr::V6(parse_addr(last)?),
-            };
+            match (first, last) {
+                (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_)) => {}
+                _ => {
+                    return Err((LexErrorKind::IncompatibleRangeBounds, chunk));
+                }
+            }
 
             first..=last
         } else {
@@ -69,7 +66,6 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
 #[test]
 fn test() {
     use cidr::IpCidr;
-    use std::net::{Ipv4Addr, Ipv6Addr};
 
     type IpAddrs = RangeInclusive<IpAddr>;
 
@@ -127,17 +123,13 @@ fn test() {
     );
     assert_err!(
         IpAddrs::lex("10.0.0.0..::1"),
-        LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(
-            Ipv4Addr::from_str("::1").unwrap_err()
-        )),
-        "::1"
+        LexErrorKind::IncompatibleRangeBounds,
+        "10.0.0.0..::1"
     );
     assert_err!(
         IpAddrs::lex("::1..10.0.0.0"),
-        LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(
-            Ipv6Addr::from_str("10.0.0.0").unwrap_err()
-        )),
-        "10.0.0.0"
+        LexErrorKind::IncompatibleRangeBounds,
+        "::1..10.0.0.0"
     );
     assert_err!(
         IpAddrs::lex("10.0.0.0.0/10"),
