@@ -2,6 +2,7 @@
 
 export CARGO_HOME=/var/lib/cargo
 export CARGO_TARGET_DIR=$CARGO_HOME/target
+export RUSTFLAGS="-D warnings"
 
 CMD=$1
 shift
