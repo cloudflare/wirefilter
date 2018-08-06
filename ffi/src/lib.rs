@@ -247,23 +247,20 @@ mod ffi_test {
         exec_context
     }
 
-    fn create_filter<'s, 'f>(
-        scheme: &'s Scheme,
-        input: &'static str,
-    ) -> (&'f Filter<'s>, ParsingResult<'s>) {
-        let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input));
+    fn parse_filter<'s>(scheme: &'s Scheme, input: &'static str) -> ParsingResult<'s> {
+        wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input))
+    }
 
-        let filter = match result {
-            ParsingResult::Ok(ref filter) => unsafe { &*(filter as &Filter as *const _) },
+    fn validate_filter<'f, 's>(result: &'f ParsingResult<'s>) -> &'f Filter<'s> {
+        match result {
+            ParsingResult::Ok(filter) => filter,
             ParsingResult::Err(err) => panic!("{}", err.as_str()),
-        };
-
-        (filter, result)
+        }
     }
 
     fn match_filter(input: &'static str, scheme: &Scheme, exec_context: &ExecutionContext) -> bool {
-        let (filter, parsing_result) = create_filter(scheme, input);
-        let result = wirefilter_match(filter, exec_context);
+        let parsing_result = parse_filter(scheme, input);
+        let result = wirefilter_match(validate_filter(&parsing_result), exec_context);
 
         wirefilter_free_parsing_result(parsing_result);
 
@@ -285,7 +282,7 @@ mod ffi_test {
         let scheme = create_scheme();
 
         {
-            let result = wirefilter_parse_filter(&scheme, ExternallyAllocatedByteArr::from(src));
+            let result = parse_filter(&scheme, src);
 
             match &result {
                 ParsingResult::Ok(_) => panic!("Error expected"),
@@ -310,11 +307,12 @@ mod ffi_test {
     }
 
     #[test]
-    fn parse_filter() {
+    fn filter_parsing() {
         let scheme = create_scheme();
 
         {
-            let (_filter, parsing_result) = create_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
+            let parsing_result = parse_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
+            validate_filter(&parsing_result);
             wirefilter_free_parsing_result(parsing_result);
         }
 
@@ -357,19 +355,19 @@ mod ffi_test {
         let scheme = create_scheme();
 
         {
-            let (filter1, parsing_result1) = create_filter(
+            let parsing_result1 = parse_filter(
                 &scheme,
                 r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
             );
-            let (filter2, parsing_result2) = create_filter(
+            let parsing_result2 = parse_filter(
                 &scheme,
                 r#"num1 >     41 && num2 == 1337 &&    ip1 != 192.168.0.1 and str2 ~ "yo\d+""#,
             );
-            let (filter3, parsing_result3) = create_filter(&scheme, r#"num1 > 41 && num2 == 1337"#);
+            let parsing_result3 = parse_filter(&scheme, r#"num1 > 41 && num2 == 1337"#);
 
-            let hash1 = wirefilter_get_filter_hash(&filter1);
-            let hash2 = wirefilter_get_filter_hash(&filter2);
-            let hash3 = wirefilter_get_filter_hash(&filter3);
+            let hash1 = wirefilter_get_filter_hash(validate_filter(&parsing_result1));
+            let hash2 = wirefilter_get_filter_hash(validate_filter(&parsing_result2));
+            let hash3 = wirefilter_get_filter_hash(validate_filter(&parsing_result3));
 
             assert_eq!(hash1, hash2);
             assert_ne!(hash2, hash3);
@@ -395,35 +393,39 @@ mod ffi_test {
         let scheme = create_scheme();
 
         {
-            let (filter, parsing_result) = create_filter(
+            let parsing_result = parse_filter(
                 &scheme,
                 r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
             );
 
-            assert!(wirefilter_filter_uses(
-                filter,
-                ExternallyAllocatedByteArr::from("num1")
-            ));
+            {
+                let filter = validate_filter(&parsing_result);
 
-            assert!(wirefilter_filter_uses(
-                filter,
-                ExternallyAllocatedByteArr::from("ip1")
-            ));
+                assert!(wirefilter_filter_uses(
+                    filter,
+                    ExternallyAllocatedByteArr::from("num1")
+                ));
 
-            assert!(wirefilter_filter_uses(
-                filter,
-                ExternallyAllocatedByteArr::from("str2")
-            ));
+                assert!(wirefilter_filter_uses(
+                    filter,
+                    ExternallyAllocatedByteArr::from("ip1")
+                ));
 
-            assert!(!wirefilter_filter_uses(
-                filter,
-                ExternallyAllocatedByteArr::from("str1")
-            ));
+                assert!(wirefilter_filter_uses(
+                    filter,
+                    ExternallyAllocatedByteArr::from("str2")
+                ));
 
-            assert!(!wirefilter_filter_uses(
-                filter,
-                ExternallyAllocatedByteArr::from("ip2")
-            ));
+                assert!(!wirefilter_filter_uses(
+                    filter,
+                    ExternallyAllocatedByteArr::from("str1")
+                ));
+
+                assert!(!wirefilter_filter_uses(
+                    filter,
+                    ExternallyAllocatedByteArr::from("ip2")
+                ));
+            }
 
             wirefilter_free_parsing_result(parsing_result);
         }
