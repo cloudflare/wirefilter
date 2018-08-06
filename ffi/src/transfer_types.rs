@@ -1,5 +1,56 @@
 use libc::size_t;
-use std::{slice, str};
+use std::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    slice, str,
+};
+
+#[repr(transparent)]
+pub struct RustBox<T> {
+    ptr: *mut T,
+    ownership_marker: PhantomData<T>,
+}
+
+impl<T> Deref for RustBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { &*self.ptr }
+    }
+}
+
+impl<T> DerefMut for RustBox<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl<T> From<Box<T>> for RustBox<T> {
+    fn from(b: Box<T>) -> Self {
+        RustBox {
+            ptr: Box::into_raw(b),
+            ownership_marker: PhantomData,
+        }
+    }
+}
+
+impl<T> From<T> for RustBox<T> {
+    fn from(value: T) -> Self {
+        Box::new(value).into()
+    }
+}
+
+impl<T> Drop for RustBox<T> {
+    fn drop(&mut self) {
+        drop(unsafe { Box::from_raw(self.ptr) });
+    }
+}
+
+impl<T: Default> Default for RustBox<T> {
+    fn default() -> Self {
+        T::default().into()
+    }
+}
 
 #[repr(C)]
 pub struct RustAllocatedString {

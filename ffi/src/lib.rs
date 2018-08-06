@@ -16,7 +16,9 @@ use std::{
     hash::{Hash, Hasher},
     net::IpAddr,
 };
-use transfer_types::{ExternallyAllocatedByteArr, RustAllocatedString, StaticRustAllocatedString};
+use transfer_types::{
+    ExternallyAllocatedByteArr, RustAllocatedString, RustBox, StaticRustAllocatedString,
+};
 use wirefilter::{ExecutionContext, Filter, ParseError, Scheme, Type};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -24,12 +26,12 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 #[repr(u8)]
 pub enum ParsingResult<'s> {
     Err(RustAllocatedString),
-    Ok(*mut Filter<'s>),
+    Ok(RustBox<Filter<'s>>),
 }
 
 impl<'s> From<Filter<'s>> for ParsingResult<'s> {
     fn from(filter: Filter<'s>) -> Self {
-        ParsingResult::Ok(Box::into_raw(Box::new(filter)))
+        ParsingResult::Ok(filter.into())
     }
 }
 
@@ -39,22 +41,14 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
     }
 }
 
-impl<'s> Drop for ParsingResult<'s> {
-    fn drop(&mut self) {
-        if let ParsingResult::Ok(filter) = *self {
-            drop(unsafe { Box::from_raw(filter) });
-        }
-    }
+#[no_mangle]
+pub extern "C" fn wirefilter_create_scheme() -> RustBox<Scheme> {
+    Default::default()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wirefilter_create_scheme() -> *mut Scheme {
-    Box::into_raw(Box::new(Scheme::default()))
-}
-
-#[no_mangle]
-pub extern "C" fn wirefilter_free_scheme(scheme: *mut Scheme) {
-    drop(unsafe { Box::from_raw(scheme) });
+pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
+    drop(scheme);
 }
 
 #[no_mangle]
@@ -92,15 +86,15 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
+pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
     scheme: &'s Scheme,
-) -> *mut ExecutionContext<'e> {
-    Box::into_raw(Box::new(ExecutionContext::new(scheme)))
+) -> RustBox<ExecutionContext<'e>> {
+    ExecutionContext::new(scheme).into()
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_execution_context(exec_context: *mut ExecutionContext) {
-    drop(unsafe { Box::from_raw(exec_context) });
+pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<ExecutionContext>) {
+    drop(exec_context);
 }
 
 #[no_mangle]
@@ -172,8 +166,8 @@ mod ffi_test {
     use super::*;
     use regex::Regex;
 
-    fn create_scheme() -> Box<Scheme> {
-        let mut scheme = unsafe { Box::from_raw(wirefilter_create_scheme()) };
+    fn create_scheme() -> RustBox<Scheme> {
+        let mut scheme = wirefilter_create_scheme();
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
@@ -211,9 +205,8 @@ mod ffi_test {
         scheme
     }
 
-    fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> Box<ExecutionContext<'e>> {
-        let mut exec_context =
-            unsafe { Box::from_raw(wirefilter_create_execution_context(scheme)) };
+    fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> RustBox<ExecutionContext<'e>> {
+        let mut exec_context = wirefilter_create_execution_context(scheme);
 
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
@@ -254,16 +247,18 @@ mod ffi_test {
         exec_context
     }
 
-    fn create_filter<'a>(
-        scheme: &'a Scheme,
+    fn create_filter<'s, 'f>(
+        scheme: &'s Scheme,
         input: &'static str,
-    ) -> (&'a Filter<'a>, ParsingResult<'a>) {
+    ) -> (&'f Filter<'s>, ParsingResult<'s>) {
         let result = wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input));
 
-        match result {
-            ParsingResult::Ok(filter) => (unsafe { &*filter }, result),
-            ParsingResult::Err(ref err) => panic!("{}", err.as_str()),
-        }
+        let filter = match result {
+            ParsingResult::Ok(ref filter) => unsafe { &*(filter as &Filter as *const _) },
+            ParsingResult::Err(err) => panic!("{}", err.as_str()),
+        };
+
+        (filter, result)
     }
 
     fn match_filter(input: &'static str, scheme: &Scheme, exec_context: &ExecutionContext) -> bool {
@@ -311,7 +306,7 @@ mod ffi_test {
             wirefilter_free_parsing_result(result);
         }
 
-        wirefilter_free_scheme(Box::into_raw(scheme));
+        wirefilter_free_scheme(scheme);
     }
 
     #[test]
@@ -323,7 +318,7 @@ mod ffi_test {
             wirefilter_free_parsing_result(parsing_result);
         }
 
-        wirefilter_free_scheme(Box::into_raw(scheme));
+        wirefilter_free_scheme(scheme);
     }
 
     #[test]
@@ -351,10 +346,10 @@ mod ffi_test {
                 &exec_context
             ));
 
-            wirefilter_free_execution_context(Box::into_raw(exec_context));
+            wirefilter_free_execution_context(exec_context);
         }
 
-        wirefilter_free_scheme(Box::into_raw(scheme));
+        wirefilter_free_scheme(scheme);
     }
 
     #[test]
@@ -384,7 +379,7 @@ mod ffi_test {
             wirefilter_free_parsing_result(parsing_result3);
         }
 
-        wirefilter_free_scheme(Box::into_raw(scheme));
+        wirefilter_free_scheme(scheme);
     }
 
     #[test]
@@ -433,6 +428,6 @@ mod ffi_test {
             wirefilter_free_parsing_result(parsing_result);
         }
 
-        wirefilter_free_scheme(Box::into_raw(scheme));
+        wirefilter_free_scheme(scheme);
     }
 }
