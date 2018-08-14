@@ -1,28 +1,62 @@
 use lex::{expect, take, Lex, LexErrorKind, LexResult};
 use std::{
     borrow::Borrow,
-    cmp::Ordering,
     fmt::{self, Debug, Formatter},
-    hash::{Hash, Hasher},
+    iter::Cloned,
     ops::Deref,
+    slice::Iter,
     str,
 };
 
-#[derive(PartialEq, Eq, Clone)]
-pub enum Bytes {
-    Str(Box<str>),
-    Raw(Box<[u8]>),
-}
+#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
+pub struct Bytes(Box<[u8]>);
 
-impl PartialOrd for Bytes {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+impl From<Vec<u8>> for Bytes {
+    fn from(src: Vec<u8>) -> Self {
+        Bytes(src.into_boxed_slice())
     }
 }
 
-impl Ord for Bytes {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self as &[u8]).cmp(other as &[u8])
+impl From<String> for Bytes {
+    fn from(src: String) -> Self {
+        src.into_bytes().into()
+    }
+}
+
+impl Bytes {
+    fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
+        self.into_iter()
+    }
+}
+
+impl Debug for Bytes {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "\"")?;
+        for b in self {
+            match b {
+                b'"' => write!(f, r#"\""#),
+                b'\\' => write!(f, r#"\"#),
+                0x20...0x7E => write!(f, "{}", b as char),
+                _ => write!(f, r#"\x{:02X}"#, b),
+            }?;
+        }
+        write!(f, "\" (")?;
+        for (i, b) in self.iter().enumerate() {
+            if i != 0 {
+                write!(f, ":")?;
+            }
+            write!(f, "{:02X}", b)?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+impl Deref for Bytes {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -32,53 +66,12 @@ impl Borrow<[u8]> for Bytes {
     }
 }
 
-// We need custom `Hash` consistent with `Borrow` invariants.
-// We can get away with `Eq` invariant though because we do want
-// `Bytes == Bytes` to check enum tags but `Bytes == &[u8]` to ignore them, and
-// consistency of the latter is all that matters for `Borrow` consumers.
-impl Hash for Bytes {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        (self as &[u8]).hash(h)
-    }
-}
+impl<'a> IntoIterator for &'a Bytes {
+    type IntoIter = Cloned<Iter<'a, u8>>;
+    type Item = u8;
 
-impl From<Vec<u8>> for Bytes {
-    fn from(src: Vec<u8>) -> Self {
-        Bytes::Raw(src.into_boxed_slice())
-    }
-}
-
-impl From<String> for Bytes {
-    fn from(src: String) -> Self {
-        Bytes::Str(src.into_boxed_str())
-    }
-}
-
-impl Debug for Bytes {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            Bytes::Str(s) => s.fmt(f),
-            Bytes::Raw(b) => {
-                for (i, b) in b.iter().cloned().enumerate() {
-                    if i != 0 {
-                        write!(f, ":")?;
-                    }
-                    write!(f, "{:02X}", b)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl Deref for Bytes {
-    type Target = [u8];
-
-    fn deref(&self) -> &[u8] {
-        match self {
-            Bytes::Str(s) => s.as_bytes(),
-            Bytes::Raw(b) => b,
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter().cloned()
     }
 }
 

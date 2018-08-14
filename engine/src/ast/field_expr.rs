@@ -106,7 +106,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                         BytesOp::Contains => {
                             let input_before_rhs = input;
                             let (rhs, input) = Bytes::lex(input)?;
-                            let regex = Regex::try_from(rhs).map_err(|err| {
+                            let regex = Regex::try_from(&rhs).map_err(|err| {
                                 // This is very, very, very unlikely as we're just converting
                                 // a literal into a regex and not using any repetitions etc.,
                                 // but better to be safe than sorry and report such error.
@@ -374,7 +374,7 @@ fn test() {
             FieldExpr::lex_with(r#"http.host contains "abc""#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::Matches(Regex::new(r#"(?u)abc"#).unwrap())
+                op: FieldOp::Matches(Regex::new(r#"\x61\x62\x63"#).unwrap())
             }
         );
 

@@ -20,17 +20,12 @@ impl Regex {
         self.0.is_match(text)
     }
 
-    pub fn try_from(bytes: Bytes) -> Result<Self, ::regex::Error> {
-        Regex::new(&match bytes {
-            Bytes::Raw(bytes) => {
-                let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
-                for b in &*bytes {
-                    write!(regex_str, r"\x{:02X}", b).unwrap();
-                }
-                regex_str
-            }
-            Bytes::Str(s) => format!("(?u){}", ::regex::escape(&s)),
-        })
+    pub fn try_from(bytes: &Bytes) -> Result<Self, ::regex::Error> {
+        let mut regex_str = String::with_capacity(bytes.len() * r"\x00".len());
+        for b in bytes {
+            write!(regex_str, r"\x{:02X}", b).unwrap();
+        }
+        Regex::new(&regex_str)
     }
 }
 
