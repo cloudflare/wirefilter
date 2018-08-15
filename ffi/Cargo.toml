@@ -8,6 +8,11 @@ publish = false
 [package.metadata.deb]
 assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]
 
+[lib]
+crate-type = ["cdylib"]
+# Avoid duplicate compilation error messages as we don't have doctests anyway
+doctest = false
+
 [dependencies]
 fnv = "1.0.6"
 libc = "0.2.42"
@@ -18,6 +23,3 @@ path = "../engine"
 [dev-dependencies]
 regex = "1.0.1"
 indoc = "0.2.6"
-
-[lib]
-crate-type = ["cdylib"]

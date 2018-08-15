@@ -1,3 +1,4 @@
 /artifacts
 /target
+/engine/target/criterion
 .DS_Store

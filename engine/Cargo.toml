@@ -5,6 +5,15 @@ version = "0.3.0"
 description = "Rust library for the Segments Filter engine"
 publish = false
 
+[lib]
+name = "wirefilter"
+# Avoid duplicate compilation error messages as we don't have doctests anyway
+doctest = false
+
+[[bench]]
+name = "bench"
+harness = false
+
 [dependencies]
 cidr = { version = "0.0.4", default-features = false }
 failure = "0.1.1"
@@ -12,11 +21,6 @@ fnv = "1.0.6"
 indexmap = "1.0.1"
 regex = "1.0.1"
 
-[lib]
-name = "wirefilter"
-
-# Avoid duplicate compilation error messages as we don't have doctests anyway
-doctest = false
-
 [dev-dependencies]
 indoc = "0.2.6"
+criterion = { git = "https://github.com/japaric/criterion.rs" }

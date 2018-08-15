@@ -1,92 +1,139 @@
-#![feature(test)]
+#[macro_use]
+extern crate criterion;
 
-extern crate test;
 extern crate wirefilter;
 
-use std::net::IpAddr;
-use test::{black_box, Bencher};
-use wirefilter::{ExecutionContext, Filter, Scheme, Type};
+use criterion::{Bencher, Benchmark, Criterion, ParameterizedBenchmark};
+use std::{fmt::Debug, net::IpAddr};
+use wirefilter::{ExecutionContext, LhsValue, Scheme, Type};
 
-fn create_scheme() -> Scheme {
-    [
-        ("http.cookie", Type::Bytes),
-        ("http.host", Type::Bytes),
-        ("http.request.uri.path", Type::Bytes),
-        ("http.user_agent", Type::Bytes),
-        ("ip.addr", Type::Ip),
-        ("ip.geoip.asnum", Type::Bytes),
-        ("ip.geoip.country", Type::Bytes),
-        ("ssl", Type::Bool),
-        ("tcp.port", Type::Unsigned),
-    ]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect()
+struct FieldBench<'a, T: 'static> {
+    field: &'static str,
+    filters: &'static [&'static str],
+    ty: Type,
+    values: &'a [T],
 }
 
-fn create_exec_contexts(scheme: &Scheme) -> Vec<ExecutionContext> {
-    vec![
-        {
-            let mut ctx = ExecutionContext::new(scheme);
-            ctx.set_field_value("http.cookie", "test=321;access_token=123");
-            ctx.set_field_value("http.host", "www.lfgss.com");
-            ctx.set_field_value("http.request.uri.path", "/static/imgs/1.jpeg");
-            ctx.set_field_value(
-                "http.user_agent",
-                "Mozilla/5.0 (compatible; YandexBot/3.0; +http://yandex.com/bots)",
+impl<'a, T: 'static + Clone + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> {
+    fn run(self, c: &mut Criterion) {
+        let FieldBench {
+            filters,
+            field,
+            ty,
+            values,
+        } = self;
+
+        for &filter in filters {
+            let owned_name;
+
+            let name = if let Some(pos) = filter.find(" in {") {
+                owned_name = format!("{} in ...", &filter[..pos]);
+                &owned_name
+            } else {
+                filter
+            };
+
+            c.bench(
+                "parsing",
+                Benchmark::new(name, move |b: &mut Bencher| {
+                    let mut scheme = Scheme::default();
+                    scheme.add_field(field.to_owned(), ty);
+
+                    b.iter(|| scheme.parse(filter).unwrap());
+                }),
             );
-            ctx.set_field_value("ip.addr", IpAddr::from([212, 71, 253, 211]));
-            ctx.set_field_value("ip.geoip.asnum", "AS30992");
-            ctx.set_field_value("ip.geoip.country", "VN");
-            ctx.set_field_value("ssl", true);
-            ctx.set_field_value("tcp.port", 443);
-            ctx
-        },
-        {
-            let mut ctx = ExecutionContext::new(scheme);
-            ctx.set_field_value("http.cookie", "foo=bar");
-            ctx.set_field_value("http.host", "static.lfgss.com");
-            ctx.set_field_value(
-                "http.user_agent",
-                "Mozilla/5.0 (compatible; SomeBot/3.0; +http://yandex.com/bots)",
+
+            c.bench(
+                "execution",
+                ParameterizedBenchmark::new(
+                    name,
+                    move |b: &mut Bencher, value: &T| {
+                        let mut scheme = Scheme::default();
+                        scheme.add_field(field.to_owned(), ty);
+
+                        let filter = scheme.parse(filter).unwrap();
+
+                        let mut exec_ctx = ExecutionContext::new(&scheme);
+                        exec_ctx.set_field_value(field, value.clone());
+
+                        b.iter(|| filter.execute(&exec_ctx));
+                    },
+                    values.iter().cloned(),
+                ),
             );
-            ctx.set_field_value("ip.addr", IpAddr::from([176, 58, 105, 63]));
-            ctx.set_field_value("ip.geoip.asnum", "AS30993");
-            ctx.set_field_value("ip.geoip.country", "JP");
-            ctx.set_field_value("ssl", false);
-            ctx.set_field_value("tcp.port", 80);
-            ctx
-        },
-    ]
-}
-
-fn parse_filters<'s>(scheme: &'s Scheme) -> Vec<Filter<'s>> {
-    include_str!("filters.dat")
-        .split_terminator("\n")
-        .map(|src| scheme.parse(src).unwrap())
-        .collect()
-}
-
-#[bench]
-fn parsing(b: &mut Bencher) {
-    let scheme = create_scheme();
-
-    b.iter(|| {
-        black_box(parse_filters(&scheme));
-    });
-}
-
-#[bench]
-fn matching(b: &mut Bencher) {
-    let scheme = create_scheme();
-    let filters = parse_filters(&scheme);
-    let exec_contexts = create_exec_contexts(&scheme);
-
-    b.iter(|| {
-        for exec_ctx in exec_contexts.iter() {
-            for filter in filters.iter() {
-                black_box(filter.execute(exec_ctx));
-            }
         }
-    });
+    }
 }
+
+fn bench_ip_comparisons(c: &mut Criterion) {
+    FieldBench {
+        field: "ip.addr",
+        filters: &[
+            "ip.addr == 173.245.48.1",
+            "ip.addr == 2606:4700:4700::1111",
+            "ip.addr >= 173.245.48.0 && ip.addr < 173.245.49.0",
+            "ip.addr >= 2606:4700:: && ip.addr < 2606:4701::",
+            "ip.addr in { 103.21.244.0/22 2405:8100::/32 104.16.0.0/12 2803:f800::/32 131.0.72.0/22 173.245.48.0/20 2405:b500::/32 172.64.0.0/13 190.93.240.0/20 103.22.200.0/22 2606:4700::/32 198.41.128.0/17 197.234.240.0/22 162.158.0.0/15 108.162.192.0/18 2c0f:f248::/32 2400:cb00::/32 103.31.4.0/22 2a06:98c0::/29 141.101.64.0/18 188.114.96.0/20 }"
+        ],
+        ty: Type::Ip,
+        values: &[
+            IpAddr::from([127, 0, 0, 1]),
+            IpAddr::from([0x2001, 0x0db8, 0x85a3, 0x0000, 0x0000, 0x8a2e, 0x0370, 0x7334]),
+            IpAddr::from([173, 245, 48, 1]),
+            IpAddr::from([0x2606, 0x4700, 0x4700, 0x0000, 0x0000, 0x0000, 0x0000, 0x1111]),
+        ]
+    }.run(c)
+}
+
+fn bench_unsigned_comparisons(c: &mut Criterion) {
+    FieldBench {
+        field: "tcp.port",
+        filters: &[
+            "tcp.port == 80",
+            "tcp.port >= 1024",
+            "tcp.port in { 80 8080 8880 2052 2082 2086 2095 }",
+        ],
+        ty: Type::Unsigned,
+        values: &[80, 8081],
+    }.run(c)
+}
+
+fn bench_string_comparisons(c: &mut Criterion) {
+    FieldBench {
+        field: "ip.geoip.country",
+        filters: &[
+            r#"ip.geoip.country == "GB""#,
+            r#"ip.geoip.country in { "AT" "BE" "BG" "HR" "CY" "CZ" "DK" "EE" "FI" "FR" "DE" "GR" "HU" "IE" "IT" "LV" "LT" "LU" "MT" "NL" "PL" "PT" "RO" "SK" "SI" "ES" "SE" "GB" "GF" "GP" "MQ" "ME" "YT" "RE" "MF" "GI" "AX" "PM" "GL" "BL" "SX" "AW" "CW" "WF" "PF" "NC" "TF" "AI" "BM" "IO" "VG" "KY" "FK" "MS" "PN" "SH" "GS" "TC" "AD" "LI" "MC" "SM" "VA" "JE" "GG" "GI" "CH" }"#,
+        ],
+        ty: Type::Bytes,
+        values: &["GB", "T1"],
+    }.run(c)
+}
+
+fn bench_string_matches(c: &mut Criterion) {
+    FieldBench {
+        field: "http.user_agent",
+        filters: &[
+            r#"http.user_agent ~ "(?i)googlebot/\d+\.\d+""#,
+            r#"http.user_agent ~ "Googlebot""#,
+            r#"http.user_agent contains "Googlebot""#
+        ],
+        ty: Type::Bytes,
+        values: &[
+            "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36"
+        ]
+    }.run(c)
+}
+
+criterion_group! {
+    name = field_benchmarks;
+    config = Criterion::default();
+    targets =
+        bench_ip_comparisons,
+        bench_unsigned_comparisons,
+        bench_string_comparisons,
+        bench_string_matches,
+}
+
+criterion_main!(field_benchmarks);
