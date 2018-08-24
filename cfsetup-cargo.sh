@@ -17,6 +17,8 @@ case $CMD in
 		# Create dummy sources for our library
 		mkdir {engine,ffi}/src
 		touch {engine,ffi}/src/lib.rs
+		mkdir engine/benches
+		echo 'fn main() {}' > engine/benches/bench.rs
 
 		# Build library with Cargo.lock (including all the dependencies)
 		cargo build --locked --all $@
