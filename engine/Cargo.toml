@@ -23,4 +23,4 @@ regex = "1.0.1"
 
 [dev-dependencies]
 indoc = "0.2.6"
-criterion = { git = "https://github.com/japaric/criterion.rs" }
+criterion = "0.2.5"
