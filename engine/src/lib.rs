@@ -25,5 +25,5 @@ pub use self::{
     ast::Filter,
     execution_context::ExecutionContext,
     scheme::{ParseError, Scheme},
-    types::{LhsValue, Type},
+    types::{GetType, LhsValue, Type},
 };

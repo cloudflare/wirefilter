@@ -5,23 +5,23 @@ extern crate wirefilter;
 
 use criterion::{Bencher, Benchmark, Criterion, ParameterizedBenchmark};
 use std::{fmt::Debug, net::IpAddr};
-use wirefilter::{ExecutionContext, LhsValue, Scheme, Type};
+use wirefilter::{ExecutionContext, GetType, LhsValue, Scheme};
 
 struct FieldBench<'a, T: 'static> {
     field: &'static str,
     filters: &'static [&'static str],
-    ty: Type,
     values: &'a [T],
 }
 
-impl<'a, T: 'static + Clone + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> {
+impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> {
     fn run(self, c: &mut Criterion) {
         let FieldBench {
             filters,
             field,
-            ty,
             values,
         } = self;
+
+        let ty = values[0].into().get_type();
 
         for &filter in filters {
             let owned_name;
@@ -54,7 +54,7 @@ impl<'a, T: 'static + Clone + Debug + Into<LhsValue<'static>>> FieldBench<'a, T>
                         let filter = scheme.parse(filter).unwrap();
 
                         let mut exec_ctx = ExecutionContext::new(&scheme);
-                        exec_ctx.set_field_value(field, value.clone());
+                        exec_ctx.set_field_value(field, *value);
 
                         b.iter(|| filter.execute(&exec_ctx));
                     },
@@ -75,7 +75,6 @@ fn bench_ip_comparisons(c: &mut Criterion) {
             "ip.addr >= 2606:4700:: && ip.addr < 2606:4701::",
             "ip.addr in { 103.21.244.0/22 2405:8100::/32 104.16.0.0/12 2803:f800::/32 131.0.72.0/22 173.245.48.0/20 2405:b500::/32 172.64.0.0/13 190.93.240.0/20 103.22.200.0/22 2606:4700::/32 198.41.128.0/17 197.234.240.0/22 162.158.0.0/15 108.162.192.0/18 2c0f:f248::/32 2400:cb00::/32 103.31.4.0/22 2a06:98c0::/29 141.101.64.0/18 188.114.96.0/20 }"
         ],
-        ty: Type::Ip,
         values: &[
             IpAddr::from([127, 0, 0, 1]),
             IpAddr::from([0x2001, 0x0db8, 0x85a3, 0x0000, 0x0000, 0x8a2e, 0x0370, 0x7334]),
@@ -93,7 +92,6 @@ fn bench_unsigned_comparisons(c: &mut Criterion) {
             "tcp.port >= 1024",
             "tcp.port in { 80 8080 8880 2052 2082 2086 2095 }",
         ],
-        ty: Type::Unsigned,
         values: &[80, 8081],
     }.run(c)
 }
@@ -105,7 +103,6 @@ fn bench_string_comparisons(c: &mut Criterion) {
             r#"ip.geoip.country == "GB""#,
             r#"ip.geoip.country in { "AT" "BE" "BG" "HR" "CY" "CZ" "DK" "EE" "FI" "FR" "DE" "GR" "HU" "IE" "IT" "LV" "LT" "LU" "MT" "NL" "PL" "PT" "RO" "SK" "SI" "ES" "SE" "GB" "GF" "GP" "MQ" "ME" "YT" "RE" "MF" "GI" "AX" "PM" "GL" "BL" "SX" "AW" "CW" "WF" "PF" "NC" "TF" "AI" "BM" "IO" "VG" "KY" "FK" "MS" "PN" "SH" "GS" "TC" "AD" "LI" "MC" "SM" "VA" "JE" "GG" "GI" "CH" }"#,
         ],
-        ty: Type::Bytes,
         values: &["GB", "T1"],
     }.run(c)
 }
@@ -118,7 +115,6 @@ fn bench_string_matches(c: &mut Criterion) {
             r#"http.user_agent ~ "Googlebot""#,
             r#"http.user_agent contains "Googlebot""#
         ],
-        ty: Type::Bytes,
         values: &[
             "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36",
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36"
