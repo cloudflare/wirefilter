@@ -26,6 +26,8 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
         for &filter in filters {
             let owned_name;
 
+            // trim ranges because they are usually too long and
+            // pollute bench names in HTML and folder names
             let name = if let Some(pos) = filter.find(" in {") {
                 owned_name = format!("{} in ...", &filter[..pos]);
                 &owned_name
