@@ -1,8 +1,11 @@
+use std::hash::{Hash, Hasher};
+use indexmap::IndexSet;
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
     iter::FromIterator,
 };
+use fnv::FnvBuildHasher;
 
 // VecSet encapsulates a list of items, providing set-like interface.
 //
@@ -10,35 +13,53 @@ use std::{
 // important is that, unlike `Vec::contains`, it allows to search not only for
 // actual item type, but also for any of it `Borrow` implementations, just like
 // `HashSet::contains` and `BTreeSet::contains`.
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct VecSet<T> {
-    items: Vec<T>,
+#[derive(Clone)]
+pub struct VecSet<T: Hash + Eq> {
+    items: IndexSet<T, FnvBuildHasher>,
 }
 
-impl<T: Eq + Debug> Debug for VecSet<T> {
+impl<T: Hash + Eq> Hash for VecSet<T> {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.items.len().hash(h);
+        for item in &self.items {
+            item.hash(h);
+        }
+    }
+}
+
+impl<T: Hash + Eq> PartialEq for VecSet<T> {
+    fn eq(&self, other: &Self) -> bool {
+        // compare sets as ordered item lists
+        self.items.iter().eq(&other.items)
+    }
+}
+
+impl<T: Hash + Eq> Eq for VecSet<T> {}
+
+impl<T: Hash + Eq + Debug> Debug for VecSet<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_set().entries(&self.items).finish()
+        self.items.fmt(f)
     }
 }
 
-impl<T> From<Vec<T>> for VecSet<T> {
+impl<T: Hash + Eq> From<Vec<T>> for VecSet<T> {
     fn from(items: Vec<T>) -> Self {
-        VecSet { items }
+        Self::from_iter(items)
     }
 }
 
-impl<T> FromIterator<T> for VecSet<T> {
+impl<T: Hash + Eq> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(items: I) -> Self {
-        Vec::from_iter(items).into()
+        VecSet { items: IndexSet::from_iter(items) }
     }
 }
 
-impl<T> VecSet<T> {
+impl<T: Hash + Eq> VecSet<T> {
     pub fn contains<Q>(&self, value: &Q) -> bool
     where
         T: Borrow<Q>,
-        Q: ?Sized + Ord,
+        Q: ?Sized + Hash + Eq,
     {
-        self.items.iter().any(|item| item.borrow() == value)
+        self.items.contains(value)
     }
 }
