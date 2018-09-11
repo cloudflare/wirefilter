@@ -7,7 +7,8 @@ lex_enum!(UnaryOp {
     "not" | "!" => Not,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[serde(untagged)]
 pub enum SimpleExpr<'s> {
     Field(FieldExpr<'s>),
     Parenthesized(Box<CombinedExpr<'s>>),
@@ -65,6 +66,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 #[test]
 fn test() {
     use lex::complete;
+    use serde_json::to_value as json;
     use types::Type;
 
     let scheme = &[("t", Type::Bool)]
@@ -80,6 +82,16 @@ fn test() {
 
     {
         let expr = assert_ok!(SimpleExpr::lex_with("t", scheme), t_expr());
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "t",
+                "op": "Equal",
+                "rhs": true
+            })
+        );
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -90,6 +102,16 @@ fn test() {
             SimpleExpr::lex_with("((t))", scheme),
             parenthesized_expr(parenthesized_expr(t_expr()))
         );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "t",
+                "op": "Equal",
+                "rhs": true
+            })
+        );
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -100,6 +122,19 @@ fn test() {
 
     {
         let expr = assert_ok!(SimpleExpr::lex_with("not t", scheme), not_expr(t_expr()));
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "op": "Not",
+                "arg": {
+                    "field": "t",
+                    "op": "Equal",
+                    "rhs": true
+                }
+            })
+        );
+
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -110,6 +145,22 @@ fn test() {
             SimpleExpr::lex_with("!!t", scheme),
             not_expr(not_expr(t_expr()))
         );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "op": "Not",
+                "arg": {
+                    "op": "Not",
+                    "arg": {
+                        "field": "t",
+                        "op": "Equal",
+                        "rhs": true
+                    }
+                }
+            })
+        );
+
         assert_eq!(expr.execute(ctx), true);
     }
 

@@ -1,11 +1,11 @@
-use std::hash::{Hash, Hasher};
+use fnv::FnvBuildHasher;
 use indexmap::IndexSet;
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
+    hash::{Hash, Hasher},
     iter::FromIterator,
 };
-use fnv::FnvBuildHasher;
 
 // VecSet encapsulates a list of items, providing set-like interface.
 //
@@ -13,7 +13,8 @@ use fnv::FnvBuildHasher;
 // important is that, unlike `Vec::contains`, it allows to search not only for
 // actual item type, but also for any of it `Borrow` implementations, just like
 // `HashSet::contains` and `BTreeSet::contains`.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(transparent)]
 pub struct VecSet<T: Hash + Eq> {
     items: IndexSet<T, FnvBuildHasher>,
 }
@@ -50,7 +51,9 @@ impl<T: Hash + Eq> From<Vec<T>> for VecSet<T> {
 
 impl<T: Hash + Eq> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(items: I) -> Self {
-        VecSet { items: IndexSet::from_iter(items) }
+        VecSet {
+            items: IndexSet::from_iter(items),
+        }
     }
 }
 

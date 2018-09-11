@@ -18,6 +18,12 @@ pub(crate) struct Field<'s> {
     index: usize,
 }
 
+impl<'s> ::serde::Serialize for Field<'s> {
+    fn serialize<S: ::serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.name().serialize(ser)
+    }
+}
+
 impl<'s> Debug for Field<'s> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.name())
@@ -148,7 +154,8 @@ impl<'i> Display for ParseError<'i> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Deserialize)]
+#[serde(transparent)]
 pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
 }

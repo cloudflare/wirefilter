@@ -18,11 +18,15 @@ impl Regex {
     pub fn is_match(&self, text: &[u8]) -> bool {
         self.0.is_match(text)
     }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
 impl PartialEq for Regex {
     fn eq(&self, other: &Regex) -> bool {
-        self.0.as_str() == other.0.as_str()
+        self.as_str() == other.as_str()
     }
 }
 
@@ -30,13 +34,13 @@ impl Eq for Regex {}
 
 impl Hash for Regex {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.as_str().hash(state)
+        self.as_str().hash(state)
     }
 }
 
 impl Debug for Regex {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.0.fmt(f)
+        f.write_str(self.as_str())
     }
 }
 
@@ -82,6 +86,12 @@ impl<'i> Lex<'i> for Regex {
             Ok(regex) => Ok((regex, input)),
             Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }
+    }
+}
+
+impl ::serde::Serialize for Regex {
+    fn serialize<S: ::serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.as_str().serialize(ser)
     }
 }
 

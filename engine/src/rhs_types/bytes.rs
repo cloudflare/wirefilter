@@ -8,7 +8,7 @@ use std::{
     str,
 };
 
-#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize)]
 pub struct Bytes(Box<[u8]>);
 
 impl From<Vec<u8>> for Bytes {

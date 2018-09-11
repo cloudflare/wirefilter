@@ -9,7 +9,8 @@ lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
     "and" | "&&" => And,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[serde(untagged)]
 pub enum CombinedExpr<'s> {
     Simple(SimpleExpr<'s>),
     Combining {
@@ -111,6 +112,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 fn test() {
     use super::field_expr::FieldExpr;
     use lex::complete;
+    use serde_json::to_value as json;
     use types::Type;
 
     let scheme = &[("t", Type::Bool), ("f", Type::Bool)]
@@ -158,6 +160,25 @@ fn test() {
             }
         );
 
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "op": "And",
+                "items": [
+                    {
+                        "field": "t",
+                        "op": "Equal",
+                        "rhs": true
+                    },
+                    {
+                        "field": "f",
+                        "op": "Equal",
+                        "rhs": true
+                    }
+                ]
+            })
+        );
+
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -168,6 +189,25 @@ fn test() {
                 op: CombiningOp::Or,
                 items: vec![t_expr(), f_expr()],
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "op": "Or",
+                "items": [
+                    {
+                        "field": "t",
+                        "op": "Equal",
+                        "rhs": true
+                    },
+                    {
+                        "field": "f",
+                        "op": "Equal",
+                        "rhs": true
+                    }
+                ]
+            })
         );
 
         assert_eq!(expr.execute(ctx), true);
@@ -192,6 +232,25 @@ fn test() {
                 op: CombiningOp::Xor,
                 items: vec![t_expr(), f_expr()],
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "op": "Xor",
+                "items": [
+                    {
+                        "field": "t",
+                        "op": "Equal",
+                        "rhs": true
+                    },
+                    {
+                        "field": "f",
+                        "op": "Equal",
+                        "rhs": true
+                    }
+                ]
+            })
         );
 
         assert_eq!(expr.execute(ctx), true);

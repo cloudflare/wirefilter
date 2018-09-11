@@ -16,9 +16,12 @@ trait Expr<'s>: Sized + Eq + Hash + Debug + for<'i> LexWith<'i, &'s Scheme> {
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool;
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Serialize)]
+#[serde(transparent)]
 pub struct Filter<'s> {
+    #[serde(skip)]
     scheme: &'s Scheme,
+
     op: CombinedExpr<'s>,
 }
 

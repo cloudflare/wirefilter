@@ -73,7 +73,7 @@ macro_rules! declare_types {
     };
 
     ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ident ) , )*) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
         #[repr(u8)]
         pub enum Type {
             $($name,)*
@@ -99,13 +99,23 @@ macro_rules! declare_types {
             }
         })*
 
-        declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValue {
-            $($name($rhs_ty),)*
-        });
+        declare_types!(
+            @enum
+            #[derive(PartialEq, Eq, Hash, Clone, Serialize)]
+            #[serde(untagged)]
+            RhsValue {
+                $($name($rhs_ty),)*
+            }
+        );
 
-        declare_types!(@enum #[derive(PartialEq, Eq, Hash, Clone)] RhsValues {
-            $($name($multi_rhs_ty<$rhs_ty>),)*
-        });
+        declare_types!(
+            @enum
+            #[derive(PartialEq, Eq, Hash, Clone, Serialize)]
+            #[serde(untagged)]
+            RhsValues {
+                $($name($multi_rhs_ty<$rhs_ty>),)*
+            }
+        );
 
         impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
             fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {

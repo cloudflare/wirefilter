@@ -59,18 +59,59 @@ lex_enum!(ComparisonOp {
     BytesOp => Bytes,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[serde(untagged)]
 enum FieldOp {
-    Ordering(OrderingOp, RhsValue),
-    Unsigned(UnsignedOp, u64),
+    Ordering {
+        op: OrderingOp,
+        rhs: RhsValue,
+    },
+
+    Unsigned {
+        op: UnsignedOp,
+        rhs: u64,
+    },
+
+    #[serde(serialize_with = "serialize_contains")]
     Contains(ContainsOp),
+
+    #[serde(serialize_with = "serialize_matches")]
     Matches(Regex),
+
+    #[serde(serialize_with = "serialize_one_of")]
     OneOf(RhsValues),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+fn serialize_op_rhs<T: ::serde::Serialize, S: ::serde::Serializer>(
+    op: &'static str,
+    rhs: &T,
+    ser: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+
+    let mut out = ser.serialize_struct("FieldOp", 2)?;
+    out.serialize_field("op", op)?;
+    out.serialize_field("rhs", rhs)?;
+    out.end()
+}
+
+fn serialize_contains<S: ::serde::Serializer>(rhs: &ContainsOp, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("Contains", rhs, ser)
+}
+
+fn serialize_matches<S: ::serde::Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("Matches", rhs, ser)
+}
+
+fn serialize_one_of<S: ::serde::Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("OneOf", rhs, ser)
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
 pub struct FieldExpr<'s> {
     field: Field<'s>,
+
+    #[serde(flatten)]
     op: FieldOp,
 }
 
@@ -83,7 +124,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 
         let (op, input) = if field_type == Type::Bool {
             (
-                FieldOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true)),
+                FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bool(true),
+                },
                 input,
             )
         } else {
@@ -98,13 +142,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                     let (rhs, input) = RhsValues::lex_with(input, field_type)?;
                     (FieldOp::OneOf(rhs), input)
                 }
-                (_, ComparisonOp::Ordering(mask)) => {
+                (_, ComparisonOp::Ordering(op)) => {
                     let (rhs, input) = RhsValue::lex_with(input, field_type)?;
-                    (FieldOp::Ordering(mask, rhs), input)
+                    (FieldOp::Ordering { op, rhs }, input)
                 }
                 (Type::Unsigned, ComparisonOp::Unsigned(op)) => {
                     let (rhs, input) = u64::lex(input)?;
-                    (FieldOp::Unsigned(op, rhs), input)
+                    (FieldOp::Unsigned { op, rhs }, input)
                 }
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
                     BytesOp::Contains => {
@@ -147,10 +191,11 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = ctx.get_field_value_unchecked(self.field);
 
         match &self.op {
-            FieldOp::Ordering(op, rhs) => op.matches_opt(lhs.partial_cmp(rhs)),
-            FieldOp::Unsigned(UnsignedOp::BitwiseAnd, rhs) => {
-                cast_field!(field, lhs, Unsigned) & rhs != 0
-            }
+            FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.partial_cmp(rhs)),
+            FieldOp::Unsigned {
+                op: UnsignedOp::BitwiseAnd,
+                rhs,
+            } => cast_field!(field, lhs, Unsigned) & rhs != 0,
             FieldOp::Contains(op) => op.search_in(cast_field!(field, lhs, Bytes)).is_some(),
             FieldOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
             FieldOp::OneOf(values) => values.contains(lhs),
@@ -160,13 +205,8 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
 #[test]
 fn test() {
-    use cidr::{Cidr, IpCidr};
-    use std::{net::IpAddr, ops::RangeInclusive};
-
-    fn cidr<A: Into<IpAddr>>(addr: A, len: u8) -> RangeInclusive<IpAddr> {
-        let cidr = IpCidr::new(addr.into(), len).unwrap();
-        cidr.first_address()..=cidr.last_address()
-    }
+    use serde_json::to_value as json;
+    use std::net::IpAddr;
 
     let scheme: &Scheme = &[
         ("http.host", Type::Bytes),
@@ -187,8 +227,20 @@ fn test() {
             FieldExpr::lex_with("ssl", scheme),
             FieldExpr {
                 field: field("ssl"),
-                op: FieldOp::Ordering(OrderingOp::Equal, RhsValue::Bool(true))
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bool(true)
+                }
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "ssl",
+                "op": "Equal",
+                "rhs": true
+            })
         );
 
         ctx.set_field_value("ssl", true);
@@ -203,13 +255,22 @@ fn test() {
             FieldExpr::lex_with("ip.addr >= 10:20:30:40:50:60:70:80", scheme),
             FieldExpr {
                 field: field("ip.addr"),
-                op: FieldOp::Ordering(
-                    OrderingOp::GreaterThanEqual,
-                    RhsValue::Ip(IpAddr::from([
+                op: FieldOp::Ordering {
+                    op: OrderingOp::GreaterThanEqual,
+                    rhs: RhsValue::Ip(IpAddr::from([
                         0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
                     ]))
-                ),
+                },
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "ip.addr",
+                "op": "GreaterThanEqual",
+                "rhs": "10:20:30:40:50:60:70:80"
+            })
         );
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
@@ -235,10 +296,10 @@ fn test() {
         FieldExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", scheme),
         FieldExpr {
             field: field("http.host"),
-            op: FieldOp::Ordering(
-                OrderingOp::GreaterThanEqual,
-                RhsValue::Bytes(vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into())
-            ),
+            op: FieldOp::Ordering {
+                op: OrderingOp::GreaterThanEqual,
+                rhs: RhsValue::Bytes(vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()),
+            },
         }
     );
 
@@ -247,8 +308,20 @@ fn test() {
             FieldExpr::lex_with("tcp.port & 1", scheme),
             FieldExpr {
                 field: field("tcp.port"),
-                op: FieldOp::Unsigned(UnsignedOp::BitwiseAnd, 1),
+                op: FieldOp::Unsigned {
+                    op: UnsignedOp::BitwiseAnd,
+                    rhs: 1,
+                }
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "tcp.port",
+                "op": "BitwiseAnd",
+                "rhs": 1
+            })
         );
 
         ctx.set_field_value("tcp.port", 80);
@@ -263,11 +336,21 @@ fn test() {
             FieldExpr::lex_with(r#"http.host == "example.org""#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::Ordering(
-                    OrderingOp::Equal,
-                    RhsValue::Bytes("example.org".to_owned().into())
-                )
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                }
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "http.host",
+                "op": "Equal",
+                // strings are currently encoded as a JSON arrays of bytes
+                "rhs": b"example.org"
+            })
         );
 
         ctx.set_field_value("http.host", "example.com");
@@ -286,6 +369,19 @@ fn test() {
                     vec![80..=80, 443..=443, 2082..=2083].into()
                 )),
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "tcp.port",
+                "op": "OneOf",
+                "rhs": [
+                    { "start": 80, "end": 80 },
+                    { "start": 443, "end": 443 },
+                    { "start": 2082, "end": 2083 },
+                ]
+            })
         );
 
         ctx.set_field_value("tcp.port", 80);
@@ -324,6 +420,19 @@ fn test() {
             }
         );
 
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "http.host",
+                "op": "OneOf",
+                // strings are currently encoded as a JSON arrays of bytes
+                "rhs": [
+                    b"example.org",
+                    b"example.com",
+                ]
+            })
+        );
+
         ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), true);
 
@@ -344,12 +453,26 @@ fn test() {
                 field: field("ip.addr"),
                 op: FieldOp::OneOf(RhsValues::Ip(
                     vec![
-                        cidr([127, 0, 0, 0], 8),
-                        cidr([0, 0, 0, 0, 0, 0, 0, 1], 128),
-                        cidr([10, 0, 0, 0], 16),
+                        IpAddr::from([127, 0, 0, 0])..=IpAddr::from([127, 255, 255, 255]),
+                        IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])
+                            ..=IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
+                        IpAddr::from([10, 0, 0, 0])..=IpAddr::from([10, 0, 255, 255]),
                     ].into()
                 )),
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "ip.addr",
+                "op": "OneOf",
+                "rhs": [
+                    { "start": "127.0.0.0", "end": "127.255.255.255" },
+                    { "start": "::1", "end": "::1" },
+                    { "start": "10.0.0.0", "end": "10.0.255.255" },
+                ]
+            })
         );
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
@@ -377,6 +500,16 @@ fn test() {
             }
         );
 
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "http.host",
+                "op": "Contains",
+                // strings are currently encoded as a JSON arrays of bytes
+                "rhs": b"abc",
+            })
+        );
+
         ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), false);
 
@@ -389,8 +522,17 @@ fn test() {
             FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, scheme),
             FieldExpr {
                 field: field("http.host"),
-                op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into())
+                op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into()),
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "http.host",
+                "op": "Contains",
+                "rhs": [0x6F, 0x72, 0x67],
+            })
         );
 
         ctx.set_field_value("http.host", "example.com");
@@ -404,7 +546,10 @@ fn test() {
         FieldExpr::lex_with(r#"http.host < 12"#, scheme),
         FieldExpr {
             field: field("http.host"),
-            op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Bytes(vec![0x12].into())),
+            op: FieldOp::Ordering {
+                op: OrderingOp::LessThan,
+                rhs: RhsValue::Bytes(vec![0x12].into()),
+            },
         }
     );
 
@@ -413,8 +558,20 @@ fn test() {
             FieldExpr::lex_with(r#"tcp.port < 8000"#, scheme),
             FieldExpr {
                 field: field("tcp.port"),
-                op: FieldOp::Ordering(OrderingOp::LessThan, RhsValue::Unsigned(8000)),
+                op: FieldOp::Ordering {
+                    op: OrderingOp::LessThan,
+                    rhs: RhsValue::Unsigned(8000)
+                },
             }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "tcp.port",
+                "op": "LessThan",
+                "rhs": 8000,
+            })
         );
 
         ctx.set_field_value("tcp.port", 80);

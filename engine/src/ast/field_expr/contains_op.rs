@@ -5,7 +5,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(transparent)]
 pub struct ContainsOp {
     bytes: Bytes,
 
@@ -17,6 +18,7 @@ pub struct ContainsOp {
     // is not moved/dropped out of the structure while we still need it by
     // simply not exposing it to public, so both properties are alive as long
     // as structure itself is.
+    #[serde(skip)]
     searcher: TwoWaySearcher<'static>,
 }
 
