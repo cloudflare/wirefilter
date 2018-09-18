@@ -99,6 +99,11 @@ impl<H: Hasher> Write for HasherWrite<H> {
     }
 }
 
+fn unwrap_json_result<T>(filter: &Filter, result: serde_json::Result<T>) -> T {
+    // Filter serialisation must never fail.
+    result.unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter))
+}
+
 #[no_mangle]
 pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
     let mut hasher = FnvHasher::default();
@@ -106,16 +111,15 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
     // effectively calculating a hash for our filter in a streaming fashion
     // that is as stable as the JSON representation itself
     // (instead of relying on #[derive(Hash)] which would be tied to impl details).
-    serde_json::to_writer(HasherWrite(&mut hasher), filter)
-        .unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter));
+    let result = serde_json::to_writer(HasherWrite(&mut hasher), filter);
+    unwrap_json_result(filter, result);
     hasher.finish()
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_serialize_filter_to_json(filter: &Filter) -> RustAllocatedString {
-    serde_json::to_string(filter)
-        .unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter))
-        .into()
+    let result = serde_json::to_string(filter);
+    unwrap_json_result(filter, result).into()
 }
 
 #[no_mangle]
