@@ -112,6 +112,18 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_serialize_filter_to_json(filter: &Filter) -> RustAllocatedString {
+    serde_json::to_string(filter)
+        .unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter))
+        .into()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_json(json: RustAllocatedString) {
+    drop(json);
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
     scheme: &'s Scheme,
 ) -> RustBox<ExecutionContext<'e>> {
@@ -338,7 +350,13 @@ mod ffi_test {
 
         {
             let parsing_result = parse_filter(&scheme, r#"num1 > 3 && str2 == "abc""#);
-            validate_filter(&parsing_result);
+
+            let json = wirefilter_serialize_filter_to_json(validate_filter(&parsing_result));
+
+            assert_eq!(json.as_str(), r#"{"op":"And","items":[{"field":"num1","op":"GreaterThan","rhs":3},{"field":"str2","op":"Equal","rhs":[97,98,99]}]}"#);
+
+            wirefilter_free_json(json);
+
             wirefilter_free_parsing_result(parsing_result);
         }
 
