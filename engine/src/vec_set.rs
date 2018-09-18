@@ -3,7 +3,7 @@ use indexmap::IndexSet;
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    hash::{Hash, Hasher},
+    hash::Hash,
     iter::FromIterator,
 };
 
@@ -17,15 +17,6 @@ use std::{
 #[serde(transparent)]
 pub struct VecSet<T: Hash + Eq> {
     items: IndexSet<T, FnvBuildHasher>,
-}
-
-impl<T: Hash + Eq> Hash for VecSet<T> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.items.len().hash(h);
-        for item in &self.items {
-            item.hash(h);
-        }
-    }
 }
 
 impl<T: Hash + Eq> PartialEq for VecSet<T> {

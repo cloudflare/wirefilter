@@ -6,7 +6,6 @@ use std::{
     cmp::{max, min},
     error::Error,
     fmt::{self, Debug, Display, Formatter},
-    hash::{Hash, Hasher},
     iter::FromIterator,
     ptr,
 };
@@ -27,12 +26,6 @@ impl<'s> ::serde::Serialize for Field<'s> {
 impl<'s> Debug for Field<'s> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.name())
-    }
-}
-
-impl<'s> Hash for Field<'s> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.name().hash(h)
     }
 }
 

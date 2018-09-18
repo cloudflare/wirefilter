@@ -9,7 +9,7 @@ lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
     "and" | "&&" => And,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 pub enum CombinedExpr<'s> {
     Simple(SimpleExpr<'s>),

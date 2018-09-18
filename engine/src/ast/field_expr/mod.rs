@@ -59,7 +59,7 @@ lex_enum!(ComparisonOp {
     BytesOp => Bytes,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 enum FieldOp {
     Ordering {
@@ -107,7 +107,7 @@ fn serialize_one_of<S: ::serde::Serializer>(rhs: &RhsValues, ser: S) -> Result<S
     serialize_op_rhs("OneOf", rhs, ser)
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct FieldExpr<'s> {
     field: Field<'s>,
 

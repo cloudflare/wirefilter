@@ -1,8 +1,5 @@
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
-use std::{
-    fmt::{self, Debug, Formatter},
-    hash::{Hash, Hasher},
-};
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
 pub struct Regex(::regex::bytes::Regex);
@@ -31,12 +28,6 @@ impl PartialEq for Regex {
 }
 
 impl Eq for Regex {}
-
-impl Hash for Regex {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state)
-    }
-}
 
 impl Debug for Regex {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

@@ -7,7 +7,7 @@ lex_enum!(UnaryOp {
     "not" | "!" => Not,
 });
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 pub enum SimpleExpr<'s> {
     Field(FieldExpr<'s>),

@@ -16,6 +16,7 @@ doctest = false
 [dependencies]
 fnv = "1.0.6"
 libc = "0.2.42"
+serde_json = "1.0.27"
 
 [dependencies.wirefilter-engine]
 path = "../engine"

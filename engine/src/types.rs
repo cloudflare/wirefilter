@@ -101,7 +101,7 @@ macro_rules! declare_types {
 
         declare_types!(
             @enum
-            #[derive(PartialEq, Eq, Hash, Clone, Serialize)]
+            #[derive(PartialEq, Eq, Clone, Serialize)]
             #[serde(untagged)]
             RhsValue {
                 $($name($rhs_ty),)*
@@ -110,7 +110,7 @@ macro_rules! declare_types {
 
         declare_types!(
             @enum
-            #[derive(PartialEq, Eq, Hash, Clone, Serialize)]
+            #[derive(PartialEq, Eq, Clone, Serialize)]
             #[serde(untagged)]
             RhsValues {
                 $($name($multi_rhs_ty<$rhs_ty>),)*

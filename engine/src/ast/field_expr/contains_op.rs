@@ -1,9 +1,6 @@
 use memmem::{Searcher, TwoWaySearcher};
 use rhs_types::Bytes;
-use std::{
-    fmt::{self, Debug},
-    hash::{Hash, Hasher},
-};
+use std::fmt::{self, Debug};
 
 #[derive(Clone, Serialize)]
 #[serde(transparent)]
@@ -42,12 +39,6 @@ impl PartialEq for ContainsOp {
 }
 
 impl Eq for ContainsOp {}
-
-impl Hash for ContainsOp {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.bytes.hash(h)
-    }
-}
 
 impl Debug for ContainsOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

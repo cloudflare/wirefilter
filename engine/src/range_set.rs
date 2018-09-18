@@ -7,7 +7,7 @@ use std::{
 
 // RangeSet provides a set-like interface that allows to search for items while
 // being constructed from and storing inclusive ranges in a compact fashion.
-#[derive(PartialEq, Eq, Hash, Clone, Serialize)]
+#[derive(PartialEq, Eq, Clone, Serialize)]
 #[serde(transparent)]
 pub struct RangeSet<T> {
     ranges: Vec<RangeInclusive<T>>,

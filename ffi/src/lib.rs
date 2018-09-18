@@ -1,5 +1,6 @@
 extern crate fnv;
 extern crate libc;
+extern crate serde_json;
 extern crate wirefilter;
 
 #[cfg(test)]
@@ -13,7 +14,8 @@ mod transfer_types;
 
 use fnv::FnvHasher;
 use std::{
-    hash::{Hash, Hasher},
+    hash::Hasher,
+    io::{self, Write},
     net::IpAddr,
 };
 use transfer_types::{
@@ -78,10 +80,34 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     }
 }
 
+/// Wrapper for Hasher that allows using Write API (e.g. with serializer).
+#[derive(Default)]
+struct HasherWrite<H: Hasher>(H);
+
+impl<H: Hasher> Write for HasherWrite<H> {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        Ok(self.0.write(buf))
+    }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.write_all(buf)?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
     let mut hasher = FnvHasher::default();
-    filter.hash(&mut hasher);
+    // Serialize JSON to our Write-compatible wrapper around FnvHasher,
+    // effectively calculating a hash for our filter in a streaming fashion
+    // that is as stable as the JSON representation itself
+    // (instead of relying on #[derive(Hash)] which would be tied to impl details).
+    serde_json::to_writer(HasherWrite(&mut hasher), filter)
+        .unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter));
     hasher.finish()
 }
 

@@ -6,12 +6,9 @@ use self::combined_expr::CombinedExpr;
 use execution_context::ExecutionContext;
 use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
-use std::{
-    fmt::{self, Debug},
-    hash::{Hash, Hasher},
-};
+use std::fmt::{self, Debug};
 
-trait Expr<'s>: Sized + Eq + Hash + Debug + for<'i> LexWith<'i, &'s Scheme> {
+trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + ::serde::Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool;
 }
@@ -23,12 +20,6 @@ pub struct Filter<'s> {
     scheme: &'s Scheme,
 
     op: CombinedExpr<'s>,
-}
-
-impl<'s> Hash for Filter<'s> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.op.hash(h)
-    }
 }
 
 impl<'s> Debug for Filter<'s> {
