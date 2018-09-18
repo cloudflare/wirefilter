@@ -37,7 +37,7 @@ impl<'s> CombinedExpr<'s> {
 
         while let Some(op) = lookahead.0 {
             let mut rhs = SimpleExpr::lex_with(lookahead.1, scheme)
-                .map(|(op, input)| ((CombinedExpr::Simple(op), input)))?;
+                .map(|(op, input)| (CombinedExpr::Simple(op), input))?;
 
             loop {
                 lookahead = Self::lex_combining_op(rhs.1);
