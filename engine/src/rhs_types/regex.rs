@@ -88,9 +88,14 @@ impl ::serde::Serialize for Regex {
 
 #[test]
 fn test() {
-    assert_ok!(
+    let expr = assert_ok!(
         Regex::lex(r#""[a-z"\]]+\d{1,10}\"";"#),
         Regex::new(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
         ";"
+    );
+
+    assert_eq!(
+        ::serde_json::to_value(&expr).unwrap(),
+        json!(r#"[a-z"\]]+\d{1,10}""#)
     );
 }
