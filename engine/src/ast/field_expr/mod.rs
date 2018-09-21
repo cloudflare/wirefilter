@@ -351,8 +351,7 @@ fn test() {
             json!({
                 "field": "http.host",
                 "op": "Equal",
-                // strings are currently encoded as a JSON arrays of bytes
-                "rhs": b"example.org"
+                "rhs": "example.org"
             })
         );
 
@@ -426,10 +425,9 @@ fn test() {
             json!({
                 "field": "http.host",
                 "op": "OneOf",
-                // strings are currently encoded as a JSON arrays of bytes
                 "rhs": [
-                    b"example.org",
-                    b"example.com",
+                    "example.org",
+                    "example.com",
                 ]
             })
         );
@@ -506,8 +504,7 @@ fn test() {
             json!({
                 "field": "http.host",
                 "op": "Contains",
-                // strings are currently encoded as a JSON arrays of bytes
-                "rhs": b"abc",
+                "rhs": "abc",
             })
         );
 
