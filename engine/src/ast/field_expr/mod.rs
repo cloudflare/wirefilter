@@ -185,8 +185,8 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
     }
 
     fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
-        macro_rules! cast_field {
-            ($field:ident, $lhs:ident, $ty:ident) => {
+        macro_rules! cast {
+            ($lhs:ident, $ty:ident) => {
                 match $lhs {
                     LhsValue::$ty(value) => value,
                     _ => unreachable!(),
@@ -197,14 +197,14 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = ctx.get_field_value_unchecked(self.field);
 
         match &self.op {
-            FieldOp::IsTrue => *cast_field!(field, lhs, Bool),
+            FieldOp::IsTrue => *cast!(lhs, Bool),
             FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.strict_partial_cmp(rhs)),
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => cast_field!(field, lhs, Int) & rhs != 0,
-            FieldOp::Contains(op) => op.search_in(cast_field!(field, lhs, Bytes)).is_some(),
-            FieldOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
+            } => cast!(lhs, Int) & rhs != 0,
+            FieldOp::Contains(op) => op.search_in(cast!(lhs, Bytes)).is_some(),
+            FieldOp::Matches(regex) => regex.is_match(cast!(lhs, Bytes)),
             FieldOp::OneOf(values) => values.contains(lhs),
         }
     }
