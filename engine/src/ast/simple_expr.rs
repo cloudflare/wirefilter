@@ -87,8 +87,7 @@ fn test() {
             json(&expr).unwrap(),
             json!({
                 "field": "t",
-                "op": "Equal",
-                "rhs": true
+                "op": "IsTrue"
             })
         );
 
@@ -107,8 +106,7 @@ fn test() {
             json(&expr).unwrap(),
             json!({
                 "field": "t",
-                "op": "Equal",
-                "rhs": true
+                "op": "IsTrue"
             })
         );
 
@@ -129,8 +127,7 @@ fn test() {
                 "op": "Not",
                 "arg": {
                     "field": "t",
-                    "op": "Equal",
-                    "rhs": true
+                    "op": "IsTrue"
                 }
             })
         );
@@ -154,8 +151,7 @@ fn test() {
                     "op": "Not",
                     "arg": {
                         "field": "t",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     }
                 }
             })

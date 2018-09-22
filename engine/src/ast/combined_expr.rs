@@ -167,13 +167,11 @@ fn test() {
                 "items": [
                     {
                         "field": "t",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     },
                     {
                         "field": "f",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     }
                 ]
             })
@@ -198,13 +196,11 @@ fn test() {
                 "items": [
                     {
                         "field": "t",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     },
                     {
                         "field": "f",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     }
                 ]
             })
@@ -241,13 +237,11 @@ fn test() {
                 "items": [
                     {
                         "field": "t",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     },
                     {
                         "field": "f",
-                        "op": "Equal",
-                        "rhs": true
+                        "op": "IsTrue"
                     }
                 ]
             })

@@ -1,6 +1,6 @@
 use lex::{expect, skip_space, Lex, LexError, LexResult, LexWith};
 use range_set::RangeSet;
-use rhs_types::Bytes;
+use rhs_types::{Bytes, UninhabitedBool};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},
@@ -179,18 +179,9 @@ impl<'a> From<&'a str> for LhsValue<'a> {
     }
 }
 
-impl<'i> Lex<'i> for bool {
-    fn lex(_input: &str) -> LexResult<Self> {
-        // Boolean fields should be checked without parsing RHS value
-        unreachable!()
-    }
-}
-
-impl StrictPartialOrd for bool {}
-
 declare_types!(
     Ip(IpAddr | IpAddr | RangeSet),
     Bytes(&'a [u8] | Bytes | VecSet),
     Int(i32 | i32 | RangeSet),
-    Bool(bool | bool | VecSet),
+    Bool(bool | UninhabitedBool | VecSet),
 );

@@ -63,6 +63,9 @@ lex_enum!(ComparisonOp {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 enum FieldOp {
+    #[serde(serialize_with = "serialize_is_true")]
+    IsTrue,
+
     Ordering {
         op: OrderingOp,
         rhs: RhsValue,
@@ -96,6 +99,14 @@ fn serialize_op_rhs<T: ::serde::Serialize, S: ::serde::Serializer>(
     out.end()
 }
 
+fn serialize_is_true<S: ::serde::Serializer>(ser: S) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+
+    let mut out = ser.serialize_struct("FieldOp", 1)?;
+    out.serialize_field("op", "IsTrue")?;
+    out.end()
+}
+
 fn serialize_contains<S: ::serde::Serializer>(rhs: &ContainsOp, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
 }
@@ -124,13 +135,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
         let field_type = field.get_type();
 
         let (op, input) = if field_type == Type::Bool {
-            (
-                FieldOp::Ordering {
-                    op: OrderingOp::Equal,
-                    rhs: RhsValue::Bool(true),
-                },
-                input,
-            )
+            (FieldOp::IsTrue, input)
         } else {
             let (op, input) = ComparisonOp::lex(skip_space(input))?;
 
@@ -192,6 +197,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = ctx.get_field_value_unchecked(self.field);
 
         match &self.op {
+            FieldOp::IsTrue => *cast_field!(field, lhs, Bool),
             FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.strict_partial_cmp(rhs)),
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
@@ -228,10 +234,7 @@ fn test() {
             FieldExpr::lex_with("ssl", scheme),
             FieldExpr {
                 field: field("ssl"),
-                op: FieldOp::Ordering {
-                    op: OrderingOp::Equal,
-                    rhs: RhsValue::Bool(true)
-                }
+                op: FieldOp::IsTrue
             }
         );
 
@@ -239,8 +242,7 @@ fn test() {
             json(&expr).unwrap(),
             json!({
                 "field": "ssl",
-                "op": "Equal",
-                "rhs": true
+                "op": "IsTrue"
             })
         );
 
