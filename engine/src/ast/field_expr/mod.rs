@@ -252,11 +252,11 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            FieldExpr::lex_with("ip.addr >= 10:20:30:40:50:60:70:80", scheme),
+            FieldExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", scheme),
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::Ordering {
-                    op: OrderingOp::GreaterThanEqual,
+                    op: OrderingOp::LessThanEqual,
                     rhs: RhsValue::Ip(IpAddr::from([
                         0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
                     ]))
@@ -268,13 +268,13 @@ fn test() {
             json(&expr).unwrap(),
             json!({
                 "field": "ip.addr",
-                "op": "GreaterThanEqual",
+                "op": "LessThanEqual",
                 "rhs": "10:20:30:40:50:60:70:80"
             })
         );
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), true);
 
         ctx.set_field_value(
             "ip.addr",
@@ -286,7 +286,7 @@ fn test() {
             "ip.addr",
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81]),
         );
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), false);

@@ -1,7 +1,7 @@
 use cidr::{Cidr, NetworkParseError};
 use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
-
-use std::{net::IpAddr, ops::RangeInclusive, str::FromStr};
+use std::{cmp::Ordering, net::IpAddr, ops::RangeInclusive, str::FromStr};
+use strict_partial_ord::StrictPartialOrd;
 
 fn match_addr_or_cidr(input: &str) -> LexResult<&str> {
     take_while(input, "IP address character", |c| match c {
@@ -35,9 +35,8 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
             let first = parse_addr(&chunk[..split_pos])?;
             let last = parse_addr(&chunk[split_pos + "..".len()..])?;
 
-            match (first, last) {
-                (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
-                    if first <= last => {}
+            match first.strict_partial_cmp(&last) {
+                Some(Ordering::Less) | Some(Ordering::Equal) => {}
                 _ => {
                     return Err((LexErrorKind::IncompatibleRangeBounds, chunk));
                 }
@@ -64,8 +63,18 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
     }
 }
 
+impl StrictPartialOrd for IpAddr {
+    fn strict_partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (IpAddr::V4(lhs), IpAddr::V4(rhs)) => Some(lhs.cmp(rhs)),
+            (IpAddr::V6(lhs), IpAddr::V6(rhs)) => Some(lhs.cmp(rhs)),
+            _ => None,
+        }
+    }
+}
+
 #[test]
-fn test() {
+fn test_lex() {
     use cidr::IpCidr;
 
     type IpAddrs = RangeInclusive<IpAddr>;
@@ -149,4 +158,24 @@ fn test() {
         )),
         "10.0.0.0.0"
     );
+}
+
+#[test]
+fn test_strict_partial_ord() {
+    let ips = &[
+        IpAddr::from([10, 0, 0, 0]),
+        IpAddr::from([127, 0, 0, 1]),
+        IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
+        IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]),
+    ];
+
+    for lhs in ips {
+        for rhs in ips {
+            if lhs.is_ipv4() == rhs.is_ipv4() {
+                assert_eq!(lhs.strict_partial_cmp(rhs), lhs.partial_cmp(rhs));
+            } else {
+                assert_eq!(lhs.strict_partial_cmp(rhs), None);
+            }
+        }
+    }
 }

@@ -7,6 +7,7 @@ use std::{
     slice::Iter,
     str,
 };
+use strict_partial_ord::StrictPartialOrd;
 
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize)]
 pub struct Bytes(Box<[u8]>);
@@ -149,6 +150,8 @@ impl<'i> Lex<'i> for Bytes {
         }
     }
 }
+
+impl StrictPartialOrd for [u8] {}
 
 #[test]
 fn test() {

@@ -9,6 +9,7 @@ use std::{
     net::IpAddr,
     ops::Deref,
 };
+use strict_partial_ord::StrictPartialOrd;
 use vec_set::VecSet;
 
 struct RhsValuesLexer<'i, T: Lex<'i>> {
@@ -121,7 +122,7 @@ macro_rules! declare_types {
             fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
                 match (self, other) {
                     $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
-                        lhs.deref().partial_cmp(rhs)
+                        lhs.strict_partial_cmp(rhs)
                     },)*
                     _ => None,
                 }
@@ -182,6 +183,8 @@ impl<'i> Lex<'i> for bool {
         unreachable!()
     }
 }
+
+impl StrictPartialOrd for bool {}
 
 declare_types!(
     Ip(IpAddr | IpAddr | RangeSet),

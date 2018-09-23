@@ -1,5 +1,6 @@
 use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
 use std::ops::RangeInclusive;
+use strict_partial_ord::StrictPartialOrd;
 
 fn number(input: &str, radix: u32) -> LexResult<u64> {
     let (digits, input) = take_while(input, "digit", |c| c.is_digit(radix))?;
@@ -41,6 +42,8 @@ impl<'i> Lex<'i> for RangeInclusive<u64> {
         Ok((first..=last, input))
     }
 }
+
+impl StrictPartialOrd for u64 {}
 
 #[test]
 fn test() {
