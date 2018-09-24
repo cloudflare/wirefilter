@@ -129,9 +129,11 @@ macro_rules! declare_types {
             }
         }
 
+        impl<'a> StrictPartialOrd<RhsValue> for LhsValue<'a> {}
+
         impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
             fn eq(&self, other: &RhsValue) -> bool {
-                self.partial_cmp(other) == Some(Ordering::Equal)
+                self.strict_partial_cmp(other) == Some(Ordering::Equal)
             }
         }
 

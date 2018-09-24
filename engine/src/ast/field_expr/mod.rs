@@ -8,6 +8,7 @@ use memmem::Searcher;
 use rhs_types::{Bytes, Regex};
 use scheme::{Field, Scheme};
 use std::cmp::Ordering;
+use strict_partial_ord::StrictPartialOrd;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
 const LESS: u8 = 0b001;
@@ -191,7 +192,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = ctx.get_field_value_unchecked(self.field);
 
         match &self.op {
-            FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.partial_cmp(rhs)),
+            FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.strict_partial_cmp(rhs)),
             FieldOp::Unsigned {
                 op: UnsignedOp::BitwiseAnd,
                 rhs,
