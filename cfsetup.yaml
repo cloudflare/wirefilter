@@ -27,7 +27,8 @@ everything: &everything
       - ./cfsetup-cargo.sh prebuild
     post-cache:
       - sudo ./cfsetup-cargo.sh test --frozen
-      - sudo ./cfsetup-cargo.sh clippy --all-targets -- --frozen
+      - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen
+      - sudo ./cfsetup-cargo.sh fmt -- --check
   bamboo-test:
     builddeps:
       - rust
@@ -36,7 +37,8 @@ everything: &everything
     pre-cache: *test-pre-cache
     post-cache:
       - sudo ./cfsetup-cargo.sh test --frozen | cargo-to-teamcity
-      - sudo ./cfsetup-cargo.sh clippy --all-targets -- --frozen -D clippy
+      - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen -- -D clippy
+      - sudo ./cfsetup-cargo.sh fmt -- --check
 
 stretch: *everything
 jessie: *everything
