@@ -2,55 +2,56 @@ use lex::{expect, take, Lex, LexErrorKind, LexResult};
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},
-    iter::Cloned,
+    hash::{Hash, Hasher},
     ops::Deref,
-    slice::Iter,
     str,
 };
 use strict_partial_ord::StrictPartialOrd;
 
-#[derive(PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize)]
-pub struct Bytes(Box<[u8]>);
+#[derive(PartialEq, Eq, Clone, Serialize)]
+#[serde(untagged)]
+pub enum Bytes {
+    Str(Box<str>),
+    Raw(Box<[u8]>),
+}
+
+// We need custom `Hash` consistent with `Borrow` invariants.
+// We can get away with `Eq` invariant though because we do want
+// `Bytes == Bytes` to check enum tags but `Bytes == &[u8]` to ignore them, and
+// consistency of the latter is all that matters for `Borrow` consumers.
+#[cfg_attr(feature = "cargo-clippy", allow(derive_hash_xor_eq))]
+impl Hash for Bytes {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        (self as &[u8]).hash(h)
+    }
+}
 
 impl From<Vec<u8>> for Bytes {
     fn from(src: Vec<u8>) -> Self {
-        Bytes(src.into_boxed_slice())
+        Bytes::Raw(src.into_boxed_slice())
     }
 }
 
 impl From<String> for Bytes {
     fn from(src: String) -> Self {
-        src.into_bytes().into()
-    }
-}
-
-impl Bytes {
-    fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
-        self.into_iter()
+        Bytes::Str(src.into_boxed_str())
     }
 }
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "\"")?;
-        for b in self {
-            #[cfg_attr(feature = "cargo-clippy", allow(match_overlapping_arm))]
-            match b {
-                b'"' => write!(f, r#"\""#),
-                b'\\' => write!(f, r#"\"#),
-                0x20...0x7E => write!(f, "{}", b as char),
-                _ => write!(f, r#"\x{:02X}"#, b),
-            }?;
-        }
-        write!(f, "\" (")?;
-        for (i, b) in self.iter().enumerate() {
-            if i != 0 {
-                write!(f, ":")?;
+        match self {
+            Bytes::Str(s) => s.fmt(f),
+            Bytes::Raw(b) => {
+                for (i, b) in b.iter().cloned().enumerate() {
+                    if i != 0 {
+                        write!(f, ":")?;
+                    }
+                    write!(f, "{:02X}", b)?;
+                }
+                Ok(())
             }
-            write!(f, "{:02X}", b)?;
         }
-        write!(f, ")")?;
-        Ok(())
     }
 }
 
@@ -58,22 +59,16 @@ impl Deref for Bytes {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        &self.0
+        match self {
+            Bytes::Str(s) => s.as_bytes(),
+            Bytes::Raw(b) => b,
+        }
     }
 }
 
 impl Borrow<[u8]> for Bytes {
     fn borrow(&self) -> &[u8] {
         self
-    }
-}
-
-impl<'a> IntoIterator for &'a Bytes {
-    type IntoIter = Cloned<Iter<'a, u8>>;
-    type Item = u8;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter().cloned()
     }
 }
 
