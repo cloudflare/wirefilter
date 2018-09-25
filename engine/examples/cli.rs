@@ -12,7 +12,7 @@ fn main() {
         ("ip", Type::Ip),
         ("str", Type::Bytes),
         ("bytes", Type::Bytes),
-        ("unsigned", Type::Unsigned),
+        ("int", Type::Int),
         ("bool", Type::Bool),
     ]
         .iter()

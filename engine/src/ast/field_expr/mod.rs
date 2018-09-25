@@ -44,7 +44,7 @@ impl OrderingOp {
     }
 }
 
-lex_enum!(UnsignedOp {
+lex_enum!(IntOp {
     "&" | "bitwise_and" => BitwiseAnd,
 });
 
@@ -56,7 +56,7 @@ lex_enum!(BytesOp {
 lex_enum!(ComparisonOp {
     "in" => In,
     OrderingOp => Ordering,
-    UnsignedOp => Unsigned,
+    IntOp => Int,
     BytesOp => Bytes,
 });
 
@@ -68,9 +68,9 @@ enum FieldOp {
         rhs: RhsValue,
     },
 
-    Unsigned {
-        op: UnsignedOp,
-        rhs: u64,
+    Int {
+        op: IntOp,
+        rhs: i32,
     },
 
     #[serde(serialize_with = "serialize_contains")]
@@ -147,9 +147,9 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                     let (rhs, input) = RhsValue::lex_with(input, field_type)?;
                     (FieldOp::Ordering { op, rhs }, input)
                 }
-                (Type::Unsigned, ComparisonOp::Unsigned(op)) => {
-                    let (rhs, input) = u64::lex(input)?;
-                    (FieldOp::Unsigned { op, rhs }, input)
+                (Type::Int, ComparisonOp::Int(op)) => {
+                    let (rhs, input) = i32::lex(input)?;
+                    (FieldOp::Int { op, rhs }, input)
                 }
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
                     BytesOp::Contains => {
@@ -193,10 +193,10 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
         match &self.op {
             FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.strict_partial_cmp(rhs)),
-            FieldOp::Unsigned {
-                op: UnsignedOp::BitwiseAnd,
+            FieldOp::Int {
+                op: IntOp::BitwiseAnd,
                 rhs,
-            } => cast_field!(field, lhs, Unsigned) & rhs != 0,
+            } => cast_field!(field, lhs, Int) & rhs != 0,
             FieldOp::Contains(op) => op.search_in(cast_field!(field, lhs, Bytes)).is_some(),
             FieldOp::Matches(regex) => regex.is_match(cast_field!(field, lhs, Bytes)),
             FieldOp::OneOf(values) => values.contains(lhs),
@@ -213,7 +213,7 @@ fn test() {
         ("http.host", Type::Bytes),
         ("ip.addr", Type::Ip),
         ("ssl", Type::Bool),
-        ("tcp.port", Type::Unsigned),
+        ("tcp.port", Type::Int),
     ]
         .iter()
         .map(|&(k, t)| (k.to_owned(), t))
@@ -309,8 +309,8 @@ fn test() {
             FieldExpr::lex_with("tcp.port & 1", scheme),
             FieldExpr {
                 field: field("tcp.port"),
-                op: FieldOp::Unsigned {
-                    op: UnsignedOp::BitwiseAnd,
+                op: FieldOp::Int {
+                    op: IntOp::BitwiseAnd,
                     rhs: 1,
                 }
             }
@@ -366,9 +366,7 @@ fn test() {
             FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, scheme),
             FieldExpr {
                 field: field("tcp.port"),
-                op: FieldOp::OneOf(RhsValues::Unsigned(
-                    vec![80..=80, 443..=443, 2082..=2083].into()
-                )),
+                op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083].into())),
             }
         );
 
@@ -561,7 +559,7 @@ fn test() {
                 field: field("tcp.port"),
                 op: FieldOp::Ordering {
                     op: OrderingOp::LessThan,
-                    rhs: RhsValue::Unsigned(8000)
+                    rhs: RhsValue::Int(8000)
                 },
             }
         );

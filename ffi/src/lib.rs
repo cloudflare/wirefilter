@@ -140,10 +140,10 @@ pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<Execut
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_unsigned_value_to_execution_context<'a>(
+pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedByteArr<'a>,
-    value: u64,
+    value: i32,
 ) {
     exec_context.set_field_value(name.into(), value);
 }
@@ -236,12 +236,12 @@ mod ffi_test {
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("num1"),
-            Type::Unsigned,
+            Type::Int,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedByteArr::from("num2"),
-            Type::Unsigned,
+            Type::Int,
         );
 
         scheme
@@ -274,13 +274,13 @@ mod ffi_test {
             ExternallyAllocatedByteArr::from("yo123"),
         );
 
-        wirefilter_add_unsigned_value_to_execution_context(
+        wirefilter_add_int_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("num1"),
             42,
         );
 
-        wirefilter_add_unsigned_value_to_execution_context(
+        wirefilter_add_int_value_to_execution_context(
             &mut exec_context,
             ExternallyAllocatedByteArr::from("num2"),
             1337,

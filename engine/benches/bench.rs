@@ -86,7 +86,7 @@ fn bench_ip_comparisons(c: &mut Criterion) {
     }.run(c)
 }
 
-fn bench_unsigned_comparisons(c: &mut Criterion) {
+fn bench_int_comparisons(c: &mut Criterion) {
     FieldBench {
         field: "tcp.port",
         filters: &[
@@ -129,7 +129,7 @@ criterion_group! {
     config = Criterion::default();
     targets =
         bench_ip_comparisons,
-        bench_unsigned_comparisons,
+        bench_int_comparisons,
         bench_string_comparisons,
         bench_string_matches,
 }

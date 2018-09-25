@@ -191,6 +191,6 @@ impl StrictPartialOrd for bool {}
 declare_types!(
     Ip(IpAddr | IpAddr | RangeSet),
     Bytes(&'a [u8] | Bytes | VecSet),
-    Unsigned(u64 | u64 | RangeSet),
+    Int(i32 | i32 | RangeSet),
     Bool(bool | bool | VecSet),
 );

@@ -202,7 +202,7 @@ impl<'s> Scheme {
 
 #[test]
 fn test_parse_error() {
-    let scheme: &Scheme = &[("num", Type::Unsigned)]
+    let scheme: &Scheme = &[("num", Type::Int)]
         .iter()
         .map(|&(k, t)| (k.to_owned(), t))
         .collect();
@@ -315,7 +315,7 @@ fn test_parse_error() {
 fn test_field() {
     let scheme = &[
         ("x", Type::Bytes),
-        ("x.y.z0", Type::Unsigned),
+        ("x.y.z0", Type::Int),
         ("is_TCP", Type::Bool),
     ]
         .iter()
