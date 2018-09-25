@@ -45,7 +45,7 @@ impl<'i> Lex<'i> for RangeInclusive<IpAddr> {
             first..=last
         } else {
             let cidr = ::cidr::IpCidr::from_str(chunk).map_err(|err| {
-                let split_pos = chunk.find('/').unwrap_or(chunk.len());
+                let split_pos = chunk.find('/').unwrap_or_else(|| chunk.len());
                 let err_span = match err {
                     NetworkParseError::AddrParseError(_) | NetworkParseError::InvalidHostPart => {
                         &chunk[..split_pos]

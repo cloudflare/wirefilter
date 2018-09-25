@@ -34,6 +34,7 @@ impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "\"")?;
         for b in self {
+            #[cfg_attr(feature = "cargo-clippy", allow(match_overlapping_arm))]
             match b {
                 b'"' => write!(f, r#"\""#),
                 b'\\' => write!(f, r#"\"#),

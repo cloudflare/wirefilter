@@ -23,7 +23,7 @@ use transfer_types::{
 };
 use wirefilter::{ExecutionContext, Filter, ParseError, Scheme, Type};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[repr(u8)]
 pub enum ParsingResult<'s> {
@@ -86,7 +86,8 @@ struct HasherWrite<H: Hasher>(H);
 
 impl<H: Hasher> Write for HasherWrite<H> {
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        Ok(self.0.write(buf))
+        self.0.write(buf);
+        Ok(())
     }
 
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
