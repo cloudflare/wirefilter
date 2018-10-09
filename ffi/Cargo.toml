@@ -12,6 +12,7 @@ assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.s
 crate-type = ["cdylib"]
 # Avoid duplicate compilation error messages as we don't have doctests anyway
 doctest = false
+bench = false
 
 [dependencies]
 fnv = "1.0.6"
