@@ -1,3 +1,10 @@
+use std::alloc::System;
+
+// Most of our usage will be via FFI as a dynamic library, so we're interested
+// in performance with system allocator and not jemalloc.
+#[global_allocator]
+static A: System = System;
+
 #[macro_use]
 extern crate criterion;
 
