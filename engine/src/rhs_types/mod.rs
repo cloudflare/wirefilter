@@ -4,4 +4,9 @@ mod int;
 mod ip;
 mod regex;
 
-pub use self::{bool::UninhabitedBool, bytes::Bytes, regex::Regex};
+pub use self::{
+    bool::UninhabitedBool,
+    bytes::Bytes,
+    ip::{ExplicitIpRange, IpRange},
+    regex::Regex,
+};

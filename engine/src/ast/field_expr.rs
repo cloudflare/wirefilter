@@ -5,9 +5,9 @@ use indexmap::IndexSet;
 use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
 use memmem::Searcher;
 use range_set::RangeSet;
-use rhs_types::{Bytes, Regex};
+use rhs_types::{Bytes, ExplicitIpRange, Regex};
 use scheme::{Field, Scheme};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, net::IpAddr};
 use strict_partial_ord::StrictPartialOrd;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
@@ -225,10 +225,22 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 regex.is_match(cast!(ctx.get_field_value_unchecked(field), Bytes))
             }),
             FieldOp::OneOf(values) => match values {
-                RhsValues::Ip(values) => {
-                    let values: RangeSet<_> = values.iter().cloned().collect();
+                RhsValues::Ip(ranges) => {
+                    let mut v4 = Vec::new();
+                    let mut v6 = Vec::new();
+                    for range in ranges {
+                        match range.clone().into() {
+                            ExplicitIpRange::V4(range) => v4.push(range),
+                            ExplicitIpRange::V6(range) => v6.push(range),
+                        }
+                    }
+                    let v4 = RangeSet::from(v4);
+                    let v6 = RangeSet::from(v6);
                     CompiledExpr::new(move |ctx| {
-                        values.contains(cast!(ctx.get_field_value_unchecked(field), Ip))
+                        match cast!(ctx.get_field_value_unchecked(field), Ip) {
+                            IpAddr::V4(addr) => v4.contains(addr),
+                            IpAddr::V6(addr) => v6.contains(addr),
+                        }
                     })
                 }
                 RhsValues::Int(values) => {
@@ -254,7 +266,9 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cidr::{Cidr, IpCidr};
     use execution_context::ExecutionContext;
+    use rhs_types::IpRange;
     use serde_json::to_value as json;
     use std::net::IpAddr;
 
@@ -558,9 +572,11 @@ mod tests {
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::OneOf(RhsValues::Ip(vec![
-                    IpAddr::from([127, 0, 0, 0])..=IpAddr::from([127, 255, 255, 255]),
-                    IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])..=IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
-                    IpAddr::from([10, 0, 0, 0])..=IpAddr::from([10, 0, 255, 255]),
+                    IpRange::Cidr(IpCidr::new([127, 0, 0, 0].into(), 8).unwrap()),
+                    IpRange::Cidr(IpCidr::new_host([0, 0, 0, 0, 0, 0, 0, 1].into())),
+                    IpRange::Explicit(ExplicitIpRange::V4(
+                        [10, 0, 0, 0].into()..=[10, 0, 255, 255].into()
+                    )),
                 ])),
             }
         );
@@ -571,8 +587,8 @@ mod tests {
                 "field": "ip.addr",
                 "op": "OneOf",
                 "rhs": [
-                    { "start": "127.0.0.0", "end": "127.255.255.255" },
-                    { "start": "::1", "end": "::1" },
+                    "127.0.0.0/8",
+                    "::1",
                     { "start": "10.0.0.0", "end": "10.0.255.255" },
                 ]
             })

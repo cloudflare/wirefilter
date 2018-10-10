@@ -16,7 +16,7 @@ name = "bench"
 harness = false
 
 [dependencies]
-cidr = { version = "0.0.4", default-features = false }
+cidr = { version = "0.1.0", git = "https://github.com/stbuehler/rust-cidr", branch = "next-0.1.0" }
 failure = "0.1.1"
 fnv = "1.0.6"
 indexmap = { version = "1.0.1", features = ["serde-1"] }

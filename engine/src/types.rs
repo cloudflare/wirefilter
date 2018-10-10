@@ -1,5 +1,5 @@
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
-use rhs_types::{Bytes, UninhabitedBool};
+use rhs_types::{Bytes, IpRange, UninhabitedBool};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},
@@ -146,7 +146,7 @@ impl<'a> From<&'a str> for LhsValue<'a> {
 }
 
 declare_types!(
-    Ip(IpAddr | IpAddr | RangeInclusive<IpAddr>),
+    Ip(IpAddr | IpAddr | IpRange),
     Bytes(&'a [u8] | Bytes | Bytes),
     Int(i32 | i32 | RangeInclusive<i32>),
     Bool(bool | UninhabitedBool | UninhabitedBool),
