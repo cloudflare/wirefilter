@@ -683,7 +683,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "wirefilter-engine"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "cidr 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "criterion 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -699,14 +699,14 @@ dependencies = [
 
 [[package]]
 name = "wirefilter-ffi"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "indoc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.42 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
- "wirefilter-engine 0.4.0",
+ "wirefilter-engine 0.4.1",
 ]
 
 [metadata]
