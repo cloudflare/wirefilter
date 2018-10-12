@@ -97,16 +97,21 @@ lex_enum!(ByteSeparator {
 impl<'i> Lex<'i> for Bytes {
     fn lex(mut input: &str) -> LexResult<Self> {
         if let Ok(input) = expect(input, "\"") {
+            let full_input = input;
             let mut res = String::new();
             let mut iter = input.chars();
             loop {
                 match iter
                     .next()
-                    .ok_or_else(|| (LexErrorKind::MissingEndingQuote, input))?
+                    .ok_or_else(|| (LexErrorKind::MissingEndingQuote, full_input))?
                 {
                     '\\' => {
                         let input = iter.as_str();
-                        let c = iter.next().unwrap_or('\0');
+
+                        let c = iter
+                            .next()
+                            .ok_or_else(|| (LexErrorKind::MissingEndingQuote, full_input))?;
+
                         res.push(match c {
                             '"' | '\\' => c,
                             'x' => {
@@ -181,5 +186,11 @@ fn test() {
         Bytes::lex(r#""\n""#),
         LexErrorKind::InvalidCharacterEscape,
         "n"
+    );
+
+    assert_err!(
+        Bytes::lex(r#""abcd\"#),
+        LexErrorKind::MissingEndingQuote,
+        "abcd\\"
     );
 }

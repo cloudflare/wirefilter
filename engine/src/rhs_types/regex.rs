@@ -98,4 +98,10 @@ fn test() {
         ::serde_json::to_value(&expr).unwrap(),
         json!(r#"[a-z"\]]+\d{1,10}""#)
     );
+
+    assert_err!(
+        Regex::lex(r#""abcd\"#),
+        LexErrorKind::MissingEndingQuote,
+        "abcd\\"
+    );
 }
