@@ -193,4 +193,31 @@ fn test() {
         LexErrorKind::MissingEndingQuote,
         "abcd\\"
     );
+
+    assert_err!(
+        Bytes::lex(r#""\01😢""#),
+        LexErrorKind::ParseInt {
+            err: u8::from_str_radix("01😢", 8).unwrap_err(),
+            radix: 8,
+        },
+        "01😢"
+    );
+
+    assert_err!(
+        Bytes::lex(r#""\x3😢""#),
+        LexErrorKind::ParseInt {
+            err: u8::from_str_radix("3😢", 16).unwrap_err(),
+            radix: 16,
+        },
+        "3😢"
+    );
+
+    assert_err!(
+        Bytes::lex("12:3😢"),
+        LexErrorKind::ParseInt {
+            err: u8::from_str_radix("3😢", 16).unwrap_err(),
+            radix: 16,
+        },
+        "3😢"
+    );
 }

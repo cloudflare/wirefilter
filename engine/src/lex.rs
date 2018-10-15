@@ -174,18 +174,21 @@ pub fn take_while<'i, F: Fn(char) -> bool>(
 }
 
 pub fn take(input: &str, expected: usize) -> LexResult<&str> {
-    if input.len() >= expected {
-        Ok(input.split_at(expected))
-    } else {
-        Err((
-            LexErrorKind::CountMismatch {
-                name: "character",
-                actual: input.len(),
-                expected,
-            },
-            input,
-        ))
+    let mut chars = input.chars();
+    for i in 0..expected {
+        chars.next().ok_or_else(|| {
+            (
+                LexErrorKind::CountMismatch {
+                    name: "character",
+                    actual: i,
+                    expected,
+                },
+                input,
+            )
+        })?;
     }
+    let rest = chars.as_str();
+    Ok((span(input, rest), rest))
 }
 
 pub fn complete<T>(res: LexResult<T>) -> Result<T, LexError> {
