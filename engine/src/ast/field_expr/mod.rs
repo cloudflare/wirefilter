@@ -210,28 +210,32 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
     }
 }
 
-#[test]
-fn test() {
+#[cfg(test)]
+mod tests {
+    use super::*;
     use serde_json::to_value as json;
     use std::net::IpAddr;
 
-    let scheme: &Scheme = &[
-        ("http.host", Type::Bytes),
-        ("ip.addr", Type::Ip),
-        ("ssl", Type::Bool),
-        ("tcp.port", Type::Int),
-    ]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+    lazy_static! {
+        static ref SCHEME: Scheme = [
+            ("http.host", Type::Bytes),
+            ("ip.addr", Type::Ip),
+            ("ssl", Type::Bool),
+            ("tcp.port", Type::Int),
+        ]
+            .iter()
+            .map(|&(k, t)| (k.to_owned(), t))
+            .collect();
+    }
 
-    let field = |name| scheme.get_field_index(name).unwrap();
+    fn field(name: &'static str) -> Field<'static> {
+        SCHEME.get_field_index(name).unwrap()
+    }
 
-    let ctx = &mut ExecutionContext::new(scheme);
-
-    {
+    #[test]
+    fn test_is_true() {
         let expr = assert_ok!(
-            FieldExpr::lex_with("ssl", scheme),
+            FieldExpr::lex_with("ssl", &SCHEME),
             FieldExpr {
                 field: field("ssl"),
                 op: FieldOp::IsTrue
@@ -246,6 +250,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("ssl", true);
         assert_eq!(expr.execute(ctx), true);
 
@@ -253,9 +259,10 @@ fn test() {
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_ip_compare() {
         let expr = assert_ok!(
-            FieldExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", scheme),
+            FieldExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", &SCHEME),
             FieldExpr {
                 field: field("ip.addr"),
                 op: FieldOp::Ordering {
@@ -276,6 +283,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), true);
 
@@ -295,48 +304,58 @@ fn test() {
         assert_eq!(expr.execute(ctx), false);
     }
 
-    assert_ok!(
-        FieldExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", scheme),
-        FieldExpr {
-            field: field("http.host"),
-            op: FieldOp::Ordering {
-                op: OrderingOp::GreaterThanEqual,
-                rhs: RhsValue::Bytes(vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()),
-            },
-        }
-    );
-
-    {
-        let expr = assert_ok!(
-            FieldExpr::lex_with("tcp.port & 1", scheme),
-            FieldExpr {
-                field: field("tcp.port"),
-                op: FieldOp::Int {
-                    op: IntOp::BitwiseAnd,
-                    rhs: 1,
+    #[test]
+    fn test_bytes_compare() {
+        // just check that parsing doesn't conflict with IPv6
+        {
+            let expr = assert_ok!(
+                FieldExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", &SCHEME),
+                FieldExpr {
+                    field: field("http.host"),
+                    op: FieldOp::Ordering {
+                        op: OrderingOp::GreaterThanEqual,
+                        rhs: RhsValue::Bytes(
+                            vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()
+                        ),
+                    },
                 }
-            }
-        );
+            );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
-                "field": "tcp.port",
-                "op": "BitwiseAnd",
-                "rhs": 1
-            })
-        );
+            assert_eq!(
+                json(&expr).unwrap(),
+                json!({
+                    "field": "http.host",
+                    "op": "GreaterThanEqual",
+                    "rhs": [0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]
+                })
+            );
+        }
 
-        ctx.set_field_value("tcp.port", 80);
-        assert_eq!(expr.execute(ctx), false);
+        // just check that parsing doesn't conflict with regular numbers
+        {
+            let expr = assert_ok!(
+                FieldExpr::lex_with(r#"http.host < 12"#, &SCHEME),
+                FieldExpr {
+                    field: field("http.host"),
+                    op: FieldOp::Ordering {
+                        op: OrderingOp::LessThan,
+                        rhs: RhsValue::Bytes(vec![0x12].into()),
+                    },
+                }
+            );
 
-        ctx.set_field_value("tcp.port", 443);
-        assert_eq!(expr.execute(ctx), true);
-    }
+            assert_eq!(
+                json(&expr).unwrap(),
+                json!({
+                    "field": "http.host",
+                    "op": "LessThan",
+                    "rhs": [0x12]
+                })
+            );
+        }
 
-    {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host == "example.org""#, scheme),
+            FieldExpr::lex_with(r#"http.host == "example.org""#, &SCHEME),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Ordering {
@@ -355,6 +374,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), false);
 
@@ -362,9 +383,41 @@ fn test() {
         assert_eq!(expr.execute(ctx), true);
     }
 
-    {
+    #[test]
+    fn test_bitwise_and() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, scheme),
+            FieldExpr::lex_with("tcp.port & 1", &SCHEME),
+            FieldExpr {
+                field: field("tcp.port"),
+                op: FieldOp::Int {
+                    op: IntOp::BitwiseAnd,
+                    rhs: 1,
+                }
+            }
+        );
+
+        assert_eq!(
+            json(&expr).unwrap(),
+            json!({
+                "field": "tcp.port",
+                "op": "BitwiseAnd",
+                "rhs": 1
+            })
+        );
+
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("tcp.port", 80);
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("tcp.port", 443);
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_int_in() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, &SCHEME),
             FieldExpr {
                 field: field("tcp.port"),
                 op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083].into())),
@@ -383,6 +436,8 @@ fn test() {
                 ]
             })
         );
+
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80);
         assert_eq!(expr.execute(ctx), true);
@@ -406,9 +461,10 @@ fn test() {
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_bytes_in() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, scheme),
+            FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, &SCHEME),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::OneOf(RhsValues::Bytes(
@@ -432,6 +488,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), true);
 
@@ -442,11 +500,12 @@ fn test() {
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_ip_in() {
         let expr = assert_ok!(
             FieldExpr::lex_with(
                 r#"ip.addr in { 127.0.0.0/8 ::1 10.0.0.0..10.0.255.255 }"#,
-                scheme
+                &SCHEME
             ),
             FieldExpr {
                 field: field("ip.addr"),
@@ -474,6 +533,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
         assert_eq!(expr.execute(ctx), true);
 
@@ -490,9 +551,10 @@ fn test() {
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_contains_bytes() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host contains "abc""#, scheme),
+            FieldExpr::lex_with(r#"http.host contains "abc""#, &SCHEME),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Contains("abc".to_owned().into())
@@ -508,6 +570,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("http.host", "example.org");
         assert_eq!(expr.execute(ctx), false);
 
@@ -515,9 +579,10 @@ fn test() {
         assert_eq!(expr.execute(ctx), true);
     }
 
-    {
+    #[test]
+    fn test_contains_str() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, scheme),
+            FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, &SCHEME),
             FieldExpr {
                 field: field("http.host"),
                 op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into()),
@@ -533,6 +598,8 @@ fn test() {
             })
         );
 
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
         ctx.set_field_value("http.host", "example.com");
         assert_eq!(expr.execute(ctx), false);
 
@@ -540,20 +607,10 @@ fn test() {
         assert_eq!(expr.execute(ctx), true);
     }
 
-    assert_ok!(
-        FieldExpr::lex_with(r#"http.host < 12"#, scheme),
-        FieldExpr {
-            field: field("http.host"),
-            op: FieldOp::Ordering {
-                op: OrderingOp::LessThan,
-                rhs: RhsValue::Bytes(vec![0x12].into()),
-            },
-        }
-    );
-
-    {
+    #[test]
+    fn test_int_compare() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"tcp.port < 8000"#, scheme),
+            FieldExpr::lex_with(r#"tcp.port < 8000"#, &SCHEME),
             FieldExpr {
                 field: field("tcp.port"),
                 op: FieldOp::Ordering {
@@ -571,6 +628,8 @@ fn test() {
                 "rhs": 8000,
             })
         );
+
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80);
         assert_eq!(expr.execute(ctx), true);

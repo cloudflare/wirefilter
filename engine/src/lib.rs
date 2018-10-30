@@ -12,6 +12,10 @@ extern crate serde_json;
 #[macro_use]
 extern crate indoc;
 
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
+
 extern crate cidr;
 extern crate fnv;
 extern crate indexmap;
