@@ -432,7 +432,7 @@ mod ffi_test {
     #[test]
     fn get_version() {
         let version = wirefilter_get_version();
-        let re = Regex::new(r"\d+\.\d+\.\d+").unwrap();
+        let re = Regex::new(r"(?-u)^\d+\.\d+\.\d+$").unwrap();
 
         assert!(re.is_match(version.into()));
     }
