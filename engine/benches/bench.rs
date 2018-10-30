@@ -53,6 +53,18 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
             );
 
             c.bench(
+                "compilation",
+                Benchmark::new(name, move |b: &mut Bencher| {
+                    let mut scheme = Scheme::default();
+                    scheme.add_field(field.to_owned(), ty);
+
+                    let filter = scheme.parse(filter).unwrap();
+
+                    b.iter_with_setup(move || filter.clone(), |filter| filter.compile());
+                }),
+            );
+
+            c.bench(
                 "execution",
                 ParameterizedBenchmark::new(
                     name,
@@ -61,6 +73,8 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                         scheme.add_field(field.to_owned(), ty);
 
                         let filter = scheme.parse(filter).unwrap();
+
+                        let filter = filter.compile();
 
                         let mut exec_ctx = ExecutionContext::new(&scheme);
                         exec_ctx.set_field_value(field, *value);

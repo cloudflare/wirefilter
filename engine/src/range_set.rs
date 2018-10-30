@@ -1,29 +1,9 @@
-use std::{
-    borrow::Borrow,
-    fmt::{self, Debug, Formatter},
-    iter::FromIterator,
-    ops::RangeInclusive,
-};
+use std::{borrow::Borrow, iter::FromIterator, ops::RangeInclusive};
 
 // RangeSet provides a set-like interface that allows to search for items while
 // being constructed from and storing inclusive ranges in a compact fashion.
-#[derive(PartialEq, Eq, Clone, Serialize)]
-#[serde(transparent)]
 pub struct RangeSet<T> {
     ranges: Vec<RangeInclusive<T>>,
-}
-
-impl<T: Eq + Debug> Debug for RangeSet<T> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_set()
-            .entries(self.ranges.iter().map(|range| {
-                if range.start() == range.end() {
-                    range.start() as &Debug
-                } else {
-                    range as &Debug
-                }
-            })).finish()
-    }
 }
 
 impl<T> From<Vec<RangeInclusive<T>>> for RangeSet<T> {

@@ -1,10 +1,12 @@
 mod contains_op;
 
 use self::contains_op::ContainsOp;
-use super::Expr;
-use execution_context::ExecutionContext;
+use super::{CompiledExpr, Expr};
+use fnv::FnvBuildHasher;
+use indexmap::IndexSet;
 use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
 use memmem::Searcher;
+use range_set::RangeSet;
 use rhs_types::{Bytes, Regex};
 use scheme::{Field, Scheme};
 use std::cmp::Ordering;
@@ -77,7 +79,7 @@ enum FieldOp {
     },
 
     #[serde(serialize_with = "serialize_contains")]
-    Contains(ContainsOp),
+    Contains(Bytes),
 
     #[serde(serialize_with = "serialize_matches")]
     Matches(Regex),
@@ -107,7 +109,7 @@ fn serialize_is_true<S: ::serde::Serializer>(ser: S) -> Result<S::Ok, S::Error> 
     out.end()
 }
 
-fn serialize_contains<S: ::serde::Serializer>(rhs: &ContainsOp, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_contains<S: ::serde::Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
 }
 
@@ -159,7 +161,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
                     BytesOp::Contains => {
                         let (bytes, input) = Bytes::lex(input)?;
-                        (FieldOp::Contains(bytes.into()), input)
+                        (FieldOp::Contains(bytes), input)
                     }
                     BytesOp::Matches => {
                         let (regex, input) = Regex::lex(input)?;
@@ -184,9 +186,9 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         self.field == field
     }
 
-    fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+    fn compile(self) -> CompiledExpr<'s> {
         macro_rules! cast {
-            ($lhs:ident, $ty:ident) => {
+            ($lhs:expr, $ty:ident) => {
                 match $lhs {
                     LhsValue::$ty(value) => value,
                     _ => unreachable!(),
@@ -194,18 +196,59 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             };
         }
 
-        let lhs = ctx.get_field_value_unchecked(self.field);
+        let field = self.field;
 
-        match &self.op {
-            FieldOp::IsTrue => *cast!(lhs, Bool),
-            FieldOp::Ordering { op, rhs } => op.matches_opt(lhs.strict_partial_cmp(rhs)),
+        match self.op {
+            FieldOp::IsTrue => {
+                CompiledExpr::new(move |ctx| *cast!(ctx.get_field_value_unchecked(field), Bool))
+            }
+            FieldOp::Ordering { op, rhs } => CompiledExpr::new(move |ctx| {
+                op.matches_opt(
+                    ctx.get_field_value_unchecked(field)
+                        .strict_partial_cmp(&rhs),
+                )
+            }),
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => cast!(lhs, Int) & rhs != 0,
-            FieldOp::Contains(op) => op.search_in(cast!(lhs, Bytes)).is_some(),
-            FieldOp::Matches(regex) => regex.is_match(cast!(lhs, Bytes)),
-            FieldOp::OneOf(values) => values.contains(lhs),
+            } => CompiledExpr::new(move |ctx| {
+                cast!(ctx.get_field_value_unchecked(field), Int) & rhs != 0
+            }),
+            FieldOp::Contains(bytes) => {
+                let contains_op = ContainsOp::from(bytes);
+
+                CompiledExpr::new(move |ctx| {
+                    contains_op
+                        .search_in(cast!(ctx.get_field_value_unchecked(field), Bytes))
+                        .is_some()
+                })
+            }
+            FieldOp::Matches(regex) => CompiledExpr::new(move |ctx| {
+                regex.is_match(cast!(ctx.get_field_value_unchecked(field), Bytes))
+            }),
+            FieldOp::OneOf(values) => match values {
+                RhsValues::Ip(values) => {
+                    let values: RangeSet<_> = values.iter().cloned().collect();
+                    CompiledExpr::new(move |ctx| {
+                        values.contains(cast!(ctx.get_field_value_unchecked(field), Ip))
+                    })
+                }
+                RhsValues::Int(values) => {
+                    let values: RangeSet<_> = values.iter().cloned().collect();
+                    CompiledExpr::new(move |ctx| {
+                        values.contains(cast!(ctx.get_field_value_unchecked(field), Int))
+                    })
+                }
+                RhsValues::Bytes(values) => {
+                    let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
+                        values.into_iter().map(|value| value.into()).collect();
+
+                    CompiledExpr::new(move |ctx| {
+                        values.contains(cast!(ctx.get_field_value_unchecked(field), Bytes) as &[u8])
+                    })
+                }
+                RhsValues::Bool(_) => unreachable!(),
+            },
         }
     }
 }
@@ -213,6 +256,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use execution_context::ExecutionContext;
     use serde_json::to_value as json;
     use std::net::IpAddr;
 
@@ -250,6 +294,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("ssl", true);
@@ -283,6 +328,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]));
@@ -374,6 +420,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com");
@@ -405,6 +452,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80);
@@ -420,7 +468,7 @@ mod tests {
             FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, &SCHEME),
             FieldExpr {
                 field: field("tcp.port"),
-                op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083].into())),
+                op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083])),
             }
         );
 
@@ -437,6 +485,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80);
@@ -488,6 +537,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com");
@@ -509,14 +559,11 @@ mod tests {
             ),
             FieldExpr {
                 field: field("ip.addr"),
-                op: FieldOp::OneOf(RhsValues::Ip(
-                    vec![
-                        IpAddr::from([127, 0, 0, 0])..=IpAddr::from([127, 255, 255, 255]),
-                        IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])
-                            ..=IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
-                        IpAddr::from([10, 0, 0, 0])..=IpAddr::from([10, 0, 255, 255]),
-                    ].into()
-                )),
+                op: FieldOp::OneOf(RhsValues::Ip(vec![
+                    IpAddr::from([127, 0, 0, 0])..=IpAddr::from([127, 255, 255, 255]),
+                    IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1])..=IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]),
+                    IpAddr::from([10, 0, 0, 0])..=IpAddr::from([10, 0, 255, 255]),
+                ])),
             }
         );
 
@@ -533,6 +580,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]));
@@ -570,6 +618,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.org");
@@ -598,6 +647,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com");
@@ -629,6 +679,7 @@ mod tests {
             })
         );
 
+        let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80);

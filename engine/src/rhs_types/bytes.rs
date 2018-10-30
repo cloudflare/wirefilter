@@ -38,6 +38,15 @@ impl From<String> for Bytes {
     }
 }
 
+impl From<Bytes> for Box<[u8]> {
+    fn from(bytes: Bytes) -> Self {
+        match bytes {
+            Bytes::Str(s) => s.into_boxed_bytes(),
+            Bytes::Raw(b) => b,
+        }
+    }
+}
+
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {

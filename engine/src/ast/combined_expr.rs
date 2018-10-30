@@ -1,5 +1,4 @@
-use super::{simple_expr::SimpleExpr, Expr};
-use execution_context::ExecutionContext;
+use super::{simple_expr::SimpleExpr, CompiledExpr, Expr};
 use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 
@@ -93,15 +92,28 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
         }
     }
 
-    fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+    fn compile(self) -> CompiledExpr<'s> {
         match self {
-            CombinedExpr::Simple(op) => op.execute(ctx),
+            CombinedExpr::Simple(op) => op.compile(),
             CombinedExpr::Combining { op, items } => {
-                let mut results = items.iter().map(|op| op.execute(ctx));
+                let items = items
+                    .into_iter()
+                    .map(|item| item.compile())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+
                 match op {
-                    CombiningOp::And => results.all(|res| res),
-                    CombiningOp::Or => results.any(|res| res),
-                    CombiningOp::Xor => results.fold(false, |acc, res| acc ^ res),
+                    CombiningOp::And => {
+                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
+                    }
+                    CombiningOp::Or => {
+                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
+                    }
+                    CombiningOp::Xor => CompiledExpr::new(move |ctx| {
+                        items
+                            .iter()
+                            .fold(false, |acc, item| acc ^ item.execute(ctx))
+                    }),
                 }
             }
         }
@@ -111,6 +123,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 #[test]
 fn test() {
     use super::field_expr::FieldExpr;
+    use execution_context::ExecutionContext;
     use lex::complete;
     use serde_json::to_value as json;
     use types::Type;
@@ -148,6 +161,8 @@ fn test() {
             }
         );
 
+        let expr = expr.compile();
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -176,6 +191,8 @@ fn test() {
                 ]
             })
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), false);
     }
@@ -206,6 +223,8 @@ fn test() {
             })
         );
 
+        let expr = expr.compile();
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -217,6 +236,8 @@ fn test() {
                 items: vec![f_expr(), f_expr()],
             }
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), false);
     }
@@ -247,6 +268,8 @@ fn test() {
             })
         );
 
+        let expr = expr.compile();
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -259,6 +282,8 @@ fn test() {
             }
         );
 
+        let expr = expr.compile();
+
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -270,6 +295,8 @@ fn test() {
                 items: vec![f_expr(), t_expr()],
             }
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), true);
     }

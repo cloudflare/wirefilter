@@ -1,5 +1,4 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
-use execution_context::ExecutionContext;
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 
@@ -52,19 +51,24 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+    fn compile(self) -> CompiledExpr<'s> {
         match self {
-            SimpleExpr::Field(op) => op.execute(ctx),
-            SimpleExpr::Parenthesized(op) => op.execute(ctx),
-            SimpleExpr::Unary { op, arg } => match op {
-                UnaryOp::Not => !arg.execute(ctx),
-            },
+            SimpleExpr::Field(op) => op.compile(),
+            SimpleExpr::Parenthesized(op) => op.compile(),
+            SimpleExpr::Unary {
+                op: UnaryOp::Not,
+                arg,
+            } => {
+                let arg = arg.compile();
+                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+            }
         }
     }
 }
 
 #[test]
 fn test() {
+    use execution_context::ExecutionContext;
     use lex::complete;
     use serde_json::to_value as json;
     use types::Type;
@@ -91,6 +95,8 @@ fn test() {
             })
         );
 
+        let expr = expr.compile();
+
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -109,6 +115,8 @@ fn test() {
                 "op": "IsTrue"
             })
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), true);
     }
@@ -131,6 +139,8 @@ fn test() {
                 }
             })
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), false);
     }
@@ -156,6 +166,8 @@ fn test() {
                 }
             })
         );
+
+        let expr = expr.compile();
 
         assert_eq!(expr.execute(ctx), true);
     }

@@ -32,10 +32,9 @@ mod rhs_types;
 mod scheme;
 mod strict_partial_ord;
 mod types;
-mod vec_set;
 
 pub use self::{
-    ast::Filter,
+    ast::{CompiledExpr, Filter},
     execution_context::ExecutionContext,
     scheme::{ParseError, Scheme},
     types::{GetType, LhsValue, Type},

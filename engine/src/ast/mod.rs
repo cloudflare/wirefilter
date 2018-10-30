@@ -8,12 +8,24 @@ use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
 use std::fmt::{self, Debug};
 
-trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + ::serde::Serialize {
-    fn uses(&self, field: Field<'s>) -> bool;
-    fn execute(&self, ctx: &ExecutionContext<'s>) -> bool;
+pub struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
+
+impl<'s> CompiledExpr<'s> {
+    pub fn new(closure: impl 's + Fn(&ExecutionContext<'s>) -> bool) -> Self {
+        CompiledExpr(Box::new(closure))
+    }
+
+    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+        self.0(ctx)
+    }
 }
 
-#[derive(PartialEq, Eq, Serialize)]
+trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + ::serde::Serialize {
+    fn uses(&self, field: Field<'s>) -> bool;
+    fn compile(self) -> CompiledExpr<'s>;
+}
+
+#[derive(PartialEq, Eq, Serialize, Clone)]
 #[serde(transparent)]
 pub struct Filter<'s> {
     #[serde(skip)]
@@ -42,11 +54,16 @@ impl<'s> Filter<'s> {
             .map(|field| self.op.uses(field))
     }
 
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
-        if self.scheme != ctx.scheme() {
-            panic!("Tried to execute filter parsed with a different scheme.");
-        }
+    pub fn compile(self) -> CompiledExpr<'s> {
+        let scheme = self.scheme;
+        let op = self.op.compile();
 
-        self.op.execute(ctx)
+        CompiledExpr::new(move |ctx| {
+            if scheme != ctx.scheme() {
+                panic!("Tried to execute filter parsed with a different scheme.");
+            }
+
+            op.execute(ctx)
+        })
     }
 }
