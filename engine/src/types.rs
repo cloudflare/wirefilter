@@ -50,8 +50,9 @@ impl<'a, 'i, T: Lex<'i>> Iterator for &'a mut RhsValuesLexer<'i, T> {
 }
 
 macro_rules! declare_types {
-    (@enum $(# $attrs:tt)* $name:ident $(<$lt:tt>)* { $($variant:ident ( $ty:ty ) , )* }) => {
+    ($(# $attrs:tt)* enum $name:ident $(<$lt:tt>)* { $($variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
+        #[repr(u8)]
         pub enum $name $(<$lt>)* {
             $($variant($ty),)*
         }
@@ -90,9 +91,12 @@ macro_rules! declare_types {
             }
         }
 
-        declare_types!(@enum #[repr(u8)] #[derive(Clone)] LhsValue<'a> {
-            $($name($lhs_ty),)*
-        });
+        declare_types! {
+            #[derive(Clone)]
+            enum LhsValue<'a> {
+                $($name($lhs_ty),)*
+            }
+        }
 
         $(impl<'a> From<$lhs_ty> for LhsValue<'a> {
             fn from(value: $lhs_ty) -> Self {
@@ -100,23 +104,24 @@ macro_rules! declare_types {
             }
         })*
 
-        declare_types!(
-            @enum
+        declare_types! {
             #[derive(PartialEq, Eq, Clone, Serialize)]
             #[serde(untagged)]
-            RhsValue {
+            enum RhsValue {
                 $($name($rhs_ty),)*
             }
-        );
+        }
 
-        declare_types!(
-            @enum
-            #[derive(PartialEq, Eq, Clone, Serialize)]
-            #[serde(untagged)]
-            RhsValues {
-                $($name($multi_rhs_ty<$rhs_ty>),)*
+        impl<'i> LexWith<'i, Type> for RhsValue {
+            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
+                Ok(match ty {
+                    $(Type::$name => {
+                        let (value, input) = <$rhs_ty>::lex(input)?;
+                        (RhsValue::$name(value), input)
+                    })*
+                })
             }
-        );
+        }
 
         impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
             fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
@@ -137,14 +142,11 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'i> LexWith<'i, Type> for RhsValue {
-            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
-                Ok(match ty {
-                    $(Type::$name => {
-                        let (value, input) = <$rhs_ty>::lex(input)?;
-                        (RhsValue::$name(value), input)
-                    })*
-                })
+        declare_types! {
+            #[derive(PartialEq, Eq, Clone, Serialize)]
+            #[serde(untagged)]
+            enum RhsValues {
+                $($name($multi_rhs_ty<$rhs_ty>),)*
             }
         }
 
