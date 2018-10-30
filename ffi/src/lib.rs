@@ -10,7 +10,7 @@ extern crate regex;
 #[macro_use]
 extern crate indoc;
 
-mod transfer_types;
+pub mod transfer_types;
 
 use fnv::FnvHasher;
 use std::{
@@ -19,7 +19,8 @@ use std::{
     net::IpAddr,
 };
 use transfer_types::{
-    ExternallyAllocatedByteArr, RustAllocatedString, RustBox, StaticRustAllocatedString,
+    ExternallyAllocatedByteArr, ExternallyAllocatedStr, RustAllocatedString, RustBox,
+    StaticRustAllocatedString,
 };
 use wirefilter::{ExecutionContext, Filter, ParseError, Scheme, Type};
 
@@ -56,10 +57,10 @@ pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
     scheme: &mut Scheme,
-    name: ExternallyAllocatedByteArr,
+    name: ExternallyAllocatedStr,
     ty: Type,
 ) {
-    scheme.add_field(name.into(), ty)
+    scheme.add_field(name.into_ref().to_owned(), ty)
 }
 
 #[no_mangle]
@@ -70,11 +71,9 @@ pub extern "C" fn wirefilter_free_parsing_result(result: ParsingResult) {
 #[no_mangle]
 pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     scheme: &'s Scheme,
-    input: ExternallyAllocatedByteArr<'i>,
+    input: ExternallyAllocatedStr<'i>,
 ) -> ParsingResult<'s> {
-    let input = input.into();
-
-    match scheme.parse(input) {
+    match scheme.parse(input.into_ref()) {
         Ok(filter) => ParsingResult::from(filter),
         Err(err) => ParsingResult::from(err),
     }
@@ -143,47 +142,47 @@ pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<Execut
 #[no_mangle]
 pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
+    name: ExternallyAllocatedStr,
     value: i32,
 ) {
-    exec_context.set_field_value(name.into(), value);
+    exec_context.set_field_value(name.into_ref(), value);
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
+    name: ExternallyAllocatedStr,
     value: ExternallyAllocatedByteArr<'a>,
 ) {
-    let slice: &'a [u8] = value.into();
-    exec_context.set_field_value(name.into(), slice);
+    let slice: &[u8] = value.into_ref();
+    exec_context.set_field_value(name.into_ref(), slice);
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
+pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
+    exec_context: &mut ExecutionContext,
+    name: ExternallyAllocatedStr,
     value: &[u8; 16],
 ) {
-    exec_context.set_field_value(name.into(), IpAddr::from(*value));
+    exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
+pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
+    exec_context: &mut ExecutionContext,
+    name: ExternallyAllocatedStr,
     value: &[u8; 4],
 ) {
-    exec_context.set_field_value(name.into(), IpAddr::from(*value));
+    exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_bool_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedByteArr<'a>,
+pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
+    exec_context: &mut ExecutionContext,
+    name: ExternallyAllocatedStr,
     value: bool,
 ) {
-    exec_context.set_field_value(name.into(), value);
+    exec_context.set_field_value(name.into_ref(), value);
 }
 
 #[no_mangle]
@@ -194,9 +193,9 @@ pub extern "C" fn wirefilter_match(filter: &Filter, exec_context: &ExecutionCont
 #[no_mangle]
 pub extern "C" fn wirefilter_filter_uses(
     filter: &Filter,
-    field_name: ExternallyAllocatedByteArr,
+    field_name: ExternallyAllocatedStr,
 ) -> bool {
-    filter.uses(field_name.into()).unwrap()
+    filter.uses(field_name.into_ref()).unwrap()
 }
 
 #[no_mangle]
@@ -214,34 +213,34 @@ mod ffi_test {
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("ip1"),
+            ExternallyAllocatedStr::from("ip1"),
             Type::Ip,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("ip2"),
+            ExternallyAllocatedStr::from("ip2"),
             Type::Ip,
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("str1"),
+            ExternallyAllocatedStr::from("str1"),
             Type::Bytes,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("str2"),
+            ExternallyAllocatedStr::from("str2"),
             Type::Bytes,
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("num1"),
+            ExternallyAllocatedStr::from("num1"),
             Type::Int,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
-            ExternallyAllocatedByteArr::from("num2"),
+            ExternallyAllocatedStr::from("num2"),
             Type::Int,
         );
 
@@ -253,37 +252,37 @@ mod ffi_test {
 
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("ip1"),
+            ExternallyAllocatedStr::from("ip1"),
             &[127, 0, 0, 1],
         );
 
         wirefilter_add_ipv6_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("ip2"),
+            ExternallyAllocatedStr::from("ip2"),
             b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xFF\xFF\xC0\xA8\x00\x01",
         );
 
         wirefilter_add_bytes_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("str1"),
+            ExternallyAllocatedStr::from("str1"),
             ExternallyAllocatedByteArr::from("Hey"),
         );
 
         wirefilter_add_bytes_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("str2"),
+            ExternallyAllocatedStr::from("str2"),
             ExternallyAllocatedByteArr::from("yo123"),
         );
 
         wirefilter_add_int_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("num1"),
+            ExternallyAllocatedStr::from("num1"),
             42,
         );
 
         wirefilter_add_int_value_to_execution_context(
             &mut exec_context,
-            ExternallyAllocatedByteArr::from("num2"),
+            ExternallyAllocatedStr::from("num2"),
             1337,
         );
 
@@ -291,13 +290,13 @@ mod ffi_test {
     }
 
     fn parse_filter<'s>(scheme: &'s Scheme, input: &'static str) -> ParsingResult<'s> {
-        wirefilter_parse_filter(scheme, ExternallyAllocatedByteArr::from(input))
+        wirefilter_parse_filter(scheme, ExternallyAllocatedStr::from(input))
     }
 
     fn validate_filter<'f, 's>(result: &'f ParsingResult<'s>) -> &'f Filter<'s> {
         match result {
             ParsingResult::Ok(filter) => filter,
-            ParsingResult::Err(err) => panic!("{}", err.as_str()),
+            ParsingResult::Err(err) => panic!("{}", err as &str),
         }
     }
 
@@ -331,7 +330,7 @@ mod ffi_test {
                 ParsingResult::Ok(_) => panic!("Error expected"),
                 ParsingResult::Err(err) => {
                     assert_eq!(
-                        err.as_str(),
+                        err as &str,
                         indoc!(
                             r#"
                             Filter parsing error (4:13):
@@ -358,7 +357,7 @@ mod ffi_test {
 
             let json = wirefilter_serialize_filter_to_json(validate_filter(&parsing_result));
 
-            assert_eq!(json.as_str(), r#"{"op":"And","items":[{"field":"num1","op":"GreaterThan","rhs":3},{"field":"str2","op":"Equal","rhs":"abc"}]}"#);
+            assert_eq!(&json as &str, r#"{"op":"And","items":[{"field":"num1","op":"GreaterThan","rhs":3},{"field":"str2","op":"Equal","rhs":"abc"}]}"#);
 
             wirefilter_free_json(json);
 
@@ -434,7 +433,7 @@ mod ffi_test {
         let version = wirefilter_get_version();
         let re = Regex::new(r"(?-u)^\d+\.\d+\.\d+$").unwrap();
 
-        assert!(re.is_match(version.into()));
+        assert!(re.is_match(version.into_ref()));
     }
 
     #[test]
@@ -452,27 +451,27 @@ mod ffi_test {
 
                 assert!(wirefilter_filter_uses(
                     filter,
-                    ExternallyAllocatedByteArr::from("num1")
+                    ExternallyAllocatedStr::from("num1")
                 ));
 
                 assert!(wirefilter_filter_uses(
                     filter,
-                    ExternallyAllocatedByteArr::from("ip1")
+                    ExternallyAllocatedStr::from("ip1")
                 ));
 
                 assert!(wirefilter_filter_uses(
                     filter,
-                    ExternallyAllocatedByteArr::from("str2")
+                    ExternallyAllocatedStr::from("str2")
                 ));
 
                 assert!(!wirefilter_filter_uses(
                     filter,
-                    ExternallyAllocatedByteArr::from("str1")
+                    ExternallyAllocatedStr::from("str1")
                 ));
 
                 assert!(!wirefilter_filter_uses(
                     filter,
-                    ExternallyAllocatedByteArr::from("ip2")
+                    ExternallyAllocatedStr::from("ip2")
                 ));
             }
 
