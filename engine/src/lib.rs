@@ -27,6 +27,7 @@ mod lex;
 
 mod ast;
 mod execution_context;
+mod heap_searcher;
 mod range_set;
 mod rhs_types;
 mod scheme;

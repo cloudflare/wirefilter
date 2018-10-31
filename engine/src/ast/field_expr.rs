@@ -1,8 +1,6 @@
-mod contains_op;
-
-use self::contains_op::ContainsOp;
 use super::{CompiledExpr, Expr};
 use fnv::FnvBuildHasher;
+use heap_searcher::HeapSearcher;
 use indexmap::IndexSet;
 use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
 use memmem::Searcher;
@@ -215,10 +213,10 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 cast!(ctx.get_field_value_unchecked(field), Int) & rhs != 0
             }),
             FieldOp::Contains(bytes) => {
-                let contains_op = ContainsOp::from(bytes);
+                let searcher = HeapSearcher::from(bytes);
 
                 CompiledExpr::new(move |ctx| {
-                    contains_op
+                    searcher
                         .search_in(cast!(ctx.get_field_value_unchecked(field), Bytes))
                         .is_some()
                 })
