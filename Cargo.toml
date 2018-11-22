@@ -2,6 +2,7 @@
 members = [
 	"engine",
 	"ffi",
+	"wasm",
 ]
 
 [profile.release]

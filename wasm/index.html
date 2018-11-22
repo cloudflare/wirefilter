@@ -1,0 +1,33 @@
+<input id="input" placeholder="filter" /><br />
+<pre><output for="input" id="output"></output></pre>
+<script src="pkg/wirefilter_wasm.js"></script>
+<script>
+  delete WebAssembly.instantiateStreaming;
+
+  const loaded = wasm_bindgen('pkg/wirefilter_wasm_bg.wasm');
+
+  async function parseFilter(scheme, input) {
+    await loaded;
+    return wasm_bindgen.parse_filter(scheme, input);
+  }
+
+  function updateOutput() {
+	return parseFilter(
+      { ip: 'Ip', str: 'Bytes', bytes: 'Bytes', int: 'Int', bool: 'Bool' },
+      input.value
+    ).then(
+      res => {
+        console.log(res);
+        output.value = JSON.stringify(res, null, 2);
+      },
+      err => {
+        console.error(err);
+        output.value = err.toString();
+      }
+    );
+  }
+
+  updateOutput();
+
+  input.addEventListener('keyup', updateOutput);
+</script>

@@ -1,0 +1,15 @@
+[package]
+authors = ["Ingvar Stepanyan <me@rreverser.com>"]
+name = "wirefilter-wasm"
+version = "0.4.1"
+description = "WASM bindings for the Segments Filter engine"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+# Avoid duplicate compilation error messages as we don't have doctests anyway
+doctest = false
+
+[dependencies]
+wasm-bindgen = { version = "0.2.28", features = ["serde-serialize"] }
+wirefilter-engine = { path = "../engine", default-features = false }
