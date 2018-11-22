@@ -15,8 +15,8 @@ case $CMD in
 		# (workaround for https://github.com/rust-lang/cargo/issues/2644)
 
 		# Create dummy sources for our library
-		mkdir {engine,ffi}/src
-		touch {engine,ffi}/src/lib.rs
+		mkdir {engine,ffi,wasm}/src
+		touch {engine,ffi,wasm}/src/lib.rs
 		mkdir engine/benches
 		echo 'fn main() {}' > engine/benches/bench.rs
 
@@ -24,7 +24,7 @@ case $CMD in
 		cargo build --locked --all $@
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi $@
+		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
 		;;
 	*)
 		# Execute any other command without special params but in same env

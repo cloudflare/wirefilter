@@ -6,6 +6,7 @@ everything: &everything
     pre-cache-copy-paths: &paths
       - engine/Cargo.toml
       - ffi/Cargo.toml
+      - wasm/Cargo.toml
       - Cargo.lock
       - Cargo.toml
       - cfsetup-cargo.sh
