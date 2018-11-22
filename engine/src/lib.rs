@@ -20,6 +20,8 @@ extern crate cidr;
 extern crate fnv;
 extern crate indexmap;
 extern crate memmem;
+
+#[cfg(feature = "regex")]
 extern crate regex;
 
 #[macro_use]

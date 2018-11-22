@@ -8,5 +8,5 @@ pub use self::{
     bool::UninhabitedBool,
     bytes::Bytes,
     ip::{ExplicitIpRange, IpRange},
-    regex::Regex,
+    regex::{Error as RegexError, Regex},
 };

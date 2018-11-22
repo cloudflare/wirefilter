@@ -1,5 +1,5 @@
 use cidr::NetworkParseError;
-use regex::Error as RegexError;
+use rhs_types::RegexError;
 use scheme::UnknownFieldError;
 use std::num::ParseIntError;
 use types::Type;

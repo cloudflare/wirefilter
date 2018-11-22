@@ -1,19 +1,54 @@
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
 use std::fmt::{self, Debug, Formatter};
 
+#[cfg(feature = "regex")]
+pub type Error = ::regex::Error;
+
+#[cfg(not(feature = "regex"))]
+#[derive(Debug, PartialEq, Fail)]
+pub enum Error {}
+
+#[cfg(not(feature = "regex"))]
+impl fmt::Display for Error {
+    fn fmt(&self, _f: &mut Formatter) -> fmt::Result {
+        match *self {}
+    }
+}
+
 #[derive(Clone)]
-pub struct Regex(::regex::bytes::Regex);
+pub struct Regex(
+    #[cfg(feature = "regex")] ::regex::bytes::Regex,
+    #[cfg(not(feature = "regex"))] String,
+);
 
 impl Regex {
-    pub fn new(s: &str) -> Result<Self, ::regex::Error> {
-        ::regex::bytes::RegexBuilder::new(s)
-            .unicode(false)
-            .build()
-            .map(Regex)
+    pub fn new(s: &str) -> Result<Self, Error> {
+        Ok(Regex({
+            #[cfg(feature = "regex")]
+            {
+                ::regex::bytes::RegexBuilder::new(s)
+                    .unicode(false)
+                    .build()?
+            }
+
+            #[cfg(not(feature = "regex"))]
+            {
+                s.to_owned()
+            }
+        }))
     }
 
     pub fn is_match(&self, text: &[u8]) -> bool {
-        self.0.is_match(text)
+        #[cfg(feature = "regex")]
+        {
+            self.0.is_match(text)
+        }
+
+        #[cfg(not(feature = "regex"))]
+        {
+            let _ = text;
+            unimplemented!("Engine was built without regex support")
+        }
     }
 
     pub fn as_str(&self) -> &str {
