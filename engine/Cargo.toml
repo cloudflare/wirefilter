@@ -23,6 +23,7 @@ indexmap = { version = "1.0.1", features = ["serde-1"] }
 regex = { version = "1.0.1", optional = true }
 memmem = "0.1.1"
 serde = { version = "1.0.78", features = ["derive"] }
+cfg-if = "0.1.6"
 
 [dev-dependencies]
 indoc = "0.2.6"
