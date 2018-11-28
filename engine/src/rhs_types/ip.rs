@@ -10,7 +10,7 @@ use strict_partial_ord::StrictPartialOrd;
 
 fn match_addr_or_cidr(input: &str) -> LexResult<'_, &str> {
     take_while(input, "IP address character", |c| match c {
-        '0'...'9' | 'a'...'f' | 'A'...'F' | ':' | '.' | '/' => true,
+        '0'..='9' | 'a'..='f' | 'A'..='F' | ':' | '.' | '/' => true,
         _ => false,
     })
 }

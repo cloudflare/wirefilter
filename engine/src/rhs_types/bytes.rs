@@ -128,7 +128,7 @@ impl<'i> Lex<'i> for Bytes {
                                 iter = input.chars();
                                 b as char
                             }
-                            '0'...'7' => {
+                            '0'..='7' => {
                                 let (b, input) = oct_byte(input)?;
                                 iter = input.chars();
                                 b as char
