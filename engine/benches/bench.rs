@@ -5,12 +5,12 @@ use std::alloc::System;
 #[global_allocator]
 static A: System = System;
 
-#[macro_use]
 extern crate criterion;
-
 extern crate wirefilter;
 
-use criterion::{Bencher, Benchmark, Criterion, ParameterizedBenchmark};
+use criterion::{
+    criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
+};
 use std::{fmt::Debug, net::IpAddr};
 use wirefilter::{ExecutionContext, GetType, LhsValue, Scheme};
 

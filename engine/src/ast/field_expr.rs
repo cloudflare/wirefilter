@@ -7,6 +7,7 @@ use memmem::Searcher;
 use range_set::RangeSet;
 use rhs_types::{Bytes, ExplicitIpRange, Regex};
 use scheme::{Field, Scheme};
+use serde::{Serialize, Serializer};
 use std::{cmp::Ordering, net::IpAddr};
 use strict_partial_ord::StrictPartialOrd;
 use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
@@ -86,7 +87,7 @@ enum FieldOp {
     OneOf(RhsValues),
 }
 
-fn serialize_op_rhs<T: ::serde::Serialize, S: ::serde::Serializer>(
+fn serialize_op_rhs<T: Serialize, S: Serializer>(
     op: &'static str,
     rhs: &T,
     ser: S,
@@ -99,7 +100,7 @@ fn serialize_op_rhs<T: ::serde::Serialize, S: ::serde::Serializer>(
     out.end()
 }
 
-fn serialize_is_true<S: ::serde::Serializer>(ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_is_true<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeStruct;
 
     let mut out = ser.serialize_struct("FieldOp", 1)?;
@@ -107,15 +108,15 @@ fn serialize_is_true<S: ::serde::Serializer>(ser: S) -> Result<S::Ok, S::Error> 
     out.end()
 }
 
-fn serialize_contains<S: ::serde::Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_contains<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
 }
 
-fn serialize_matches<S: ::serde::Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Matches", rhs, ser)
 }
 
-fn serialize_one_of<S: ::serde::Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("OneOf", rhs, ser)
 }
 
@@ -268,8 +269,9 @@ mod tests {
     use super::*;
     use cidr::{Cidr, IpCidr};
     use execution_context::ExecutionContext;
+    use lazy_static::lazy_static;
     use rhs_types::IpRange;
-    use serde_json::to_value as json;
+    use serde_json::{json, to_value as json};
     use std::net::IpAddr;
 
     lazy_static! {

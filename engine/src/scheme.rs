@@ -1,7 +1,9 @@
 use ast::Filter;
+use failure::Fail;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
 use lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith};
+use serde::{Deserialize, Serialize, Serializer};
 use std::{
     cmp::{max, min},
     error::Error,
@@ -17,8 +19,8 @@ pub(crate) struct Field<'s> {
     index: usize,
 }
 
-impl<'s> ::serde::Serialize for Field<'s> {
-    fn serialize<S: ::serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+impl<'s> Serialize for Field<'s> {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.name().serialize(ser)
     }
 }
@@ -202,6 +204,8 @@ impl<'s> Scheme {
 
 #[test]
 fn test_parse_error() {
+    use indoc::{indoc, indoc_impl};
+
     let scheme: &Scheme = &[("num", Type::Int)]
         .iter()
         .map(|&(k, t)| (k.to_owned(), t))

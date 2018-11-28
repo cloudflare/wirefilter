@@ -7,7 +7,6 @@ extern crate wirefilter;
 extern crate regex;
 
 #[cfg(test)]
-#[macro_use]
 extern crate indoc;
 
 pub mod transfer_types;
@@ -335,6 +334,8 @@ mod ffi_test {
 
     #[test]
     fn parse_error() {
+        use indoc::{indoc, indoc_impl};
+
         let src = indoc!(
             r#"
             (

@@ -1,5 +1,6 @@
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use rhs_types::{Bytes, IpRange, UninhabitedBool};
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Formatter},

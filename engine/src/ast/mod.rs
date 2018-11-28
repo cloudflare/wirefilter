@@ -6,6 +6,7 @@ use self::combined_expr::CombinedExpr;
 use execution_context::ExecutionContext;
 use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
+use serde::Serialize;
 use std::fmt::{self, Debug};
 
 pub struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
@@ -20,7 +21,7 @@ impl<'s> CompiledExpr<'s> {
     }
 }
 
-trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + ::serde::Serialize {
+trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
     fn compile(self) -> CompiledExpr<'s>;
 }

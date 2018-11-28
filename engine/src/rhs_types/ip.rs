@@ -1,5 +1,6 @@
 use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr, NetworkParseError};
 use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
+use serde::Serialize;
 use std::{
     cmp::Ordering,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -66,7 +67,7 @@ impl<'i> Lex<'i> for IpRange {
                 }
             })
         } else {
-            IpRange::Cidr(::cidr::IpCidr::from_str(chunk).map_err(|err| {
+            IpRange::Cidr(cidr::IpCidr::from_str(chunk).map_err(|err| {
                 let split_pos = chunk.find('/').unwrap_or_else(|| chunk.len());
                 let err_span = match err {
                     NetworkParseError::AddrParseError(_) | NetworkParseError::InvalidHostPart => {

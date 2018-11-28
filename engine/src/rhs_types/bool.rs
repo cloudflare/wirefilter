@@ -1,4 +1,5 @@
 use lex::{Lex, LexResult};
+use serde::Serialize;
 use std::{borrow::Borrow, cmp::Ordering};
 use strict_partial_ord::StrictPartialOrd;
 

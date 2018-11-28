@@ -1,6 +1,7 @@
 use super::{simple_expr::SimpleExpr, CompiledExpr, Expr};
 use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
+use serde::Serialize;
 
 lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
     "or" | "||" => Or,
@@ -125,7 +126,7 @@ fn test() {
     use super::field_expr::FieldExpr;
     use execution_context::ExecutionContext;
     use lex::complete;
-    use serde_json::to_value as json;
+    use serde_json::{json, to_value as json};
     use types::Type;
 
     let scheme = &[("t", Type::Bool), ("f", Type::Bool)]

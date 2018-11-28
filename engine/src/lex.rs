@@ -1,4 +1,5 @@
 use cidr::NetworkParseError;
+use failure::Fail;
 use rhs_types::RegexError;
 use scheme::UnknownFieldError;
 use std::num::ParseIntError;

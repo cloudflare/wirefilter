@@ -1,3 +1,8 @@
+use cfg_if::cfg_if;
+use lex::{expect, span, Lex, LexErrorKind, LexResult};
+use serde::{Serialize, Serializer};
+use std::fmt::{self, Debug, Formatter};
+
 cfg_if! {
     if #[cfg(feature = "regex")] {
         mod imp_real;
@@ -7,9 +12,6 @@ cfg_if! {
         pub use self::imp_stub::*;
     }
 }
-
-use lex::{expect, span, Lex, LexErrorKind, LexResult};
-use std::fmt::{self, Debug, Formatter};
 
 impl PartialEq for Regex {
     fn eq(&self, other: &Regex) -> bool {
@@ -70,24 +72,23 @@ impl<'i> Lex<'i> for Regex {
     }
 }
 
-impl ::serde::Serialize for Regex {
-    fn serialize<S: ::serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+impl Serialize for Regex {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.as_str().serialize(ser)
     }
 }
 
 #[test]
 fn test() {
+    use serde_json::{json, to_value as json};
+
     let expr = assert_ok!(
         Regex::lex(r#""[a-z"\]]+\d{1,10}\"";"#),
         Regex::new(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
         ";"
     );
 
-    assert_eq!(
-        ::serde_json::to_value(&expr).unwrap(),
-        json!(r#"[a-z"\]]+\d{1,10}""#)
-    );
+    assert_eq!(json(&expr).unwrap(), json!(r#"[a-z"\]]+\d{1,10}""#));
 
     assert_err!(
         Regex::lex(r#""abcd\"#),

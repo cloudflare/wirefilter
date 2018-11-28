@@ -1,4 +1,5 @@
 use lex::{expect, take, Lex, LexErrorKind, LexResult};
+use serde::Serialize;
 use std::{
     borrow::Borrow,
     fmt::{self, Debug, Formatter},

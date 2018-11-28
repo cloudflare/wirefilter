@@ -1,6 +1,7 @@
 use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
+use serde::Serialize;
 
 lex_enum!(UnaryOp {
     "not" | "!" => Not,
@@ -70,7 +71,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 fn test() {
     use execution_context::ExecutionContext;
     use lex::complete;
-    use serde_json::to_value as json;
+    use serde_json::{json, to_value as json};
     use types::Type;
 
     let scheme = &[("t", Type::Bool)]

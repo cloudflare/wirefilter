@@ -1,7 +1,7 @@
 #[derive(Clone)]
-pub struct Regex(::regex::bytes::Regex);
+pub struct Regex(regex::bytes::Regex);
 
-pub type Error = ::regex::Error;
+pub type Error = regex::Error;
 
 impl Regex {
     pub fn new(s: &str) -> Result<Self, Error> {

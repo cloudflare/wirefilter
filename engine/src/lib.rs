@@ -1,23 +1,15 @@
-#[macro_use]
 extern crate cfg_if;
-
-#[macro_use]
 extern crate failure;
-
-#[macro_use]
 extern crate serde;
 
 #[cfg(test)]
-#[macro_use]
-extern crate serde_json;
-
-#[cfg(test)]
-#[macro_use]
 extern crate indoc;
 
 #[cfg(test)]
-#[macro_use]
 extern crate lazy_static;
+
+#[cfg(test)]
+extern crate serde_json;
 
 extern crate cidr;
 extern crate fnv;
