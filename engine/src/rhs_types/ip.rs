@@ -8,14 +8,14 @@ use std::{
 };
 use strict_partial_ord::StrictPartialOrd;
 
-fn match_addr_or_cidr(input: &str) -> LexResult<&str> {
+fn match_addr_or_cidr(input: &str) -> LexResult<'_, &str> {
     take_while(input, "IP address character", |c| match c {
         '0'...'9' | 'a'...'f' | 'A'...'F' | ':' | '.' | '/' => true,
         _ => false,
     })
 }
 
-fn parse_addr(input: &str) -> Result<IpAddr, LexError> {
+fn parse_addr(input: &str) -> Result<IpAddr, LexError<'_>> {
     IpAddr::from_str(input).map_err(|err| {
         (
             LexErrorKind::ParseNetwork(NetworkParseError::AddrParseError(err)),
@@ -25,7 +25,7 @@ fn parse_addr(input: &str) -> Result<IpAddr, LexError> {
 }
 
 impl<'i> Lex<'i> for IpAddr {
-    fn lex(input: &str) -> LexResult<Self> {
+    fn lex(input: &str) -> LexResult<'_, Self> {
         let (input, rest) = match_addr_or_cidr(input)?;
         parse_addr(input).map(|res| (res, rest))
     }
@@ -46,7 +46,7 @@ pub enum IpRange {
 }
 
 impl<'i> Lex<'i> for IpRange {
-    fn lex(input: &str) -> LexResult<Self> {
+    fn lex(input: &str) -> LexResult<'_, Self> {
         let (chunk, rest) = match_addr_or_cidr(input)?;
 
         // check for ".." before trying to lex an address

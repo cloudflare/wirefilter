@@ -20,13 +20,13 @@ impl PartialEq for Regex {
 impl Eq for Regex {}
 
 impl Debug for Regex {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
 impl<'i> Lex<'i> for Regex {
-    fn lex(input: &str) -> LexResult<Self> {
+    fn lex(input: &str) -> LexResult<'_, Self> {
         let input = expect(input, "\"")?;
         let mut regex_buf = String::new();
         let mut in_char_class = false;

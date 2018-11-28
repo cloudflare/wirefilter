@@ -2,12 +2,12 @@ use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
 use std::ops::RangeInclusive;
 use strict_partial_ord::StrictPartialOrd;
 
-fn lex_digits(input: &str) -> LexResult<&str> {
+fn lex_digits(input: &str) -> LexResult<'_, &str> {
     // Lex any supported digits (up to radix 16) for better error locations.
     take_while(input, "digit", |c| c.is_digit(16))
 }
 
-fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<i32> {
+fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<'_, i32> {
     match i32::from_str_radix(input, radix) {
         Ok(res) => Ok((res, rest)),
         Err(err) => Err((LexErrorKind::ParseInt { err, radix }, input)),
@@ -15,7 +15,7 @@ fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<
 }
 
 impl<'i> Lex<'i> for i32 {
-    fn lex(input: &str) -> LexResult<Self> {
+    fn lex(input: &str) -> LexResult<'_, Self> {
         if let Ok(input) = expect(input, "0x") {
             parse_number(lex_digits(input)?, 16)
         } else if input.starts_with('0') {
@@ -35,7 +35,7 @@ impl<'i> Lex<'i> for i32 {
 }
 
 impl<'i> Lex<'i> for RangeInclusive<i32> {
-    fn lex(input: &str) -> LexResult<Self> {
+    fn lex(input: &str) -> LexResult<'_, Self> {
         let initial_input = input;
         let (first, input) = i32::lex(input)?;
         let (last, input) = if let Ok(input) = expect(input, "..") {

@@ -41,7 +41,7 @@ macro_rules! declare_types {
         }
 
         impl $(<$lt>)* Debug for $name $(<$lt>)* {
-            fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
                 match self {
                     $($name::$variant(inner) => Debug::fmt(inner, f),)*
                 }
@@ -88,7 +88,7 @@ macro_rules! declare_types {
         }
 
         impl<'i> LexWith<'i, Type> for RhsValue {
-            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
+            fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = <$rhs_ty>::lex(input)?;
@@ -126,7 +126,7 @@ macro_rules! declare_types {
         }
 
         impl<'i> LexWith<'i, Type> for RhsValues {
-            fn lex_with(input: &str, ty: Type) -> LexResult<Self> {
+            fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(Type::$name => {
                         let (value, input) = lex_rhs_values(input)?;

@@ -66,14 +66,14 @@ pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
     scheme: &mut Scheme,
-    name: ExternallyAllocatedStr,
+    name: ExternallyAllocatedStr<'_>,
     ty: Type,
 ) {
     scheme.add_field(name.into_ref().to_owned(), ty)
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_parsed_filter(filter: RustBox<Filter>) {
+pub extern "C" fn wirefilter_free_parsed_filter(filter: RustBox<Filter<'_>>) {
     drop(filter);
 }
 
@@ -113,13 +113,13 @@ impl<H: Hasher> Write for HasherWrite<H> {
     }
 }
 
-fn unwrap_json_result<T>(filter: &Filter, result: serde_json::Result<T>) -> T {
+fn unwrap_json_result<T>(filter: &Filter<'_>, result: serde_json::Result<T>) -> T {
     // Filter serialisation must never fail.
     result.unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter))
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
+pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter<'_>) -> u64 {
     let mut hasher = FnvHasher::default();
     // Serialize JSON to our Write-compatible wrapper around FnvHasher,
     // effectively calculating a hash for our filter in a streaming fashion
@@ -131,7 +131,7 @@ pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter) -> u64 {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_serialize_filter_to_json(filter: &Filter) -> RustAllocatedString {
+pub extern "C" fn wirefilter_serialize_filter_to_json(filter: &Filter<'_>) -> RustAllocatedString {
     let result = serde_json::to_string(filter);
     unwrap_json_result(filter, result).into()
 }
@@ -144,14 +144,14 @@ pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<ExecutionContext>) {
+pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<ExecutionContext<'_>>) {
     drop(exec_context);
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedStr,
+    name: ExternallyAllocatedStr<'_>,
     value: i32,
 ) {
     exec_context.set_field_value(name.into_ref(), value);
@@ -160,7 +160,7 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
-    name: ExternallyAllocatedStr,
+    name: ExternallyAllocatedStr<'_>,
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &[u8] = value.into_ref();
@@ -169,8 +169,8 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
-    exec_context: &mut ExecutionContext,
-    name: ExternallyAllocatedStr,
+    exec_context: &mut ExecutionContext<'_>,
+    name: ExternallyAllocatedStr<'_>,
     value: &[u8; 16],
 ) {
     exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
@@ -178,8 +178,8 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
-    exec_context: &mut ExecutionContext,
-    name: ExternallyAllocatedStr,
+    exec_context: &mut ExecutionContext<'_>,
+    name: ExternallyAllocatedStr<'_>,
     value: &[u8; 4],
 ) {
     exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
@@ -187,8 +187,8 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
-    exec_context: &mut ExecutionContext,
-    name: ExternallyAllocatedStr,
+    exec_context: &mut ExecutionContext<'_>,
+    name: ExternallyAllocatedStr<'_>,
     value: bool,
 ) {
     exec_context.set_field_value(name.into_ref(), value);
@@ -211,14 +211,14 @@ pub extern "C" fn wirefilter_match<'s>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<CompiledExpr>) {
+pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<CompiledExpr<'_>>) {
     drop(filter);
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_filter_uses(
-    filter: &Filter,
-    field_name: ExternallyAllocatedStr,
+    filter: &Filter<'_>,
+    field_name: ExternallyAllocatedStr<'_>,
 ) -> bool {
     filter.uses(field_name.into_ref()).unwrap()
 }
@@ -318,7 +318,11 @@ mod ffi_test {
         wirefilter_parse_filter(scheme, ExternallyAllocatedStr::from(input))
     }
 
-    fn match_filter(input: &'static str, scheme: &Scheme, exec_context: &ExecutionContext) -> bool {
+    fn match_filter(
+        input: &'static str,
+        scheme: &Scheme,
+        exec_context: &ExecutionContext<'_>,
+    ) -> bool {
         let filter = parse_filter(scheme, input).unwrap();
         let filter = wirefilter_compile_filter(filter);
 

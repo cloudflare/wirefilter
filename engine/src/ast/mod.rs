@@ -35,7 +35,7 @@ pub struct Filter<'s> {
 }
 
 impl<'s> Debug for Filter<'s> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.op.fmt(f)
     }
 }

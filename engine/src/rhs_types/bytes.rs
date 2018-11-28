@@ -48,7 +48,7 @@ impl From<Bytes> for Box<[u8]> {
 }
 
 impl Debug for Bytes {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Bytes::Str(s) => s.fmt(f),
             Bytes::Raw(b) => {
@@ -81,7 +81,7 @@ impl Borrow<[u8]> for Bytes {
     }
 }
 
-fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
+fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<'_, u8> {
     let (digits, rest) = take(input, digits)?;
     match u8::from_str_radix(digits, radix) {
         Ok(b) => Ok((b, rest)),
@@ -89,11 +89,11 @@ fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<u8> {
     }
 }
 
-fn hex_byte(input: &str) -> LexResult<u8> {
+fn hex_byte(input: &str) -> LexResult<'_, u8> {
     fixed_byte(input, 2, 16)
 }
 
-fn oct_byte(input: &str) -> LexResult<u8> {
+fn oct_byte(input: &str) -> LexResult<'_, u8> {
     fixed_byte(input, 3, 8)
 }
 
@@ -104,7 +104,7 @@ lex_enum!(ByteSeparator {
 });
 
 impl<'i> Lex<'i> for Bytes {
-    fn lex(mut input: &str) -> LexResult<Self> {
+    fn lex(mut input: &str) -> LexResult<'_, Self> {
         if let Ok(input) = expect(input, "\"") {
             let full_input = input;
             let mut res = String::new();

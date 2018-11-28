@@ -131,7 +131,7 @@ macro_rules! lex_enum {
         pub enum $name $decl
 
         impl<'i> $crate::lex::Lex<'i> for $name {
-            fn lex($input: &'i str) -> $crate::lex::LexResult<Self> {
+            fn lex($input: &'i str) -> $crate::lex::LexResult<'_, Self> {
                 $($expr)*
                 Err((
                     $crate::lex::LexErrorKind::ExpectedName(stringify!($name)),
@@ -173,7 +173,7 @@ pub fn take_while<'i, F: Fn(char) -> bool>(
     }
 }
 
-pub fn take(input: &str, expected: usize) -> LexResult<&str> {
+pub fn take(input: &str, expected: usize) -> LexResult<'_, &str> {
     let mut chars = input.chars();
     for i in 0..expected {
         chars.next().ok_or_else(|| {
@@ -191,7 +191,7 @@ pub fn take(input: &str, expected: usize) -> LexResult<&str> {
     Ok((span(input, rest), rest))
 }
 
-pub fn complete<T>(res: LexResult<T>) -> Result<T, LexError> {
+pub fn complete<T>(res: LexResult<'_, T>) -> Result<T, LexError<'_>> {
     let (res, input) = res?;
     if input.is_empty() {
         Ok(res)

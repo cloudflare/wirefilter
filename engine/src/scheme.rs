@@ -24,7 +24,7 @@ impl<'s> ::serde::Serialize for Field<'s> {
 }
 
 impl<'s> Debug for Field<'s> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
 }
@@ -123,7 +123,7 @@ impl<'i> ParseError<'i> {
 }
 
 impl<'i> Display for ParseError<'i> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "Filter parsing error ({}:{}):",
