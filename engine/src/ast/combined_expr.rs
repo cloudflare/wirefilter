@@ -126,7 +126,6 @@ fn test() {
     use super::field_expr::FieldExpr;
     use execution_context::ExecutionContext;
     use lex::complete;
-    use serde_json::{json, to_value as json};
     use types::Type;
 
     let scheme = &[("t", Type::Bool), ("f", Type::Bool)]
@@ -176,9 +175,9 @@ fn test() {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "op": "And",
                 "items": [
                     {
@@ -190,7 +189,7 @@ fn test() {
                         "op": "IsTrue"
                     }
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -207,9 +206,9 @@ fn test() {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "op": "Or",
                 "items": [
                     {
@@ -221,7 +220,7 @@ fn test() {
                         "op": "IsTrue"
                     }
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -252,9 +251,9 @@ fn test() {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "op": "Xor",
                 "items": [
                     {
@@ -266,7 +265,7 @@ fn test() {
                         "op": "IsTrue"
                     }
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();

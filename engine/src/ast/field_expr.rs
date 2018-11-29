@@ -271,7 +271,6 @@ mod tests {
     use execution_context::ExecutionContext;
     use lazy_static::lazy_static;
     use rhs_types::IpRange;
-    use serde_json::{json, to_value as json};
     use std::net::IpAddr;
 
     lazy_static! {
@@ -300,12 +299,12 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "ssl",
                 "op": "IsTrue"
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -333,13 +332,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "ip.addr",
                 "op": "LessThanEqual",
                 "rhs": "10:20:30:40:50:60:70:80"
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -381,13 +380,13 @@ mod tests {
                 }
             );
 
-            assert_eq!(
-                json(&expr).unwrap(),
-                json!({
+            assert_json!(
+                expr,
+                {
                     "field": "http.host",
                     "op": "GreaterThanEqual",
                     "rhs": [0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]
-                })
+                }
             );
         }
 
@@ -404,13 +403,13 @@ mod tests {
                 }
             );
 
-            assert_eq!(
-                json(&expr).unwrap(),
-                json!({
+            assert_json!(
+                expr,
+                {
                     "field": "http.host",
                     "op": "LessThan",
                     "rhs": [0x12]
-                })
+                }
             );
         }
 
@@ -425,13 +424,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "http.host",
                 "op": "Equal",
                 "rhs": "example.org"
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -457,13 +456,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "tcp.port",
                 "op": "BitwiseAnd",
                 "rhs": 1
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -486,9 +485,9 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "tcp.port",
                 "op": "OneOf",
                 "rhs": [
@@ -496,7 +495,7 @@ mod tests {
                     { "start": 443, "end": 443 },
                     { "start": 2082, "end": 2083 },
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -539,16 +538,16 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "http.host",
                 "op": "OneOf",
                 "rhs": [
                     "example.org",
                     "example.com",
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -583,9 +582,9 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "ip.addr",
                 "op": "OneOf",
                 "rhs": [
@@ -593,7 +592,7 @@ mod tests {
                     "::1",
                     { "start": "10.0.0.0", "end": "10.0.255.255" },
                 ]
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -625,13 +624,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "http.host",
                 "op": "Contains",
                 "rhs": "abc",
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -654,13 +653,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "http.host",
                 "op": "Contains",
                 "rhs": [0x6F, 0x72, 0x67],
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -686,13 +685,13 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "tcp.port",
                 "op": "LessThan",
                 "rhs": 8000,
-            })
+            }
         );
 
         let expr = expr.compile();

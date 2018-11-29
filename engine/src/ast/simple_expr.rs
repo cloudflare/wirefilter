@@ -71,7 +71,6 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 fn test() {
     use execution_context::ExecutionContext;
     use lex::complete;
-    use serde_json::{json, to_value as json};
     use types::Type;
 
     let scheme = &[("t", Type::Bool)]
@@ -88,12 +87,12 @@ fn test() {
     {
         let expr = assert_ok!(SimpleExpr::lex_with("t", scheme), t_expr());
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "t",
                 "op": "IsTrue"
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -109,12 +108,12 @@ fn test() {
             parenthesized_expr(parenthesized_expr(t_expr()))
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "field": "t",
                 "op": "IsTrue"
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -130,15 +129,15 @@ fn test() {
     {
         let expr = assert_ok!(SimpleExpr::lex_with("not t", scheme), not_expr(t_expr()));
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "op": "Not",
                 "arg": {
                     "field": "t",
                     "op": "IsTrue"
                 }
-            })
+            }
         );
 
         let expr = expr.compile();
@@ -154,9 +153,9 @@ fn test() {
             not_expr(not_expr(t_expr()))
         );
 
-        assert_eq!(
-            json(&expr).unwrap(),
-            json!({
+        assert_json!(
+            expr,
+            {
                 "op": "Not",
                 "arg": {
                     "op": "Not",
@@ -165,7 +164,7 @@ fn test() {
                         "op": "IsTrue"
                     }
                 }
-            })
+            }
         );
 
         let expr = expr.compile();

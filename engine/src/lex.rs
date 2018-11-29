@@ -220,3 +220,13 @@ macro_rules! assert_err {
         assert_eq!($s, Err(($kind, $span)))
     };
 }
+
+#[cfg(test)]
+macro_rules! assert_json {
+    ($expr:expr, $json:tt) => {
+        assert_eq!(
+            ::serde_json::to_value(&$expr).unwrap(),
+            ::serde_json::json!($json)
+        );
+    };
+}

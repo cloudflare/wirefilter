@@ -80,15 +80,13 @@ impl Serialize for Regex {
 
 #[test]
 fn test() {
-    use serde_json::{json, to_value as json};
-
     let expr = assert_ok!(
         Regex::lex(r#""[a-z"\]]+\d{1,10}\"";"#),
         Regex::new(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
         ";"
     );
 
-    assert_eq!(json(&expr).unwrap(), json!(r#"[a-z"\]]+\d{1,10}""#));
+    assert_json!(expr, r#"[a-z"\]]+\d{1,10}""#);
 
     assert_err!(
         Regex::lex(r#""abcd\"#),
