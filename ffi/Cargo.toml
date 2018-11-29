@@ -24,4 +24,4 @@ path = "../engine"
 
 [dev-dependencies]
 regex = "1.0.1"
-indoc = "0.2.6"
+indoc = "0.3.0"

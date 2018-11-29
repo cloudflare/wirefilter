@@ -334,7 +334,7 @@ mod ffi_test {
 
     #[test]
     fn parse_error() {
-        use indoc::{indoc, indoc_impl};
+        use indoc::indoc;
 
         let src = indoc!(
             r#"

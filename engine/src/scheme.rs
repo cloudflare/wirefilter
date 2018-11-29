@@ -204,7 +204,7 @@ impl<'s> Scheme {
 
 #[test]
 fn test_parse_error() {
-    use indoc::{indoc, indoc_impl};
+    use indoc::indoc;
 
     let scheme: &Scheme = &[("num", Type::Int)]
         .iter()
