@@ -30,7 +30,7 @@ everything: &everything
       - sudo ./cfsetup-cargo.sh test --frozen
       - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen
       - sudo ./cfsetup-cargo.sh fmt -- --check
-  bamboo-test:
+  ci-test:
     builddeps:
       - rust
       - cargo-to-teamcity
