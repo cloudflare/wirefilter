@@ -1,4 +1,5 @@
 use std::fmt;
+use failure::Fail;
 
 #[derive(Clone)]
 pub struct Regex(String);
