@@ -20,6 +20,28 @@ everything: &everything
   build-arm64:
     <<: *build
     target-arch: arm64
+  build-wasm:
+    builddeps: &wasm-deps
+      - rust
+      - wasm-pack
+      - nodejs
+    pre-cache-copy-paths: *paths
+    pre-cache:
+      - ./cfsetup-cargo.sh prebuild --target wasm32-unknown-unknown
+    post-cache:
+      - sudo ./cfsetup-cargo.sh wasm-pack wasm --debug --mode no-install --target browser --scope cloudflare
+    artifacts: &wasm-artifacts
+      - wasm/pkg/*.tgz
+  publish-wasm:
+    builddeps: *wasm-deps
+    pre-cache-copy-paths: *paths
+    pre-cache:
+      - ./cfsetup-cargo.sh prebuild --release --target wasm32-unknown-unknown
+      - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+    post-cache:
+      - sudo ./cfsetup-cargo.sh wasm-pack wasm --mode no-install --target browser --scope cloudflare
+      - npm publish wasm/pkg/*.tgz
+    artifacts: *wasm-artifacts
   test:
     builddeps:
       - rust
