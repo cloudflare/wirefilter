@@ -37,9 +37,9 @@ everything: &everything
     pre-cache-copy-paths: *paths
     pre-cache:
       - ./cfsetup-cargo.sh prebuild --release --target wasm32-unknown-unknown
-      - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
     post-cache:
       - sudo ./cfsetup-cargo.sh wasm-pack wasm --mode no-install --target browser --scope cloudflare
+      - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
       - npm publish wasm/pkg/*.tgz
     artifacts: *wasm-artifacts
   test:
