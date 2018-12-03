@@ -1,15 +1,15 @@
+extern crate js_sys;
 extern crate wasm_bindgen;
 extern crate wirefilter;
 
-use std::error::Error;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct Scheme(wirefilter::Scheme);
 
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
-fn into_js_error(err: impl Error) -> JsValue {
-    err.to_string().into()
+fn into_js_error(err: impl std::error::Error) -> JsValue {
+    js_sys::Error::new(&err.to_string()).into()
 }
 
 #[wasm_bindgen]
