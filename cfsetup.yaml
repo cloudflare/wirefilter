@@ -36,8 +36,11 @@ everything: &everything
     builddeps: *wasm-deps
     pre-cache-copy-paths: *paths
     pre-cache:
+      # Cargo doesn't currently allow overriding profile config per target, so use RUSTFLAGS instead:
+      - export RUSTFLAGS="-C opt-level=z -C codegen-units=1"
       - ./cfsetup-cargo.sh prebuild --release --target wasm32-unknown-unknown
     post-cache:
+      - export RUSTFLAGS="-C opt-level=z -C codegen-units=1"
       - sudo ./cfsetup-cargo.sh wasm-pack wasm --mode no-install --target browser --scope cloudflare
       - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
       - npm publish wasm/pkg/*.tgz
