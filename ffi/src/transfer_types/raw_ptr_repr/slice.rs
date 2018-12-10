@@ -31,7 +31,7 @@ impl<T> Clone for ExternSliceRepr<T> {
 impl<T> Copy for ExternSliceRepr<T> {}
 
 impl<T> From<*mut [T]> for ExternSliceRepr<T> {
-    #[cfg_attr(feature = "cargo-clippy", allow(not_unsafe_ptr_arg_deref))]
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn from(ptr: *mut [T]) -> Self {
         unsafe {
             ExternSliceRepr {

@@ -20,7 +20,7 @@ pub enum Bytes {
 // We can get away with `Eq` invariant though because we do want
 // `Bytes == Bytes` to check enum tags but `Bytes == &[u8]` to ignore them, and
 // consistency of the latter is all that matters for `Borrow` consumers.
-#[cfg_attr(feature = "cargo-clippy", allow(derive_hash_xor_eq))]
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Bytes {
     fn hash<H: Hasher>(&self, h: &mut H) {
         (self as &[u8]).hash(h)

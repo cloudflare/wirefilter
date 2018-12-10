@@ -19,7 +19,7 @@ use std::str;
 pub struct ExternStrRepr(ExternSliceRepr<u8>);
 
 impl From<*mut str> for ExternStrRepr {
-    #[cfg_attr(feature = "cargo-clippy", allow(not_unsafe_ptr_arg_deref))]
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn from(ptr: *mut str) -> Self {
         let bytes: *mut [u8] = unsafe { (*ptr).as_bytes_mut() };
         ExternStrRepr(bytes.into())
