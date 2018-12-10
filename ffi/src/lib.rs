@@ -430,12 +430,14 @@ mod ffi_test {
             let filter1 = parse_filter(
                 &scheme,
                 r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
-            ).unwrap();
+            )
+            .unwrap();
 
             let filter2 = parse_filter(
                 &scheme,
                 r#"num1 >     41 && num2 == 1337 &&    ip1 != 192.168.0.1 and str2 ~ "yo\d+""#,
-            ).unwrap();
+            )
+            .unwrap();
 
             let filter3 = parse_filter(&scheme, r#"num1 > 41 && num2 == 1337"#).unwrap();
 
@@ -470,7 +472,8 @@ mod ffi_test {
             let filter = parse_filter(
                 &scheme,
                 r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+""#,
-            ).unwrap();
+            )
+            .unwrap();
 
             assert!(wirefilter_filter_uses(
                 &filter,

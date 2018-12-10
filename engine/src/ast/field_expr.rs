@@ -280,9 +280,9 @@ mod tests {
             ("ssl", Type::Bool),
             ("tcp.port", Type::Int),
         ]
-            .iter()
-            .map(|&(k, t)| (k.to_owned(), t))
-            .collect();
+        .iter()
+        .map(|&(k, t)| (k.to_owned(), t))
+        .collect();
     }
 
     fn field(name: &'static str) -> Field<'static> {

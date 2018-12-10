@@ -48,6 +48,7 @@ impl<T> RangeSet<T> {
                 } else {
                     Ordering::Less
                 }
-            }).is_ok()
+            })
+            .is_ok()
     }
 }

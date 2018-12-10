@@ -53,9 +53,7 @@ impl<'s> CombinedExpr<'s> {
                 CombinedExpr::Combining {
                     op: lhs_op,
                     ref mut items,
-                }
-                    if lhs_op == op =>
-                {
+                } if lhs_op == op => {
                     items.push(rhs.0);
                 }
                 _ => {

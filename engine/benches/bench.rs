@@ -116,7 +116,8 @@ fn bench_int_comparisons(c: &mut Criterion) {
             "tcp.port in { 80 8080 8880 2052 2082 2086 2095 }",
         ],
         values: &[80, 8081],
-    }.run(c)
+    }
+    .run(c)
 }
 
 fn bench_string_comparisons(c: &mut Criterion) {

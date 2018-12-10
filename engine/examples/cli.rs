@@ -15,9 +15,9 @@ fn main() {
         ("int", Type::Int),
         ("bool", Type::Bool),
     ]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+    .iter()
+    .map(|&(k, t)| (k.to_owned(), t))
+    .collect();
 
     match scheme.parse(&filter) {
         Ok(res) => println!("{:#?}", res),

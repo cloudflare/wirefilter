@@ -38,7 +38,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
         loop {
             input = take_while(input, "identifier character", |c| {
                 c.is_ascii_alphanumeric() || c == '_'
-            })?.1;
+            })?
+            .1;
 
             match expect(input, ".") {
                 Ok(rest) => input = rest,
@@ -101,7 +102,8 @@ impl<'i> ParseError<'i> {
             .scan(0, |line_number, line_start| {
                 *line_number += 1;
                 Some((*line_number, line_start))
-            }).last()
+            })
+            .last()
             .unwrap_or_default();
 
         input = &input[line_start..];
@@ -174,9 +176,12 @@ impl Eq for Scheme {}
 impl<'s> Scheme {
     pub fn add_field(&mut self, name: String, ty: Type) {
         match self.fields.entry(name) {
-            Entry::Occupied(entry) => {
-                panic!("Tried to register field {} with type {:?} but it's already registered with type {:?}", entry.key(), ty, entry.get())
-            }
+            Entry::Occupied(entry) => panic!(
+                "Tried to register field {} with type {:?} but it's already registered with type {:?}",
+                entry.key(),
+                ty,
+                entry.get()
+            ),
             Entry::Vacant(entry) => {
                 entry.insert(ty);
             }
@@ -291,7 +296,8 @@ fn test_parse_error() {
                 num == true or
                 num == 20
                 "#
-            )).unwrap_err();
+            ))
+            .unwrap_err();
         assert_eq!(
             err,
             ParseError {
@@ -322,9 +328,9 @@ fn test_field() {
         ("x.y.z0", Type::Int),
         ("is_TCP", Type::Bool),
     ]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+    .iter()
+    .map(|&(k, t)| (k.to_owned(), t))
+    .collect();
 
     assert_ok!(
         Field::lex_with("x;", scheme),
