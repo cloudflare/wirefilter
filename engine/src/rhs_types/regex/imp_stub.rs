@@ -1,8 +1,6 @@
 use std::fmt;
 use failure::Fail;
-
-#[derive(Clone)]
-pub struct Regex(String);
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Fail)]
 pub enum Error {}
@@ -13,11 +11,18 @@ impl fmt::Display for Error {
     }
 }
 
-impl Regex {
-    pub fn new(s: &str) -> Result<Self, Error> {
+#[derive(Clone)]
+pub struct Regex(String);
+
+impl FromStr for Regex {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Error> {
         Ok(Regex(s.to_owned()))
     }
+}
 
+impl Regex {
     pub fn is_match(&self, _text: &[u8]) -> bool {
         unimplemented!("Engine was built without regex support")
     }

@@ -15,7 +15,7 @@ fn into_js_error(err: impl std::error::Error) -> JsValue {
 #[wasm_bindgen]
 impl Scheme {
     #[wasm_bindgen(constructor)]
-    pub fn new(fields: &JsValue) -> Result<Scheme, JsValue> {
+    pub fn try_from(fields: &JsValue) -> Result<Scheme, JsValue> {
         fields.into_serde().map(Scheme).map_err(into_js_error)
     }
 

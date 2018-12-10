@@ -2,6 +2,7 @@ use cfg_if::cfg_if;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Formatter};
+use std::str::FromStr;
 
 cfg_if! {
     if #[cfg(feature = "regex")] {
@@ -65,7 +66,7 @@ impl<'i> Lex<'i> for Regex {
                 };
             }
         };
-        match Regex::new(&regex_buf) {
+        match Regex::from_str(&regex_buf) {
             Ok(regex) => Ok((regex, input)),
             Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
         }
@@ -82,7 +83,7 @@ impl Serialize for Regex {
 fn test() {
     let expr = assert_ok!(
         Regex::lex(r#""[a-z"\]]+\d{1,10}\"";"#),
-        Regex::new(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
+        Regex::from_str(r#"[a-z"\]]+\d{1,10}""#).unwrap(),
         ";"
     );
 
