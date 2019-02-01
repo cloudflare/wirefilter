@@ -26,11 +26,11 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
 }
 
 macro_rules! declare_types {
-    ($(# $attrs:tt)* enum $name:ident $(<$lt:tt>)* { $($variant:ident ( $ty:ty ) , )* }) => {
+    ($(# $attrs:tt)* enum $name:ident $(<$lt:tt>)* { $($(# $vattrs:tt)* $variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
         #[repr(u8)]
         pub enum $name $(<$lt>)* {
-            $($variant($ty),)*
+            $($(# $vattrs)* $variant($ty),)*
         }
 
         impl $(<$lt>)* GetType for $name $(<$lt>)* {
@@ -50,14 +50,17 @@ macro_rules! declare_types {
         }
     };
 
-    ($($name:ident ( $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
+    ($($(# $attrs:tt)* $name:ident ( $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
+        /// Enumeration of supported types for field values.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
         #[repr(u8)]
         pub enum Type {
-            $($name,)*
+            $($(# $attrs)* $name,)*
         }
 
+        /// Provides a way to get a [`Type`] of the implementor.
         pub trait GetType {
+            /// Returns a type.
             fn get_type(&self) -> Type;
         }
 
@@ -68,10 +71,15 @@ macro_rules! declare_types {
         }
 
         declare_types! {
+            /// An LHS value provided for filter execution.
+            ///
+            /// These are passed to the [execution context](::ExecutionContext)
+            /// and are used by [compiled expressions](::CompiledExpr)
+            /// for execution and comparisons.
             #[derive(PartialEq, Eq, Clone, Deserialize)]
             #[serde(untagged)]
             enum LhsValue<'a> {
-                $($name($lhs_ty),)*
+                $($(# $attrs)* $name($lhs_ty),)*
             }
         }
 
@@ -82,10 +90,11 @@ macro_rules! declare_types {
         })*
 
         declare_types! {
+            /// An RHS value parsed from a filter string.
             #[derive(PartialEq, Eq, Clone, Serialize)]
             #[serde(untagged)]
             enum RhsValue {
-                $($name($rhs_ty),)*
+                $($(# $attrs)* $name($rhs_ty),)*
             }
         }
 
@@ -120,10 +129,14 @@ macro_rules! declare_types {
         }
 
         declare_types! {
+            /// A typed group of a list of values.
+            ///
+            /// This is used for `field in { ... }` operation that allows
+            /// only same-typed values in a list.
             #[derive(PartialEq, Eq, Clone, Serialize)]
             #[serde(untagged)]
             enum RhsValues {
-                $($name(Vec<$multi_rhs_ty>),)*
+                $($(# $attrs)* $name(Vec<$multi_rhs_ty>),)*
             }
         }
 
@@ -148,9 +161,21 @@ impl<'a> From<&'a str> for LhsValue<'a> {
 }
 
 declare_types!(
+    /// An IPv4 or IPv6 field.
+    ///
+    /// These are represented as a single type to allow interop comparisons.
     Ip(IpAddr | IpAddr | IpRange),
+
+    /// A raw bytes or a string field.
+    ///
+    /// These are completely interchangeable in runtime and differ only in
+    /// syntax representation, so we represent them as a single type.
     Bytes(&'a [u8] | Bytes | Bytes),
+
+    /// A 32-bit integer number.
     Int(i32 | i32 | RangeInclusive<i32>),
+
+    /// A boolean.
     Bool(bool | UninhabitedBool | UninhabitedBool),
 );
 

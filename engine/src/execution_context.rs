@@ -1,12 +1,20 @@
 use scheme::{Field, Scheme};
 use types::{GetType, LhsValue};
 
+/// An execution context stores an associated [`Scheme`] and a set of runtime
+/// values to execute [compiled expressions](::CompiledExpr) against.
+///
+/// It acts as a map in terms of public API, but provides a constant-time
+/// index-based access to values for the [filters](::Filter) during execution.
 pub struct ExecutionContext<'e> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
 }
 
 impl<'e> ExecutionContext<'e> {
+    /// Creates an execution context associated with a given scheme.
+    ///
+    /// This scheme will be used for resolving any field names and indices.
     pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self {
         ExecutionContext {
             scheme,
@@ -14,6 +22,7 @@ impl<'e> ExecutionContext<'e> {
         }
     }
 
+    /// Returns an associated scheme.
     pub fn scheme(&self) -> &'e Scheme {
         self.scheme
     }
@@ -32,6 +41,11 @@ impl<'e> ExecutionContext<'e> {
         })
     }
 
+    /// Sets a runtime value for a given field name.
+    ///
+    /// This method assumes that caller takes care to pass only valid values
+    /// as defined in the scheme, and will panic if such fields don't exist
+    /// or the type of the value mismatches with the registered one.
     pub fn set_field_value<'v: 'e, V: Into<LhsValue<'v>>>(&mut self, name: &str, value: V) {
         let field = self.scheme.get_field_index(name).unwrap();
         let value = value.into();

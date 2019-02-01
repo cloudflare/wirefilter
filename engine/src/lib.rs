@@ -1,3 +1,10 @@
+//! This is the main crate for the filter engine.
+//!
+//! It contains public APIs for parsing filter syntax, compiling them into
+//! an executable IR and, finally, executing filters against provided values.
+
+#![warn(missing_docs)]
+
 extern crate cfg_if;
 extern crate failure;
 extern crate serde;

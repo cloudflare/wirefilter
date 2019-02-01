@@ -81,6 +81,9 @@ impl<'s> GetType for Field<'s> {
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
+/// An opaque filter parsing error associated with the original input.
+///
+/// For now, you can just print it in a debug or a human-readable fashion.
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'i> {
     kind: LexErrorKind,
@@ -151,6 +154,11 @@ impl<'i> Display for ParseError<'i> {
     }
 }
 
+/// The main registry for fields and their associated types.
+///
+/// This is necessary to provide typechecking for runtime values provided
+/// to the [execution context](::ExecutionContext) and also to aid parser
+/// in ambiguous contexts.
 #[derive(Default, Deserialize)]
 #[serde(transparent)]
 pub struct Scheme {
@@ -174,6 +182,10 @@ impl PartialEq for Scheme {
 impl Eq for Scheme {}
 
 impl<'s> Scheme {
+    /// Registers a field and its corresponding type.
+    ///
+    /// This method assumes that the field is not registered yet and will panic
+    /// otherwise.
     pub fn add_field(&mut self, name: String, ty: Type) {
         match self.fields.entry(name) {
             Entry::Occupied(entry) => panic!(
@@ -202,6 +214,7 @@ impl<'s> Scheme {
         self.fields.len()
     }
 
+    /// Parses a filter into an AST form.
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, ParseError<'i>> {
         complete(Filter::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
     }
