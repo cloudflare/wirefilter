@@ -15,12 +15,12 @@ use execution_context::ExecutionContext;
 /// In the future the underlying representation might change, but for now it
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
-pub struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
+pub struct Filter<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
 
-impl<'s> CompiledExpr<'s> {
+impl<'s> Filter<'s> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext<'s>) -> bool) -> Self {
-        CompiledExpr(Box::new(closure))
+        Filter(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.

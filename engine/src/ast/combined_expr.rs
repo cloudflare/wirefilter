@@ -1,4 +1,4 @@
-use super::{simple_expr::SimpleExpr, CompiledExpr, Expr};
+use super::{simple_expr::SimpleExpr, Filter, Expr};
 use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
@@ -91,7 +91,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> Filter<'s> {
         match self {
             CombinedExpr::Simple(op) => op.compile(),
             CombinedExpr::Combining { op, items } => {
@@ -103,12 +103,12 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 
                 match op {
                     CombiningOp::And => {
-                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
+                        Filter::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
                     }
                     CombiningOp::Or => {
-                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
+                        Filter::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
                     }
-                    CombiningOp::Xor => CompiledExpr::new(move |ctx| {
+                    CombiningOp::Xor => Filter::new(move |ctx| {
                         items
                             .iter()
                             .fold(false, |acc, item| acc ^ item.execute(ctx))

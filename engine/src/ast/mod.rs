@@ -3,7 +3,7 @@ mod field_expr;
 mod simple_expr;
 
 use self::combined_expr::CombinedExpr;
-use compiled_expr::CompiledExpr;
+use filter::Filter;
 use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
 use serde::Serialize;
@@ -11,7 +11,7 @@ use std::fmt::{self, Debug};
 
 trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
-    fn compile(self) -> CompiledExpr<'s>;
+    fn compile(self) -> Filter<'s>;
 }
 
 /// A parsed filter AST.
@@ -21,27 +21,27 @@ trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize
 /// is created from the same scheme.
 #[derive(PartialEq, Eq, Serialize, Clone)]
 #[serde(transparent)]
-pub struct Filter<'s> {
+pub struct FilterAst<'s> {
     #[serde(skip)]
     scheme: &'s Scheme,
 
     op: CombinedExpr<'s>,
 }
 
-impl<'s> Debug for Filter<'s> {
+impl<'s> Debug for FilterAst<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.op.fmt(f)
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for Filter<'s> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let (op, input) = CombinedExpr::lex_with(input, scheme)?;
-        Ok((Filter { scheme, op }, input))
+        Ok((FilterAst { scheme, op }, input))
     }
 }
 
-impl<'s> Filter<'s> {
+impl<'s> FilterAst<'s> {
     /// Recursively checks whether a [`Filter`] uses a given field name.
     ///
     /// This is useful to lazily initialise expensive fields only if necessary.
@@ -52,11 +52,11 @@ impl<'s> Filter<'s> {
     }
 
     /// Compiles a [`Filter`] into a compiled expression IR.
-    pub fn compile(self) -> CompiledExpr<'s> {
+    pub fn compile(self) -> Filter<'s> {
         let scheme = self.scheme;
         let op = self.op.compile();
 
-        CompiledExpr::new(move |ctx| {
+        Filter::new(move |ctx| {
             if scheme != ctx.scheme() {
                 panic!("Tried to execute filter parsed with a different scheme.");
             }

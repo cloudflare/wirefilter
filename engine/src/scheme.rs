@@ -1,4 +1,4 @@
-use ast::Filter;
+use ast::FilterAst;
 use failure::Fail;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
@@ -215,8 +215,8 @@ impl<'s> Scheme {
     }
 
     /// Parses a filter into an AST form.
-    pub fn parse<'i>(&'s self, input: &'i str) -> Result<Filter<'s>, ParseError<'i>> {
-        complete(Filter::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
+    pub fn parse<'i>(&'s self, input: &'i str) -> Result<FilterAst<'s>, ParseError<'i>> {
+        complete(FilterAst::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
     }
 }
 

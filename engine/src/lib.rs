@@ -37,12 +37,12 @@ mod rhs_types;
 mod scheme;
 mod strict_partial_ord;
 mod types;
-mod compiled_expr;
+mod filter;
 
 pub use self::{
-    ast::Filter,
+    ast::FilterAst,
     execution_context::ExecutionContext,
     scheme::{ParseError, Scheme},
     types::{GetType, LhsValue, Type},
-    compiled_expr::CompiledExpr
+    filter::Filter
 };

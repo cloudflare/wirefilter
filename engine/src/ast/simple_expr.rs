@@ -1,4 +1,4 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Filter, Expr};
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
@@ -52,7 +52,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> Filter<'s> {
         match self {
             SimpleExpr::Field(op) => op.compile(),
             SimpleExpr::Parenthesized(op) => op.compile(),
@@ -61,7 +61,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+                Filter::new(move |ctx| !arg.execute(ctx))
             }
         }
     }

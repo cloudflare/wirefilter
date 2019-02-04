@@ -21,19 +21,19 @@ use transfer_types::{
     ExternallyAllocatedByteArr, ExternallyAllocatedStr, RustAllocatedString, RustBox,
     StaticRustAllocatedString,
 };
-use wirefilter::{CompiledExpr, ExecutionContext, Filter, ParseError, Scheme, Type};
+use wirefilter::{Filter, ExecutionContext, FilterAst, ParseError, Scheme, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[repr(u8)]
 pub enum ParsingResult<'s> {
     Err(RustAllocatedString),
-    Ok(RustBox<Filter<'s>>),
+    Ok(RustBox<FilterAst<'s>>),
 }
 
-impl<'s> From<Filter<'s>> for ParsingResult<'s> {
-    fn from(filter: Filter<'s>) -> Self {
-        ParsingResult::Ok(filter.into())
+impl<'s> From<FilterAst<'s>> for ParsingResult<'s> {
+    fn from(filter_ast: FilterAst<'s>) -> Self {
+        ParsingResult::Ok(filter_ast.into())
     }
 }
 
@@ -44,7 +44,7 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
 }
 
 impl<'s> ParsingResult<'s> {
-    pub fn unwrap(self) -> RustBox<Filter<'s>> {
+    pub fn unwrap(self) -> RustBox<FilterAst<'s>> {
         match self {
             ParsingResult::Err(err) => panic!("{}", &err as &str),
             ParsingResult::Ok(filter) => filter,
@@ -72,8 +72,8 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_parsed_filter(filter: RustBox<Filter<'_>>) {
-    drop(filter);
+pub extern "C" fn wirefilter_free_parsed_filter(filter_ast: RustBox<FilterAst<'_>>) {
+    drop(filter_ast);
 }
 
 #[no_mangle]
@@ -112,27 +112,29 @@ impl<H: Hasher> Write for HasherWrite<H> {
     }
 }
 
-fn unwrap_json_result<T>(filter: &Filter<'_>, result: serde_json::Result<T>) -> T {
+fn unwrap_json_result<T>(filter_ast: &FilterAst<'_>, result: serde_json::Result<T>) -> T {
     // Filter serialisation must never fail.
-    result.unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter))
+    result.unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter_ast))
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_get_filter_hash(filter: &Filter<'_>) -> u64 {
+pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst<'_>) -> u64 {
     let mut hasher = FnvHasher::default();
     // Serialize JSON to our Write-compatible wrapper around FnvHasher,
     // effectively calculating a hash for our filter in a streaming fashion
     // that is as stable as the JSON representation itself
     // (instead of relying on #[derive(Hash)] which would be tied to impl details).
-    let result = serde_json::to_writer(HasherWrite(&mut hasher), filter);
-    unwrap_json_result(filter, result);
+    let result = serde_json::to_writer(HasherWrite(&mut hasher), filter_ast);
+    unwrap_json_result(filter_ast, result);
     hasher.finish()
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_serialize_filter_to_json(filter: &Filter<'_>) -> RustAllocatedString {
-    let result = serde_json::to_string(filter);
-    unwrap_json_result(filter, result).into()
+pub extern "C" fn wirefilter_serialize_filter_to_json(
+    filter_ast: &FilterAst<'_>,
+) -> RustAllocatedString {
+    let result = serde_json::to_string(filter_ast);
+    unwrap_json_result(filter_ast, result).into()
 }
 
 #[no_mangle]
@@ -195,31 +197,31 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_compile_filter<'s>(
-    filter: RustBox<Filter<'s>>,
-) -> RustBox<CompiledExpr<'s>> {
-    let filter = filter.into_real_box();
-    filter.compile().into()
+    filter_ast: RustBox<FilterAst<'s>>,
+) -> RustBox<Filter<'s>> {
+    let filter_ast = filter_ast.into_real_box();
+    filter_ast.compile().into()
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_match<'s>(
-    filter: &CompiledExpr<'s>,
+    filter: &Filter<'s>,
     exec_context: &ExecutionContext<'s>,
 ) -> bool {
     filter.execute(exec_context)
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<CompiledExpr<'_>>) {
+pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<Filter<'_>>) {
     drop(filter);
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_filter_uses(
-    filter: &Filter<'_>,
+    filter_ast: &FilterAst<'_>,
     field_name: ExternallyAllocatedStr<'_>,
 ) -> bool {
-    filter.uses(field_name.into_ref()).unwrap()
+    filter_ast.uses(field_name.into_ref()).unwrap()
 }
 
 #[no_mangle]

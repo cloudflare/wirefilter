@@ -1,4 +1,4 @@
-use super::{CompiledExpr, Expr};
+use super::{Filter, Expr};
 use fnv::FnvBuildHasher;
 use heap_searcher::HeapSearcher;
 use indexmap::IndexSet;
@@ -185,7 +185,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         self.field == field
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> Filter<'s> {
         macro_rules! cast {
             ($lhs:expr, $ty:ident) => {
                 match $lhs {
@@ -199,9 +199,9 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
         match self.op {
             FieldOp::IsTrue => {
-                CompiledExpr::new(move |ctx| *cast!(ctx.get_field_value_unchecked(field), Bool))
+                Filter::new(move |ctx| *cast!(ctx.get_field_value_unchecked(field), Bool))
             }
-            FieldOp::Ordering { op, rhs } => CompiledExpr::new(move |ctx| {
+            FieldOp::Ordering { op, rhs } => Filter::new(move |ctx| {
                 op.matches_opt(
                     ctx.get_field_value_unchecked(field)
                         .strict_partial_cmp(&rhs),
@@ -210,19 +210,19 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => CompiledExpr::new(move |ctx| {
+            } => Filter::new(move |ctx| {
                 cast!(ctx.get_field_value_unchecked(field), Int) & rhs != 0
             }),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                CompiledExpr::new(move |ctx| {
+                Filter::new(move |ctx| {
                     searcher
                         .search_in(cast!(ctx.get_field_value_unchecked(field), Bytes))
                         .is_some()
                 })
             }
-            FieldOp::Matches(regex) => CompiledExpr::new(move |ctx| {
+            FieldOp::Matches(regex) => Filter::new(move |ctx| {
                 regex.is_match(cast!(ctx.get_field_value_unchecked(field), Bytes))
             }),
             FieldOp::OneOf(values) => match values {
@@ -237,7 +237,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     }
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
-                    CompiledExpr::new(move |ctx| {
+                    Filter::new(move |ctx| {
                         match cast!(ctx.get_field_value_unchecked(field), Ip) {
                             IpAddr::V4(addr) => v4.contains(addr),
                             IpAddr::V6(addr) => v6.contains(addr),
@@ -246,7 +246,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
-                    CompiledExpr::new(move |ctx| {
+                    Filter::new(move |ctx| {
                         values.contains(cast!(ctx.get_field_value_unchecked(field), Int))
                     })
                 }
@@ -254,7 +254,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(|value| value.into()).collect();
 
-                    CompiledExpr::new(move |ctx| {
+                    Filter::new(move |ctx| {
                         values.contains(cast!(ctx.get_field_value_unchecked(field), Bytes) as &[u8])
                     })
                 }
