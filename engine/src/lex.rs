@@ -87,7 +87,7 @@ pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'
 const SPACE_CHARS: &[char] = &[' ', '\r', '\n'];
 
 pub fn skip_space(input: &str) -> &str {
-    input.trim_left_matches(SPACE_CHARS)
+    input.trim_start_matches(SPACE_CHARS)
 }
 
 macro_rules! lex_enum {
