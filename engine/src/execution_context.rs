@@ -2,10 +2,10 @@ use scheme::{Field, Scheme};
 use types::{GetType, LhsValue};
 
 /// An execution context stores an associated [`Scheme`] and a set of runtime
-/// values to execute [compiled expressions](::CompiledExpr) against.
+/// values to execute [`Filter`](::Filter) against.
 ///
 /// It acts as a map in terms of public API, but provides a constant-time
-/// index-based access to values for the [filters](::Filter) during execution.
+/// index-based access to values for a filter during execution.
 pub struct ExecutionContext<'e> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,

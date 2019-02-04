@@ -74,7 +74,7 @@ macro_rules! declare_types {
             /// An LHS value provided for filter execution.
             ///
             /// These are passed to the [execution context](::ExecutionContext)
-            /// and are used by [compiled expressions](::CompiledExpr)
+            /// and are used by [filters](::Filter)
             /// for execution and comparisons.
             #[derive(PartialEq, Eq, Clone, Deserialize)]
             #[serde(untagged)]

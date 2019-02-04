@@ -31,18 +31,18 @@ mod lex;
 
 mod ast;
 mod execution_context;
+mod filter;
 mod heap_searcher;
 mod range_set;
 mod rhs_types;
 mod scheme;
 mod strict_partial_ord;
 mod types;
-mod filter;
 
 pub use self::{
     ast::FilterAst,
     execution_context::ExecutionContext,
+    filter::Filter,
     scheme::{ParseError, Scheme, UnknownFieldError},
     types::{GetType, LhsValue, Type},
-    filter::Filter
 };

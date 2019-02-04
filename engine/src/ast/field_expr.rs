@@ -1,4 +1,4 @@
-use super::{Filter, Expr};
+use super::{Expr, Filter};
 use fnv::FnvBuildHasher;
 use heap_searcher::HeapSearcher;
 use indexmap::IndexSet;
@@ -210,9 +210,9 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => Filter::new(move |ctx| {
-                cast!(ctx.get_field_value_unchecked(field), Int) & rhs != 0
-            }),
+            } => {
+                Filter::new(move |ctx| cast!(ctx.get_field_value_unchecked(field), Int) & rhs != 0)
+            }
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
@@ -237,12 +237,12 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     }
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
-                    Filter::new(move |ctx| {
-                        match cast!(ctx.get_field_value_unchecked(field), Ip) {
+                    Filter::new(
+                        move |ctx| match cast!(ctx.get_field_value_unchecked(field), Ip) {
                             IpAddr::V4(addr) => v4.contains(addr),
                             IpAddr::V6(addr) => v6.contains(addr),
-                        }
-                    })
+                        },
+                    )
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();

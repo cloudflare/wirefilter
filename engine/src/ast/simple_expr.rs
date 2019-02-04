@@ -1,4 +1,4 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Filter, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr, Filter};
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;

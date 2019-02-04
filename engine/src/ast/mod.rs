@@ -17,7 +17,7 @@ trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize
 /// A parsed filter AST.
 ///
 /// It's attached to its corresponding [`Scheme`] because all parsed fields
-/// are represented as indices and are valid only when [`ExecutionContext`]
+/// are represented as indices and are valid only when [`ExecutionContext`](::ExecutionContext)
 /// is created from the same scheme.
 #[derive(PartialEq, Eq, Serialize, Clone)]
 #[serde(transparent)]
@@ -42,7 +42,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 }
 
 impl<'s> FilterAst<'s> {
-    /// Recursively checks whether a [`Filter`] uses a given field name.
+    /// Recursively checks whether a [`FilterAst`] uses a given field name.
     ///
     /// This is useful to lazily initialise expensive fields only if necessary.
     pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
@@ -51,7 +51,7 @@ impl<'s> FilterAst<'s> {
             .map(|field| self.op.uses(field))
     }
 
-    /// Compiles a [`Filter`] into a compiled expression IR.
+    /// Compiles a [`FilterAst`] into a [`Filter`].
     pub fn compile(self) -> Filter<'s> {
         let scheme = self.scheme;
         let op = self.op.compile();

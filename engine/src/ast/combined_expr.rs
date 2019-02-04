@@ -1,4 +1,4 @@
-use super::{simple_expr::SimpleExpr, Filter, Expr};
+use super::{simple_expr::SimpleExpr, Expr, Filter};
 use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;

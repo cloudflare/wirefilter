@@ -21,7 +21,7 @@ use transfer_types::{
     ExternallyAllocatedByteArr, ExternallyAllocatedStr, RustAllocatedString, RustBox,
     StaticRustAllocatedString,
 };
-use wirefilter::{Filter, ExecutionContext, FilterAst, ParseError, Scheme, Type};
+use wirefilter::{ExecutionContext, Filter, FilterAst, ParseError, Scheme, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
