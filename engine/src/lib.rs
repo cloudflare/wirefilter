@@ -42,7 +42,7 @@ mod filter;
 pub use self::{
     ast::FilterAst,
     execution_context::ExecutionContext,
-    scheme::{ParseError, Scheme},
+    scheme::{ParseError, Scheme, UnknownFieldError},
     types::{GetType, LhsValue, Type},
     filter::Filter
 };

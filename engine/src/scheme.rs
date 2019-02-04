@@ -77,6 +77,7 @@ impl<'s> GetType for Field<'s> {
     }
 }
 
+/// An error that occurs if an unregistered field name was queried from a [scheme](::Scheme).
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
