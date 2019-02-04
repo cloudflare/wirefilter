@@ -86,7 +86,7 @@ fn test() {
         assert_json!(
             expr,
             {
-                "field": "t",
+                "lhs": "t",
                 "op": "IsTrue"
             }
         );
@@ -107,7 +107,7 @@ fn test() {
         assert_json!(
             expr,
             {
-                "field": "t",
+                "lhs": "t",
                 "op": "IsTrue"
             }
         );
@@ -130,7 +130,7 @@ fn test() {
             {
                 "op": "Not",
                 "arg": {
-                    "field": "t",
+                    "lhs": "t",
                     "op": "IsTrue"
                 }
             }
@@ -156,7 +156,7 @@ fn test() {
                 "arg": {
                     "op": "Not",
                     "arg": {
-                        "field": "t",
+                        "lhs": "t",
                         "op": "IsTrue"
                     }
                 }

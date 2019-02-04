@@ -1,7 +1,7 @@
 use cidr::NetworkParseError;
 use failure::Fail;
 use rhs_types::RegexError;
-use scheme::UnknownFieldError;
+use scheme::{UnknownFieldError, UnknownFunctionError};
 use std::num::ParseIntError;
 use types::Type;
 
@@ -42,14 +42,23 @@ pub enum LexErrorKind {
     #[fail(display = "{}", _0)]
     UnknownField(#[cause] UnknownFieldError),
 
-    #[fail(display = "cannot use this operation type {:?}", field_type)]
-    UnsupportedOp { field_type: Type },
+    #[fail(display = "{}", _0)]
+    UnknownFunction(#[cause] UnknownFunctionError),
+
+    #[fail(display = "cannot use this operation type {:?}", lhs_type)]
+    UnsupportedOp { lhs_type: Type },
 
     #[fail(display = "incompatible range bounds")]
     IncompatibleRangeBounds,
 
     #[fail(display = "unrecognised input")]
     EOF,
+
+    #[fail(display = "too many arguments")]
+    IncompatibleNumberArguments { expected: usize },
+
+    #[fail(display = "invalid argument type")]
+    InvalidArgumentType { given: Type, expected: Type },
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

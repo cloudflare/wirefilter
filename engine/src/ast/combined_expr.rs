@@ -178,11 +178,11 @@ fn test() {
                 "op": "And",
                 "items": [
                     {
-                        "field": "t",
+                        "lhs": "t",
                         "op": "IsTrue"
                     },
                     {
-                        "field": "f",
+                        "lhs": "f",
                         "op": "IsTrue"
                     }
                 ]
@@ -209,11 +209,11 @@ fn test() {
                 "op": "Or",
                 "items": [
                     {
-                        "field": "t",
+                        "lhs": "t",
                         "op": "IsTrue"
                     },
                     {
-                        "field": "f",
+                        "lhs": "f",
                         "op": "IsTrue"
                     }
                 ]
@@ -254,11 +254,11 @@ fn test() {
                 "op": "Xor",
                 "items": [
                     {
-                        "field": "t",
+                        "lhs": "t",
                         "op": "IsTrue"
                     },
                     {
-                        "field": "f",
+                        "lhs": "f",
                         "op": "IsTrue"
                     }
                 ]

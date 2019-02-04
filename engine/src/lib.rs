@@ -85,6 +85,7 @@ mod scheme;
 mod ast;
 mod execution_context;
 mod filter;
+mod functions;
 mod heap_searcher;
 mod range_set;
 mod rhs_types;
@@ -95,6 +96,7 @@ pub use self::{
     ast::FilterAst,
     execution_context::{ExecutionContext, FieldValueTypeMismatchError},
     filter::{Filter, SchemeMismatchError},
+    functions::{Function, FunctionArg, FunctionImpl},
     scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
     types::{GetType, LhsValue, Type},
 };

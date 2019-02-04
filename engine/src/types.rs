@@ -160,6 +160,17 @@ impl<'a> From<&'a str> for LhsValue<'a> {
     }
 }
 
+impl<'a> From<&'a RhsValue> for LhsValue<'a> {
+    fn from(rhs_value: &'a RhsValue) -> Self {
+        match rhs_value {
+            RhsValue::Ip(ip) => LhsValue::Ip(*ip),
+            RhsValue::Bytes(bytes) => LhsValue::Bytes(bytes),
+            RhsValue::Int(integer) => LhsValue::Int(*integer),
+            RhsValue::Bool(b) => match *b {},
+        }
+    }
+}
+
 declare_types!(
     /// An IPv4 or IPv6 field.
     ///

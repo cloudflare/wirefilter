@@ -1,5 +1,6 @@
 mod combined_expr;
 mod field_expr;
+mod function_expr;
 mod simple_expr;
 
 use self::combined_expr::CombinedExpr;

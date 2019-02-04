@@ -1,6 +1,7 @@
 use ast::FilterAst;
 use failure::Fail;
 use fnv::FnvBuildHasher;
+use functions::Function;
 use indexmap::map::{Entry, IndexMap};
 use lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith};
 use serde::{Deserialize, Serialize, Serializer};
@@ -82,10 +83,30 @@ impl<'s> GetType for Field<'s> {
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
+/// An error that occurs if an unregistered function name was queried from a
+/// [`Scheme`](struct@Scheme).
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "unknown function")]
+pub struct UnknownFunctionError;
+
 /// An error that occurs when previously defined field gets redefined.
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "attempt to redefine field {}", _0)]
 pub struct FieldRedefinitionError(String);
+
+/// An error that occurs when previously defined function gets redefined.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "attempt to redefine function {}", _0)]
+pub struct FunctionRedefinitionError(String);
+
+#[derive(Debug, PartialEq, Fail)]
+pub enum ItemRedefinitionError {
+    #[fail(display = "{}", _0)]
+    Field(#[cause] FieldRedefinitionError),
+
+    #[fail(display = "{}", _0)]
+    Function(#[cause] FunctionRedefinitionError),
+}
 
 /// An opaque filter parsing error associated with the original input.
 ///
@@ -169,6 +190,8 @@ impl<'i> Display for ParseError<'i> {
 #[serde(transparent)]
 pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
+    #[serde(skip)]
+    functions: IndexMap<String, Function, FnvBuildHasher>,
 }
 
 impl PartialEq for Scheme {
@@ -189,13 +212,21 @@ impl<'s> Scheme {
     pub fn with_capacity(n: usize) -> Self {
         Scheme {
             fields: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
+            functions: Default::default(),
         }
     }
 
     /// Registers a field and its corresponding type.
-    pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), FieldRedefinitionError> {
+    pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), ItemRedefinitionError> {
+        if self.functions.contains_key(&name) {
+            return Err(ItemRedefinitionError::Function(FunctionRedefinitionError(
+                name,
+            )));
+        };
         match self.fields.entry(name) {
-            Entry::Occupied(entry) => Err(FieldRedefinitionError(entry.key().to_string())),
+            Entry::Occupied(entry) => Err(ItemRedefinitionError::Field(FieldRedefinitionError(
+                entry.key().to_string(),
+            ))),
             Entry::Vacant(entry) => {
                 entry.insert(ty);
                 Ok(())
@@ -206,7 +237,7 @@ impl<'s> Scheme {
     /// Registers a series of fields from an iterable, reporting any conflicts.
     pub fn try_from_iter(
         iter: impl IntoIterator<Item = (String, Type)>,
-    ) -> Result<Self, FieldRedefinitionError> {
+    ) -> Result<Self, ItemRedefinitionError> {
         let iter = iter.into_iter();
         let (low, _) = iter.size_hint();
         let mut scheme = Scheme::with_capacity(low);
@@ -228,6 +259,41 @@ impl<'s> Scheme {
 
     pub(crate) fn get_field_count(&self) -> usize {
         self.fields.len()
+    }
+
+    /// Registers a function
+    pub fn add_function(
+        &mut self,
+        name: String,
+        function: Function,
+    ) -> Result<(), ItemRedefinitionError> {
+        if self.fields.contains_key(&name) {
+            return Err(ItemRedefinitionError::Field(FieldRedefinitionError(name)));
+        };
+        match self.functions.entry(name) {
+            Entry::Occupied(entry) => Err(ItemRedefinitionError::Function(
+                FunctionRedefinitionError(entry.key().to_string()),
+            )),
+            Entry::Vacant(entry) => {
+                entry.insert(function);
+                Ok(())
+            }
+        }
+    }
+
+    /// Registers a list of functions
+    pub fn add_functions<I>(&mut self, functions: I) -> Result<(), ItemRedefinitionError>
+    where
+        I: IntoIterator<Item = (String, Function)>,
+    {
+        for (name, func) in functions {
+            self.add_function(name, func)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn get_function(&'s self, name: &str) -> Result<&'s Function, UnknownFunctionError> {
+        self.functions.get(name).ok_or(UnknownFunctionError)
     }
 
     /// Parses a filter into an AST form.
@@ -423,7 +489,7 @@ fn test_field_type_override() {
     let mut scheme = Scheme! { foo: Int };
 
     assert_eq!(
-        scheme.add_field("foo".into(), Type::Bytes),
-        Err(FieldRedefinitionError("foo".into()))
+        scheme.add_field("foo".into(), Type::Bytes).unwrap_err(),
+        ItemRedefinitionError::Field(FieldRedefinitionError("foo".into()))
     )
 }
