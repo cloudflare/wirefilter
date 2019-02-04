@@ -1,6 +1,7 @@
 use memmem::{Searcher, TwoWaySearcher};
 use std::mem::ManuallyDrop;
 
+/// A version of [`TwoWaySearcher`] that owns the needle data.
 pub struct HeapSearcher {
     // This is an unwrapped `Box` (pointer to a heap-allocated data).
     bytes: *mut [u8],

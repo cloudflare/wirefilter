@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, cmp::Ordering, iter::FromIterator, ops::RangeInclusive};
 
-// RangeSet provides a set-like interface that allows to search for items while
-// being constructed from and storing inclusive ranges in a compact fashion.
+/// RangeSet provides a set-like interface that allows to search for items while
+/// being constructed from and storing inclusive ranges in a compact fashion.
 pub struct RangeSet<T> {
     ranges: Vec<RangeInclusive<T>>,
 }
@@ -34,6 +34,8 @@ impl<T: Ord + Copy> FromIterator<RangeInclusive<T>> for RangeSet<T> {
 }
 
 impl<T> RangeSet<T> {
+    /// Like [`HashSet::contains`](std::collections::HashSet::contains),
+    /// checks whether any compatible type is in the set.
     pub fn contains<Q>(&self, value: &Q) -> bool
     where
         T: Borrow<Q>,
