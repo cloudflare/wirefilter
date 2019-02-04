@@ -3,8 +3,8 @@ use serde::Serialize;
 use std::{borrow::Borrow, cmp::Ordering};
 use strict_partial_ord::StrictPartialOrd;
 
-/// Uninhabited / empty type for `bool` with traits we need for RHS values.
-/// See https://doc.rust-lang.org/nomicon/exotic-sizes.html#empty-types.
+/// [Uninhabited / empty type](https://doc.rust-lang.org/nomicon/exotic-sizes.html#empty-types)
+/// for `bool` with traits we need for RHS values.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 pub enum UninhabitedBool {}
 
