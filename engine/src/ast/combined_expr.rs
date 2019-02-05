@@ -1,4 +1,4 @@
-use super::{simple_expr::SimpleExpr, Expr, Filter};
+use super::{simple_expr::SimpleExpr, CompiledExpr, Expr};
 use lex::{skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
@@ -91,7 +91,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
         }
     }
 
-    fn compile(self) -> Filter<'s> {
+    fn compile(self) -> CompiledExpr<'s> {
         match self {
             CombinedExpr::Simple(op) => op.compile(),
             CombinedExpr::Combining { op, items } => {
@@ -103,12 +103,12 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 
                 match op {
                     CombiningOp::And => {
-                        Filter::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
+                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
                     }
                     CombiningOp::Or => {
-                        Filter::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
+                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
                     }
-                    CombiningOp::Xor => Filter::new(move |ctx| {
+                    CombiningOp::Xor => CompiledExpr::new(move |ctx| {
                         items
                             .iter()
                             .fold(false, |acc, item| acc ^ item.execute(ctx))
@@ -147,8 +147,8 @@ fn test() {
 
     assert_ok!(CombinedExpr::lex_with("t", scheme), t_expr());
 
-    ctx.set_field_value("t", true);
-    ctx.set_field_value("f", false);
+    ctx.set_field_value("t", true).unwrap();
+    ctx.set_field_value("f", false).unwrap();
 
     {
         let expr = assert_ok!(

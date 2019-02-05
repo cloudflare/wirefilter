@@ -46,7 +46,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 "parsing",
                 Benchmark::new(name, move |b: &mut Bencher| {
                     let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty);
+                    scheme.add_field(field.to_owned(), ty).unwrap();
 
                     b.iter(|| scheme.parse(filter).unwrap());
                 }),
@@ -56,7 +56,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 "compilation",
                 Benchmark::new(name, move |b: &mut Bencher| {
                     let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty);
+                    scheme.add_field(field.to_owned(), ty).unwrap();
 
                     let filter = scheme.parse(filter).unwrap();
 
@@ -70,14 +70,14 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                     name,
                     move |b: &mut Bencher, value: &T| {
                         let mut scheme = Scheme::default();
-                        scheme.add_field(field.to_owned(), ty);
+                        scheme.add_field(field.to_owned(), ty).unwrap();
 
                         let filter = scheme.parse(filter).unwrap();
 
                         let filter = filter.compile();
 
                         let mut exec_ctx = ExecutionContext::new(&scheme);
-                        exec_ctx.set_field_value(field, *value);
+                        exec_ctx.set_field_value(field, *value).unwrap();
 
                         b.iter(|| filter.execute(&exec_ctx));
                     },

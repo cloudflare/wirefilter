@@ -1,5 +1,20 @@
+use failure::Fail;
 use scheme::{Field, Scheme};
-use types::{GetType, LhsValue};
+use types::{GetType, LhsValue, Type};
+
+/// An error that occurs if the type of the value for the field doesn't
+/// match the type specified in the [`Scheme`].
+#[derive(Debug, PartialEq, Fail)]
+#[fail(
+    display = "The field should have {:?} type, but {:?} was provided.",
+    field_type, value_type
+)]
+pub struct FieldValueTypeMismatchError {
+    /// The type of the field specified in the [`Scheme`].
+    pub field_type: Type,
+    /// Provided value type.
+    pub value_type: Type,
+}
 
 /// An execution context stores an associated [`Scheme`] and a set of runtime
 /// values to execute [`Filter`](::Filter) against.
@@ -33,6 +48,9 @@ impl<'e> ExecutionContext<'e> {
         // invariant holds in the future at least in the debug mode.
         debug_assert!(self.scheme() == field.scheme());
 
+        // For now we panic in this, but later we are going to align behaviour
+        // with wireshark: resolve all subexpressions that don't have RHS value
+        // to `false`.
         self.values[field.index()].as_ref().unwrap_or_else(|| {
             panic!(
                 "Field {} was registered but not given a value",
@@ -42,24 +60,42 @@ impl<'e> ExecutionContext<'e> {
     }
 
     /// Sets a runtime value for a given field name.
-    ///
-    /// This method assumes that caller takes care to pass only valid values
-    /// as defined in the scheme, and will panic if such fields don't exist
-    /// or the type of the value mismatches with the registered one.
-    pub fn set_field_value<'v: 'e, V: Into<LhsValue<'v>>>(&mut self, name: &str, value: V) {
+    pub fn set_field_value<'v: 'e, V: Into<LhsValue<'v>>>(
+        &mut self,
+        name: &str,
+        value: V,
+    ) -> Result<(), FieldValueTypeMismatchError> {
         let field = self.scheme.get_field_index(name).unwrap();
         let value = value.into();
 
-        let field_ty = field.get_type();
-        let value_ty = value.get_type();
+        let field_type = field.get_type();
+        let value_type = value.get_type();
 
-        if field_ty != value_ty {
-            panic!(
-                "Field {} was previously registered with type {:?} but tried to set to {:?}",
-                name, field_ty, value_ty
-            );
+        if field_type == value_type {
+            self.values[field.index()] = Some(value);
+            Ok(())
+        } else {
+            Err(FieldValueTypeMismatchError {
+                field_type,
+                value_type,
+            })
         }
-
-        self.values[field.index()] = Some(value);
     }
+}
+
+#[test]
+fn test_field_value_type_mismatch() {
+    let mut scheme = Scheme::default();
+
+    scheme.add_field("foo".into(), Type::Int).unwrap();
+
+    let mut ctx = ExecutionContext::new(&scheme);
+
+    assert_eq!(
+        ctx.set_field_value("foo", LhsValue::Bool(false)),
+        Err(FieldValueTypeMismatchError {
+            field_type: Type::Int,
+            value_type: Type::Bool
+        })
+    );
 }

@@ -41,8 +41,8 @@ mod types;
 
 pub use self::{
     ast::FilterAst,
-    execution_context::ExecutionContext,
-    filter::Filter,
-    scheme::{ParseError, Scheme, UnknownFieldError},
+    execution_context::{ExecutionContext, FieldValueTypeMismatchError},
+    filter::{Filter, SchemeMismatchError},
+    scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
     types::{GetType, LhsValue, Type},
 };

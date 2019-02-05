@@ -82,6 +82,11 @@ impl<'s> GetType for Field<'s> {
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
+/// An error that occurs when previously defined field gets redefined.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "Attempt to redefine field {}", _0)]
+pub struct FieldRedefinitionError(String);
+
 /// An opaque filter parsing error associated with the original input.
 ///
 /// For now, you can just print it in a debug or a human-readable fashion.
@@ -184,19 +189,12 @@ impl Eq for Scheme {}
 
 impl<'s> Scheme {
     /// Registers a field and its corresponding type.
-    ///
-    /// This method assumes that the field is not registered yet and will panic
-    /// otherwise.
-    pub fn add_field(&mut self, name: String, ty: Type) {
+    pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), FieldRedefinitionError> {
         match self.fields.entry(name) {
-            Entry::Occupied(entry) => panic!(
-                "Tried to register field {} with type {:?} but it's already registered with type {:?}",
-                entry.key(),
-                ty,
-                entry.get()
-            ),
+            Entry::Occupied(entry) => Err(FieldRedefinitionError(entry.key().to_string())),
             Entry::Vacant(entry) => {
                 entry.insert(ty);
+                Ok(())
             }
         }
     }
@@ -381,4 +379,15 @@ fn test_field() {
         LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );
+}
+
+#[test]
+fn test_field_type_override() {
+    let mut scheme = Scheme::default();
+
+    assert!(scheme.add_field("foo".into(), Type::Int).is_ok());
+    assert_eq!(
+        scheme.add_field("foo".into(), Type::Bytes),
+        Err(FieldRedefinitionError("foo".into()))
+    )
 }

@@ -68,7 +68,7 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
     name: ExternallyAllocatedStr<'_>,
     ty: Type,
 ) {
-    scheme.add_field(name.into_ref().to_owned(), ty)
+    scheme.add_field(name.into_ref().to_owned(), ty).unwrap();
 }
 
 #[no_mangle]
@@ -155,7 +155,9 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'_>,
     value: i32,
 ) {
-    exec_context.set_field_value(name.into_ref(), value);
+    exec_context
+        .set_field_value(name.into_ref(), value)
+        .unwrap();
 }
 
 #[no_mangle]
@@ -165,7 +167,9 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &[u8] = value.into_ref();
-    exec_context.set_field_value(name.into_ref(), slice);
+    exec_context
+        .set_field_value(name.into_ref(), slice)
+        .unwrap();
 }
 
 #[no_mangle]
@@ -174,7 +178,9 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 16],
 ) {
-    exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
+    exec_context
+        .set_field_value(name.into_ref(), IpAddr::from(*value))
+        .unwrap();
 }
 
 #[no_mangle]
@@ -183,7 +189,9 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 4],
 ) {
-    exec_context.set_field_value(name.into_ref(), IpAddr::from(*value));
+    exec_context
+        .set_field_value(name.into_ref(), IpAddr::from(*value))
+        .unwrap();
 }
 
 #[no_mangle]
@@ -192,7 +200,9 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: bool,
 ) {
-    exec_context.set_field_value(name.into_ref(), value);
+    exec_context
+        .set_field_value(name.into_ref(), value)
+        .unwrap();
 }
 
 #[no_mangle]
@@ -208,7 +218,7 @@ pub extern "C" fn wirefilter_match<'s>(
     filter: &Filter<'s>,
     exec_context: &ExecutionContext<'s>,
 ) -> bool {
-    filter.execute(exec_context)
+    filter.execute(exec_context).unwrap()
 }
 
 #[no_mangle]

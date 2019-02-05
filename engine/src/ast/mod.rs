@@ -3,7 +3,7 @@ mod field_expr;
 mod simple_expr;
 
 use self::combined_expr::CombinedExpr;
-use filter::Filter;
+use filter::{CompiledExpr, Filter};
 use lex::{LexResult, LexWith};
 use scheme::{Field, Scheme, UnknownFieldError};
 use serde::Serialize;
@@ -11,7 +11,7 @@ use std::fmt::{self, Debug};
 
 trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
-    fn compile(self) -> Filter<'s>;
+    fn compile(self) -> CompiledExpr<'s>;
 }
 
 /// A parsed filter AST.
@@ -53,15 +53,6 @@ impl<'s> FilterAst<'s> {
 
     /// Compiles a [`FilterAst`] into a [`Filter`].
     pub fn compile(self) -> Filter<'s> {
-        let scheme = self.scheme;
-        let op = self.op.compile();
-
-        Filter::new(move |ctx| {
-            if scheme != ctx.scheme() {
-                panic!("Tried to execute filter parsed with a different scheme.");
-            }
-
-            op.execute(ctx)
-        })
+        Filter::new(self.op.compile(), self.scheme)
     }
 }

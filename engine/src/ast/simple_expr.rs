@@ -1,4 +1,4 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr, Filter};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
 use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
@@ -52,7 +52,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn compile(self) -> Filter<'s> {
+    fn compile(self) -> CompiledExpr<'s> {
         match self {
             SimpleExpr::Field(op) => op.compile(),
             SimpleExpr::Parenthesized(op) => op.compile(),
@@ -61,7 +61,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                Filter::new(move |ctx| !arg.execute(ctx))
+                CompiledExpr::new(move |ctx| !arg.execute(ctx))
             }
         }
     }
@@ -79,7 +79,7 @@ fn test() {
         .collect();
 
     let ctx = &mut ExecutionContext::new(scheme);
-    ctx.set_field_value("t", true);
+    ctx.set_field_value("t", true).unwrap();
 
     let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
