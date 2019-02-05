@@ -68,7 +68,8 @@ macro_rules! declare_types {
         }
 
         declare_types! {
-            #[derive(Clone)]
+            #[derive(PartialEq, Eq, Clone, Deserialize)]
+            #[serde(untagged)]
             enum LhsValue<'a> {
                 $($name($lhs_ty),)*
             }
@@ -152,3 +153,39 @@ declare_types!(
     Int(i32 | i32 | RangeInclusive<i32>),
     Bool(bool | UninhabitedBool | UninhabitedBool),
 );
+
+#[test]
+fn test_lhs_value_deserialize() {
+    use std::str::FromStr;
+
+    let ipv4: LhsValue<'_> = serde_json::from_str("\"127.0.0.1\"").unwrap();
+    assert_eq!(ipv4, LhsValue::Ip(IpAddr::from_str("127.0.0.1").unwrap()));
+
+    let ipv6: LhsValue<'_> = serde_json::from_str("\"::1\"").unwrap();
+    assert_eq!(ipv6, LhsValue::Ip(IpAddr::from_str("::1").unwrap()));
+
+    let bytes: LhsValue<'_> = serde_json::from_str("\"a JSON string with unicode ❤\"").unwrap();
+    assert_eq!(
+        bytes,
+        LhsValue::Bytes(b"a JSON string with unicode \xE2\x9D\xA4")
+    );
+
+    /* Does not work because unicode escapes can't be borrowed directly from string
+     * but require another temporary string in which they are decoded and that string
+     * needs to be owned by someone, while LhsValue can hold only borrowed bytes
+     */
+    assert!(
+        serde_json::from_str::<LhsValue<'_>>("\"a JSON string with escaped-unicode \\u2764\"")
+            .is_err(),
+        "LhsValue can only handle borrowed bytes"
+    );
+
+    let bytes: LhsValue<'_> = serde_json::from_str("\"1337\"").unwrap();
+    assert_eq!(bytes, LhsValue::Bytes(b"1337"));
+
+    let integer: LhsValue<'_> = serde_json::from_str("1337").unwrap();
+    assert_eq!(integer, LhsValue::Int(1337));
+
+    let b: LhsValue<'_> = serde_json::from_str("false").unwrap();
+    assert_eq!(b, LhsValue::Bool(false));
+}
