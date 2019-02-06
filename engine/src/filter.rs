@@ -5,9 +5,14 @@ use scheme::Scheme;
 /// An error that occurs if filter and provided [`ExecutionContext`] have
 /// different [schemes](`Scheme`).
 #[derive(Debug, PartialEq, Fail)]
-#[fail(display = "Tried to execute filter parsed with a different scheme.")]
+#[fail(display = "execution context doesn't match the scheme with which filter was parsed")]
 pub struct SchemeMismatchError;
 
+// Each AST expression node gets compiled into CompiledExpr. Therefore, Filter essentialy
+// is a public API facade for a tree of CompiledExprs. When filter gets executed it calls
+// `execute` method on its root expression which then under the hood propagates field values
+// to its leafs by recursively calling their `execute` methods and aggregating results into
+// a single boolean value as recursion unwinds.
 pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
 
 impl<'s> CompiledExpr<'s> {

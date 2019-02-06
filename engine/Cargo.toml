@@ -7,8 +7,6 @@ publish = false
 
 [lib]
 name = "wirefilter"
-# Avoid duplicate compilation error messages as we don't have doctests anyway
-doctest = false
 bench = false
 
 [[bench]]

@@ -77,14 +77,14 @@ impl<'s> GetType for Field<'s> {
     }
 }
 
-/// An error that occurs if an unregistered field name was queried from a [`Scheme`]).
+/// An error that occurs if an unregistered field name was queried from a [`Scheme`].
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
 
 /// An error that occurs when previously defined field gets redefined.
 #[derive(Debug, PartialEq, Fail)]
-#[fail(display = "Attempt to redefine field {}", _0)]
+#[fail(display = "attempt to redefine field {}", _0)]
 pub struct FieldRedefinitionError(String);
 
 /// An opaque filter parsing error associated with the original input.
@@ -179,9 +179,9 @@ impl FromIterator<(String, Type)> for Scheme {
     }
 }
 
-impl<'k, I> From<I> for Scheme
+impl<I> From<I> for Scheme
 where
-    I: IntoIterator<Item = &'k (&'k str, Type)>,
+    I: IntoIterator<Item = &'static (&'static str, Type)>,
 {
     fn from(items: I) -> Self {
         items.into_iter().map(|&(k, t)| (k.to_owned(), t)).collect()

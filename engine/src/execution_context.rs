@@ -6,7 +6,7 @@ use types::{GetType, LhsValue, Type};
 /// match the type specified in the [`Scheme`].
 #[derive(Debug, PartialEq, Fail)]
 #[fail(
-    display = "The field should have {:?} type, but {:?} was provided.",
+    display = "the field should have {:?} type, but {:?} was provided",
     field_type, value_type
 )]
 pub struct FieldValueTypeMismatchError {
