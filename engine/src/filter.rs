@@ -65,16 +65,10 @@ mod tests {
     use scheme::Scheme;
     use types::Type;
 
-    macro_rules! create_scheme {
-        ($fields:expr) => {
-            Scheme::from($fields.iter().map(|&(k, t)| (k.to_owned(), t)).collect())
-        };
-    }
-
     #[test]
     fn test_scheme_mismatch() {
-        let scheme1 = create_scheme!(&[("foo", Type::Int)]);
-        let scheme2 = create_scheme!(&[("foo", Type::Int), ("bar", Type::Int)]);
+        let scheme1: Scheme = (&[("foo", Type::Int)]).into();
+        let scheme2: Scheme = (&[("foo", Type::Int), ("bar", Type::Int)]).into();
         let filter = scheme1.parse("foo == 42").unwrap().compile();
         let ctx = ExecutionContext::new(&scheme2);
 

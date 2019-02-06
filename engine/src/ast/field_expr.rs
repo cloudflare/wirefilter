@@ -260,15 +260,13 @@ mod tests {
     use std::net::IpAddr;
 
     lazy_static! {
-        static ref SCHEME: Scheme = [
+        static ref SCHEME: Scheme = (&[
             ("http.host", Type::Bytes),
             ("ip.addr", Type::Ip),
             ("ssl", Type::Bool),
             ("tcp.port", Type::Int),
-        ]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+        ])
+            .into();
     }
 
     fn field(name: &'static str) -> Field<'static> {

@@ -126,10 +126,7 @@ fn test() {
     use lex::complete;
     use types::Type;
 
-    let scheme = &[("t", Type::Bool), ("f", Type::Bool)]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+    let scheme = &(&[("t", Type::Bool), ("f", Type::Bool)]).into();
 
     let ctx = &mut ExecutionContext::new(scheme);
 

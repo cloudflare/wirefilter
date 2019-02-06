@@ -179,6 +179,15 @@ impl FromIterator<(String, Type)> for Scheme {
     }
 }
 
+impl<'k, I> From<I> for Scheme
+where
+    I: IntoIterator<Item = &'k (&'k str, Type)>,
+{
+    fn from(items: I) -> Self {
+        items.into_iter().map(|&(k, t)| (k.to_owned(), t)).collect()
+    }
+}
+
 impl PartialEq for Scheme {
     fn eq(&self, other: &Self) -> bool {
         ptr::eq(self, other)
@@ -223,10 +232,7 @@ impl<'s> Scheme {
 fn test_parse_error() {
     use indoc::indoc;
 
-    let scheme: &Scheme = &[("num", Type::Int)]
-        .iter()
-        .map(|&(k, t)| (k.to_owned(), t))
-        .collect();
+    let scheme: &Scheme = &(&[("num", Type::Int)]).into();
 
     {
         let err = scheme.parse("xyz").unwrap_err();
