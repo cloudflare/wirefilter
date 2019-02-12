@@ -1,5 +1,6 @@
 use failure::Fail;
 use scheme::{Field, Scheme};
+use std::borrow::Cow;
 use types::{GetType, LhsValue, Type};
 
 /// An error that occurs if the type of the value for the field doesn't
@@ -42,7 +43,7 @@ impl<'e> ExecutionContext<'e> {
         self.scheme
     }
 
-    pub(crate) fn get_field_value_unchecked(&self, field: Field<'e>) -> &LhsValue<'e> {
+    pub(crate) fn get_field_value_unchecked(&'e self, field: Field<'e>) -> LhsValue<'_> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.
@@ -51,12 +52,16 @@ impl<'e> ExecutionContext<'e> {
         // For now we panic in this, but later we are going to align behaviour
         // with wireshark: resolve all subexpressions that don't have RHS value
         // to `false`.
-        self.values[field.index()].as_ref().unwrap_or_else(|| {
+        let lhs_value = self.values[field.index()].as_ref().unwrap_or_else(|| {
             panic!(
                 "Field {} was registered but not given a value",
                 field.name()
             );
-        })
+        });
+        match lhs_value {
+            LhsValue::Bytes(ref b) => LhsValue::Bytes(Cow::Borrowed(b)),
+            _ => lhs_value.clone(),
+        }
     }
 
     /// Sets a runtime value for a given field name.

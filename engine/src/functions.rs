@@ -1,7 +1,7 @@
 use std::fmt;
-use types::{LhsValue, RhsValue, Type};
+use types::{LhsValue, Type};
 
-type FunctionPtr = fn(&[LhsValue<'_>]) -> RhsValue;
+type FunctionPtr = for<'a> fn(&[LhsValue<'a>]) -> LhsValue<'a>;
 
 /// Wrapper around a function pointer providing the runtime implemetation.
 pub struct FunctionImpl(FunctionPtr);
@@ -13,7 +13,7 @@ impl FunctionImpl {
     }
 
     /// Calls the wrapped function pointer.
-    pub fn execute(&self, args: &[LhsValue<'_>]) -> RhsValue {
+    pub fn execute<'a>(&self, args: &[LhsValue<'a>]) -> LhsValue<'a> {
         (self.0)(args)
     }
 }

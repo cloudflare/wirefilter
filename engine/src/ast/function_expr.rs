@@ -79,25 +79,15 @@ impl<'s> FunctionCallExpr<'s> {
         }
     }
 
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> RhsValue {
-        let mut results: Vec<Option<RhsValue>> = Vec::with_capacity(self.args.len());
-        for arg in &self.args {
-            results.push(match arg {
-                FunctionCallArgExpr::FunctionCall(call) => Some(call.execute(ctx)),
-                _ => None,
-            })
-        }
+    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
         let mut values: Vec<LhsValue<'_>> = Vec::with_capacity(self.args.len());
-        for (i, arg) in self.args.iter().enumerate() {
+        for arg in &self.args {
             values.push(match arg {
-                FunctionCallArgExpr::Field(field) => ctx.get_field_value_unchecked(*field).clone(),
-                FunctionCallArgExpr::FunctionCall(_) => {
-                    results.get(i).as_ref().unwrap().as_ref().unwrap().into()
-                }
+                FunctionCallArgExpr::Field(field) => ctx.get_field_value_unchecked(*field),
+                FunctionCallArgExpr::FunctionCall(call) => call.execute(ctx),
                 FunctionCallArgExpr::Literal(literal) => literal.into(),
             })
         }
-
         self.function.implementation.execute(&values[..])
     }
 
@@ -191,10 +181,10 @@ fn test_function() {
     use scheme::UnknownFieldError;
     use types::Type;
 
-    fn echo_function(args: &[LhsValue<'_>]) -> RhsValue {
+    fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
         let input = &args[0];
         match input {
-            LhsValue::Bytes(bytes) => RhsValue::Bytes(bytes.to_vec().into()),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_vec().into()),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }

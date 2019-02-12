@@ -228,13 +228,10 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         let lhs = self.lhs;
 
         macro_rules! get_lhs_value {
-            ($ctx:expr, $value:ident) => {
+            ($ctx:expr) => {
                 match lhs {
-                    LhsFieldExpr::FunctionCallExpr(ref call) => {
-                        $value = call.execute($ctx);
-                        (&$value).into()
-                    }
-                    LhsFieldExpr::Field(f) => $ctx.get_field_value_unchecked(f).clone(),
+                    LhsFieldExpr::FunctionCallExpr(ref call) => call.execute($ctx),
+                    LhsFieldExpr::Field(f) => $ctx.get_field_value_unchecked(f),
                 }
             };
         }
@@ -249,34 +246,25 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => CompiledExpr::new(move |ctx| {
-                let tmp;
-                cast_value!(get_lhs_value!(ctx, tmp), Bool)
-            }),
+            FieldOp::IsTrue => CompiledExpr::new(move |ctx| cast_value!(get_lhs_value!(ctx), Bool)),
             FieldOp::Ordering { op, rhs } => CompiledExpr::new(move |ctx| {
-                let tmp;
-                op.matches_opt(get_lhs_value!(ctx, tmp).strict_partial_cmp(&rhs))
+                op.matches_opt(get_lhs_value!(ctx).strict_partial_cmp(&rhs))
             }),
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => CompiledExpr::new(move |ctx| {
-                let tmp;
-                cast_value!(get_lhs_value!(ctx, tmp), Int) & rhs != 0
-            }),
+            } => CompiledExpr::new(move |ctx| cast_value!(get_lhs_value!(ctx), Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
                 CompiledExpr::new(move |ctx| {
-                    let tmp;
                     searcher
-                        .search_in(cast_value!(get_lhs_value!(ctx, tmp), Bytes))
+                        .search_in(&cast_value!(get_lhs_value!(ctx), Bytes))
                         .is_some()
                 })
             }
             FieldOp::Matches(regex) => CompiledExpr::new(move |ctx| {
-                let tmp;
-                regex.is_match(cast_value!(get_lhs_value!(ctx, tmp), Bytes))
+                regex.is_match(&cast_value!(get_lhs_value!(ctx), Bytes))
             }),
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
@@ -290,19 +278,15 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     }
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
-                    CompiledExpr::new(move |ctx| {
-                        let tmp;
-                        match cast_value!(get_lhs_value!(ctx, tmp), Ip) {
-                            IpAddr::V4(addr) => v4.contains(&addr),
-                            IpAddr::V6(addr) => v6.contains(&addr),
-                        }
+                    CompiledExpr::new(move |ctx| match cast_value!(get_lhs_value!(ctx), Ip) {
+                        IpAddr::V4(addr) => v4.contains(&addr),
+                        IpAddr::V6(addr) => v6.contains(&addr),
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
                     CompiledExpr::new(move |ctx| {
-                        let tmp;
-                        values.contains(&cast_value!(get_lhs_value!(ctx, tmp), Int))
+                        values.contains(&cast_value!(get_lhs_value!(ctx), Int))
                     })
                 }
                 RhsValues::Bytes(values) => {
@@ -310,8 +294,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                         values.into_iter().map(|value| value.into()).collect();
 
                     CompiledExpr::new(move |ctx| {
-                        let tmp;
-                        values.contains(cast_value!(get_lhs_value!(ctx, tmp), Bytes) as &[u8])
+                        values.contains(&cast_value!(get_lhs_value!(ctx), Bytes) as &[u8])
                     })
                 }
                 RhsValues::Bool(_) => unreachable!(),
@@ -331,18 +314,18 @@ mod tests {
     use rhs_types::IpRange;
     use std::net::IpAddr;
 
-    fn echo_function(args: &[LhsValue<'_>]) -> RhsValue {
+    fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
         let input = &args[0];
         match input {
-            LhsValue::Bytes(bytes) => RhsValue::Bytes(bytes.to_vec().into()),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_vec().into()),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }
 
-    fn lowercase_function(args: &[LhsValue<'_>]) -> RhsValue {
+    fn lowercase_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
         let input = &args[0];
         match input {
-            LhsValue::Bytes(bytes) => RhsValue::Bytes(bytes.to_ascii_lowercase().into()),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }

@@ -2,6 +2,7 @@ use lex::{expect, skip_space, Lex, LexResult, LexWith};
 use rhs_types::{Bytes, IpRange, UninhabitedBool};
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
@@ -50,7 +51,7 @@ macro_rules! declare_types {
         }
     };
 
-    ($($(# $attrs:tt)* $name:ident ( $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
+    ($($(# $attrs:tt)* $name:ident ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
         #[repr(u8)]
@@ -79,7 +80,7 @@ macro_rules! declare_types {
             #[derive(PartialEq, Eq, Clone, Deserialize)]
             #[serde(untagged)]
             enum LhsValue<'a> {
-                $($(# $attrs)* $name($lhs_ty),)*
+                $($(# $attrs)* $(# $lhs_attrs)* $name($lhs_ty),)*
             }
         }
 
@@ -153,6 +154,13 @@ macro_rules! declare_types {
     };
 }
 
+// special case for simply passing bytes
+impl<'a> From<&'a [u8]> for LhsValue<'a> {
+    fn from(b: &'a [u8]) -> Self {
+        LhsValue::Bytes(Cow::Borrowed(b))
+    }
+}
+
 // special case for simply passing strings
 impl<'a> From<&'a str> for LhsValue<'a> {
     fn from(s: &'a str) -> Self {
@@ -164,7 +172,7 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
     fn from(rhs_value: &'a RhsValue) -> Self {
         match rhs_value {
             RhsValue::Ip(ip) => LhsValue::Ip(*ip),
-            RhsValue::Bytes(bytes) => LhsValue::Bytes(bytes),
+            RhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             RhsValue::Int(integer) => LhsValue::Int(*integer),
             RhsValue::Bool(b) => match *b {},
         }
@@ -181,7 +189,7 @@ declare_types!(
     ///
     /// These are completely interchangeable in runtime and differ only in
     /// syntax representation, so we represent them as a single type.
-    Bytes(&'a [u8] | Bytes | Bytes),
+    Bytes(#[serde(borrow)] Cow<'a, [u8]> | Bytes | Bytes),
 
     /// A 32-bit integer number.
     Int(i32 | i32 | RangeInclusive<i32>),
@@ -203,21 +211,19 @@ fn test_lhs_value_deserialize() {
     let bytes: LhsValue<'_> = serde_json::from_str("\"a JSON string with unicode ❤\"").unwrap();
     assert_eq!(
         bytes,
-        LhsValue::Bytes(b"a JSON string with unicode \xE2\x9D\xA4")
+        LhsValue::from(&b"a JSON string with unicode \xE2\x9D\xA4"[..])
     );
 
-    // Does not work because unicode escapes can't be borrowed directly from
-    // string but require another temporary string in which they are decoded
-    // and that string needs to be owned by someone, while LhsValue can hold
-    // only borrowed bytes.
-    assert!(
+    let bytes =
         serde_json::from_str::<LhsValue<'_>>("\"a JSON string with escaped-unicode \\u2764\"")
-            .is_err(),
-        "LhsValue can only handle borrowed bytes"
+            .unwrap();
+    assert_eq!(
+        bytes,
+        LhsValue::from(&b"a JSON string with escaped-unicode \xE2\x9D\xA4"[..])
     );
 
     let bytes: LhsValue<'_> = serde_json::from_str("\"1337\"").unwrap();
-    assert_eq!(bytes, LhsValue::Bytes(b"1337"));
+    assert_eq!(bytes, LhsValue::from(&b"1337"[..]));
 
     let integer: LhsValue<'_> = serde_json::from_str("1337").unwrap();
     assert_eq!(integer, LhsValue::Int(1337));
