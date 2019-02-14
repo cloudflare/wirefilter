@@ -122,13 +122,13 @@ fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-enum LhsFieldExpr<'s> {
+pub(crate) enum LhsFieldExpr<'s> {
     Field(Field<'s>),
     FunctionCallExpr(FunctionCallExpr<'s>),
 }
 
 impl<'s> LhsFieldExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    pub fn uses(&self, field: Field<'s>) -> bool {
         match self {
             LhsFieldExpr::Field(f) => *f == field,
             LhsFieldExpr::FunctionCallExpr(call) => call.uses(field),
@@ -798,7 +798,9 @@ mod tests {
                 lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                     name: String::from("echo"),
                     function: SCHEME.get_function("echo").unwrap(),
-                    args: vec![FunctionCallArgExpr::Field(field("http.host"))],
+                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                        field("http.host")
+                    ))],
                 }),
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
@@ -814,7 +816,7 @@ mod tests {
                     "name": "echo",
                     "args": [
                         {
-                            "kind": "Field",
+                            "kind": "LhsFieldExpr",
                             "value": "http.host"
                         }
                     ]
@@ -842,7 +844,9 @@ mod tests {
                 lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                     name: String::from("lowercase"),
                     function: SCHEME.get_function("lowercase").unwrap(),
-                    args: vec![FunctionCallArgExpr::Field(field("http.host"))],
+                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                        field("http.host")
+                    ))],
                 }),
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
@@ -858,7 +862,7 @@ mod tests {
                     "name": "lowercase",
                     "args": [
                         {
-                            "kind": "Field",
+                            "kind": "LhsFieldExpr",
                             "value": "http.host"
                         }
                     ]

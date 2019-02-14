@@ -1,3 +1,4 @@
+use super::field_expr::LhsFieldExpr;
 use execution_context::ExecutionContext;
 use functions::{Function, FunctionArg};
 use lex::{expect, skip_space, take, take_while, LexErrorKind, LexResult, LexWith};
@@ -8,9 +9,8 @@ use types::{GetType, LhsValue, RhsValue};
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub(crate) enum FunctionCallArgExpr<'s> {
-    Field(Field<'s>),
+    LhsFieldExpr(LhsFieldExpr<'s>),
     Literal(RhsValue),
-    FunctionCall(FunctionCallExpr<'s>),
 }
 
 struct SchemeFunctionArg<'s> {
@@ -20,38 +20,21 @@ struct SchemeFunctionArg<'s> {
 
 impl<'i, 's> LexWith<'i, SchemeFunctionArg<'s>> for FunctionCallArgExpr<'s> {
     fn lex_with(input: &'i str, scheme_funcarg: SchemeFunctionArg<'s>) -> LexResult<'i, Self> {
-        macro_rules! invalid_argument_error {
-            ($given:expr, $expected:expr) => {
-                Err((
-                    LexErrorKind::InvalidArgumentType {
-                        given: $given,
-                        expected: $expected,
-                    },
-                    input,
-                ))
-            };
-        }
+        let initial_input = input;
 
         match *scheme_funcarg.funcarg {
             FunctionArg::Field(ty) => {
-                match FunctionCallExpr::lex_with(input, scheme_funcarg.scheme) {
-                    // Try to parse first a nested function call
-                    Ok((nested_call, input)) => {
-                        if nested_call.function.return_type != ty {
-                            invalid_argument_error!(nested_call.function.return_type, ty)
-                        } else {
-                            Ok((FunctionCallArgExpr::FunctionCall(nested_call), input))
-                        }
-                    }
-                    // Fallback to field
-                    Err(_) => {
-                        let (field, input) = Field::lex_with(input, scheme_funcarg.scheme)?;
-                        if field.get_type() != ty {
-                            invalid_argument_error!(field.get_type(), ty)
-                        } else {
-                            Ok((FunctionCallArgExpr::Field(field), input))
-                        }
-                    }
+                let (lhs, input) = LhsFieldExpr::lex_with(input, scheme_funcarg.scheme)?;
+                if lhs.get_type() != ty {
+                    Err((
+                        LexErrorKind::InvalidArgumentType {
+                            given: lhs.get_type(),
+                            expected: ty,
+                        },
+                        initial_input,
+                    ))
+                } else {
+                    Ok((FunctionCallArgExpr::LhsFieldExpr(lhs), input))
                 }
             }
             FunctionArg::Literal(ty) => {
@@ -83,8 +66,10 @@ impl<'s> FunctionCallExpr<'s> {
         let mut values: Vec<LhsValue<'_>> = Vec::with_capacity(self.args.len());
         for arg in &self.args {
             values.push(match arg {
-                FunctionCallArgExpr::Field(field) => ctx.get_field_value_unchecked(*field),
-                FunctionCallArgExpr::FunctionCall(call) => call.execute(ctx),
+                FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
+                    LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
+                    LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
+                },
                 FunctionCallArgExpr::Literal(literal) => literal.into(),
             })
         }
@@ -93,8 +78,7 @@ impl<'s> FunctionCallExpr<'s> {
 
     pub fn uses(&self, field: Field<'s>) -> bool {
         self.args.iter().any(|arg| match arg {
-            FunctionCallArgExpr::Field(f) => *f == field,
-            FunctionCallArgExpr::FunctionCall(call) => call.uses(field),
+            FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
         })
     }
@@ -216,9 +200,9 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: vec![FunctionCallArgExpr::Field(
+            args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
                 SCHEME.get_field_index("http.host").unwrap()
-            )],
+            ))],
         },
         ";"
     );
@@ -229,7 +213,7 @@ fn test_function() {
             "name": "echo",
             "args": [
                 {
-                    "kind": "Field",
+                    "kind": "LhsFieldExpr",
                     "value": "http.host"
                 }
             ]
@@ -253,13 +237,15 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: [FunctionCallArgExpr::FunctionCall(FunctionCallExpr {
-                name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
-                args: vec![FunctionCallArgExpr::Field(
-                    SCHEME.get_field_index("http.host").unwrap()
-                )],
-            })]
+            args: [FunctionCallArgExpr::LhsFieldExpr(
+                LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                    name: String::from("echo"),
+                    function: SCHEME.get_function("echo").unwrap(),
+                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                        SCHEME.get_field_index("http.host").unwrap()
+                    ))],
+                })
+            )]
             .to_vec(),
         },
         ";"
@@ -271,12 +257,12 @@ fn test_function() {
             "name": "echo",
             "args": [
                 {
-                    "kind": "FunctionCall",
+                    "kind": "LhsFieldExpr",
                     "value": {
                         "name": "echo",
                         "args": [
                             {
-                                "kind": "Field",
+                                "kind": "LhsFieldExpr",
                                 "value": "http.host"
                             }
                         ]
