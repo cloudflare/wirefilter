@@ -90,7 +90,17 @@ pub fn skip_space(input: &str) -> &str {
     input.trim_start_matches(SPACE_CHARS)
 }
 
+/// This macro generates enum declaration + lexer implementation.
+///
+/// It works by recursively processing variants one by one, while passing
+/// around intermediate state (partial declaration and lexer bodies).
 macro_rules! lex_enum {
+    // Branch for handling `SomeType => VariantName`.
+    //
+    // Creates a newtype variant `VariantName(SomeType)`.
+    //
+    // On the parser side, tries to parse `SomeType` and wraps into the variant
+    // on success.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
         $ty:ty => $item:ident,
         $($rest:tt)*
@@ -106,6 +116,13 @@ macro_rules! lex_enum {
         } { $($rest)* });
     };
 
+    // Branch for handling `"some_string" | "other_string" => VariantName`.
+    // (also supports optional constant value via `... => VariantName = 42`)
+    //
+    // Creates a unit variant `VariantName`.
+    //
+    // On the parser side, tries to parse either of the given string values,
+    // and returns the variant if any of them succeeded.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
         $($s:tt)|+ => $item:ident $(= $value:expr)*,
         $($rest:tt)*
@@ -121,6 +138,10 @@ macro_rules! lex_enum {
         } { $($rest)* });
     };
 
+    // Internal finish point for declaration + lexer generation.
+    //
+    // This is invoked when no more variants are left to process.
+    // At this point declaration and lexer body are considered complete.
     (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
         #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
         $($preamble)*
@@ -137,6 +158,7 @@ macro_rules! lex_enum {
         }
     };
 
+    // The public entry point to the macro.
     ($(# $attrs:tt)* $name:ident $items:tt) => {
         lex_enum!(@decl {
             $(# $attrs)*
