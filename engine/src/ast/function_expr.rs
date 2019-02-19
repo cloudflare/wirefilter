@@ -1,6 +1,6 @@
 use super::field_expr::LhsFieldExpr;
 use execution_context::ExecutionContext;
-use functions::{Function, FunctionArg};
+use functions::{Function, FunctionArg, FunctionArgKind};
 use lex::{expect, skip_space, take, take_while, LexErrorKind, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
@@ -22,14 +22,14 @@ impl<'i, 's> LexWith<'i, SchemeFunctionArg<'s>> for FunctionCallArgExpr<'s> {
     fn lex_with(input: &'i str, scheme_funcarg: SchemeFunctionArg<'s>) -> LexResult<'i, Self> {
         let initial_input = input;
 
-        match *scheme_funcarg.funcarg {
-            FunctionArg::Field(ty) => {
+        match scheme_funcarg.funcarg.arg_kind {
+            FunctionArgKind::Field => {
                 let (lhs, input) = LhsFieldExpr::lex_with(input, scheme_funcarg.scheme)?;
-                if lhs.get_type() != ty {
+                if lhs.get_type() != scheme_funcarg.funcarg.val_type {
                     Err((
                         LexErrorKind::InvalidArgumentType {
                             given: lhs.get_type(),
-                            expected: ty,
+                            expected: scheme_funcarg.funcarg.val_type,
                         },
                         initial_input,
                     ))
@@ -37,8 +37,9 @@ impl<'i, 's> LexWith<'i, SchemeFunctionArg<'s>> for FunctionCallArgExpr<'s> {
                     Ok((FunctionCallArgExpr::LhsFieldExpr(lhs), input))
                 }
             }
-            FunctionArg::Literal(ty) => {
-                let (rhs_value, input) = RhsValue::lex_with(input, ty)?;
+            FunctionArgKind::Literal => {
+                let (rhs_value, input) =
+                    RhsValue::lex_with(input, scheme_funcarg.funcarg.val_type)?;
                 Ok((FunctionCallArgExpr::Literal(rhs_value), input))
             }
         }
@@ -185,7 +186,10 @@ fn test_function() {
                 .add_function(
                     "echo".into(),
                     Function {
-                        args: vec![FunctionArg::Field(Type::Bytes)],
+                        args: vec![FunctionArg {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
                     },

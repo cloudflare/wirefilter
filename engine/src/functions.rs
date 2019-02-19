@@ -34,13 +34,22 @@ impl PartialEq for FunctionImpl {
 
 impl Eq for FunctionImpl {}
 
+/// Defines what kind of argument a function expects.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum FunctionArgKind {
+    /// Allow only literal as argument.
+    Literal,
+    /// Allow only field as argument.
+    Field,
+}
+
 /// Defines a function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum FunctionArg {
-    /// Allow only literal as argument.
-    Literal(Type),
-    /// Allow only field as argument.
-    Field(Type),
+pub struct FunctionArg {
+    /// How the argument can be specified when calling a function.
+    pub arg_kind: FunctionArgKind,
+    /// The type of its associated value.
+    pub val_type: Type,
 }
 
 /// Defines a function.

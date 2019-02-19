@@ -309,7 +309,7 @@ mod tests {
     use ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
     use cidr::{Cidr, IpCidr};
     use execution_context::ExecutionContext;
-    use functions::{Function, FunctionArg, FunctionImpl};
+    use functions::{Function, FunctionArg, FunctionArgKind, FunctionImpl};
     use lazy_static::lazy_static;
     use rhs_types::IpRange;
     use std::net::IpAddr;
@@ -342,7 +342,10 @@ mod tests {
                 .add_function(
                     "echo".into(),
                     Function {
-                        args: vec![FunctionArg::Field(Type::Bytes)],
+                        args: vec![FunctionArg {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
                     },
@@ -352,7 +355,10 @@ mod tests {
                 .add_function(
                     "lowercase".into(),
                     Function {
-                        args: vec![FunctionArg::Field(Type::Bytes)],
+                        args: vec![FunctionArg {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(lowercase_function),
                     },
