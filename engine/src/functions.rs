@@ -1,5 +1,5 @@
 use std::fmt;
-use types::{LhsValue, Type};
+use types::{LhsValue, RhsValue, Type};
 
 type FunctionPtr = for<'a> fn(&[LhsValue<'a>]) -> LhsValue<'a>;
 
@@ -43,7 +43,7 @@ pub enum FunctionArgKind {
     Field,
 }
 
-/// Defines a function argument.
+/// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionArg {
     /// How the argument can be specified when calling a function.
@@ -52,11 +52,22 @@ pub struct FunctionArg {
     pub val_type: Type,
 }
 
+/// Defines an optional function argument.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionOptArg {
+    /// How the argument can be specified when calling a function.
+    pub arg_kind: FunctionArgKind,
+    /// The default value if the argument is missing.
+    pub value: RhsValue,
+}
+
 /// Defines a function.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Function {
-    /// List of function arguments.
+    /// List of mandatory arguments.
     pub args: Vec<FunctionArg>,
+    /// List of optional arguments that can be specified after manatory ones.
+    pub opts: Vec<FunctionOptArg>,
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.

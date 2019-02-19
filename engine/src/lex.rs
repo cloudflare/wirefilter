@@ -54,11 +54,18 @@ pub enum LexErrorKind {
     #[fail(display = "unrecognised input")]
     EOF,
 
-    #[fail(display = "too many arguments")]
-    IncompatibleNumberArguments { expected: usize },
+    #[fail(display = "incompatible number of arguments")]
+    IncompatibleNumberArguments {
+        expected_min: usize,
+        expected_max: usize,
+    },
 
     #[fail(display = "invalid argument type")]
-    InvalidArgumentType { given: Type, expected: Type },
+    InvalidArgumentType {
+        index: usize,
+        given: Type,
+        expected: Type,
+    },
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

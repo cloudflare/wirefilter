@@ -13,13 +13,14 @@ pub(crate) enum FunctionCallArgExpr<'s> {
     Literal(RhsValue),
 }
 
-struct SchemeFunctionArg<'s> {
+struct SchemeFunctionArg<'s, 'a> {
     scheme: &'s Scheme,
-    funcarg: &'s FunctionArg,
+    funcarg: &'a FunctionArg,
+    index: usize,
 }
 
-impl<'i, 's> LexWith<'i, SchemeFunctionArg<'s>> for FunctionCallArgExpr<'s> {
-    fn lex_with(input: &'i str, scheme_funcarg: SchemeFunctionArg<'s>) -> LexResult<'i, Self> {
+impl<'i, 's, 'a> LexWith<'i, SchemeFunctionArg<'s, 'a>> for FunctionCallArgExpr<'s> {
+    fn lex_with(input: &'i str, scheme_funcarg: SchemeFunctionArg<'s, 'a>) -> LexResult<'i, Self> {
         let initial_input = input;
 
         match scheme_funcarg.funcarg.arg_kind {
@@ -28,6 +29,7 @@ impl<'i, 's> LexWith<'i, SchemeFunctionArg<'s>> for FunctionCallArgExpr<'s> {
                 if lhs.get_type() != scheme_funcarg.funcarg.val_type {
                     Err((
                         LexErrorKind::InvalidArgumentType {
+                            index: scheme_funcarg.index,
                             given: lhs.get_type(),
                             expected: scheme_funcarg.funcarg.val_type,
                         },
@@ -105,55 +107,101 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
-        let lookahead = take(input, 1)?.0.chars().next().unwrap();
+        let args_len = function.args.len();
 
-        if lookahead != ')' {
-            let mut i = 0;
+        let opts_len = function.opts.len();
 
-            loop {
-                let arg_def = match function.args.get(i) {
-                    Some(def) => def,
-                    None => {
-                        return Err((
-                            LexErrorKind::IncompatibleNumberArguments {
-                                expected: function.args.len(),
-                            },
-                            input,
-                        ));
-                    }
-                };
-
-                let arg = FunctionCallArgExpr::lex_with(
-                    input,
-                    SchemeFunctionArg {
-                        scheme,
-                        funcarg: arg_def,
-                    },
-                )?;
-
-                function_call.args.push(arg.0);
-
-                input = skip_space(arg.1);
-
-                match expect(input, ",") {
-                    Ok(rest) => input = skip_space(rest),
-                    Err(_) => break,
-                };
-
-                i += 1;
+        for i in 0..args_len {
+            if i == 0 {
+                if take(input, 1)?.0 == ")" {
+                    break;
+                }
+            } else {
+                input = expect(input, ",").map_err(|(_, input)| {
+                    (
+                        LexErrorKind::IncompatibleNumberArguments {
+                            expected_min: args_len,
+                            expected_max: args_len + opts_len,
+                        },
+                        input,
+                    )
+                })?;
             }
 
-            input = expect(input, ")")?;
+            input = skip_space(input);
+
+            let arg = FunctionCallArgExpr::lex_with(
+                input,
+                SchemeFunctionArg {
+                    scheme,
+                    funcarg: &function.args[i],
+                    index: i,
+                },
+            )?;
+
+            function_call.args.push(arg.0);
+
+            input = skip_space(arg.1);
         }
 
         if function.args.len() != function_call.args.len() {
             return Err((
                 LexErrorKind::IncompatibleNumberArguments {
-                    expected: function.args.len(),
+                    expected_min: args_len,
+                    expected_max: args_len + opts_len,
                 },
                 input,
             ));
         }
+
+        for i in 0..opts_len {
+            let opt_arg = &function.opts[i];
+
+            input = match take(input, 1)? {
+                (",", mut rest) => {
+                    let arg_def = FunctionArg {
+                        arg_kind: opt_arg.arg_kind.clone(),
+                        val_type: opt_arg.value.get_type(),
+                    };
+
+                    rest = skip_space(rest);
+
+                    let arg = FunctionCallArgExpr::lex_with(
+                        rest,
+                        SchemeFunctionArg {
+                            scheme,
+                            funcarg: &arg_def,
+                            index: args_len + i,
+                        },
+                    )?;
+
+                    function_call.args.push(arg.0);
+
+                    rest = skip_space(arg.1);
+
+                    rest
+                }
+                _ => {
+                    function_call
+                        .args
+                        .push(FunctionCallArgExpr::Literal(opt_arg.value.clone()));
+
+                    input
+                }
+            }
+        }
+
+        if args_len + opts_len != function_call.args.len() {
+            return Err((
+                LexErrorKind::IncompatibleNumberArguments {
+                    expected_min: args_len,
+                    expected_max: args_len + opts_len,
+                },
+                input,
+            ));
+        }
+
+        input = expect(input, ")")?;
 
         Ok((function_call, input))
     }
@@ -161,17 +209,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
 #[test]
 fn test_function() {
-    use functions::FunctionImpl;
+    use functions::{FunctionImpl, FunctionOptArg};
     use lazy_static::lazy_static;
     use scheme::UnknownFieldError;
     use types::Type;
 
-    fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
-        let input = &args[0];
-        match input {
-            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_vec().into()),
-            _ => panic!("Invalid type: expected Bytes, got {:?}", input),
-        }
+    fn echo_function<'a>(_: &[LhsValue<'a>]) -> LhsValue<'a> {
+        false.into()
     }
 
     lazy_static! {
@@ -190,6 +234,10 @@ fn test_function() {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
+                        opts: vec![FunctionOptArg {
+                            arg_kind: FunctionArgKind::Literal,
+                            value: RhsValue::Int(10),
+                        }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
                     },
@@ -204,9 +252,12 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                SCHEME.get_field_index("http.host").unwrap()
-            ))],
+            args: vec![
+                FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                    SCHEME.get_field_index("http.host").unwrap()
+                )),
+                FunctionCallArgExpr::Literal(RhsValue::Int(10)),
+            ],
         },
         ";"
     );
@@ -219,6 +270,10 @@ fn test_function() {
                 {
                     "kind": "LhsFieldExpr",
                     "value": "http.host"
+                },
+                {
+                    "kind": "Literal",
+                    "value": 10
                 }
             ]
         }
@@ -226,13 +281,16 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments { expected: 1 },
+        LexErrorKind::IncompatibleNumberArguments {
+            expected_min: 1,
+            expected_max: 2
+        },
         ");"
     );
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.host , http.host );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments { expected: 1 },
+        LexErrorKind::ExpectedName("digit"),
         "http.host );"
     );
 
@@ -241,15 +299,21 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: [FunctionCallArgExpr::LhsFieldExpr(
-                LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("echo"),
-                    function: SCHEME.get_function("echo").unwrap(),
-                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                        SCHEME.get_field_index("http.host").unwrap()
-                    ))],
-                })
-            )]
+            args: [
+                FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::FunctionCallExpr(
+                    FunctionCallExpr {
+                        name: String::from("echo"),
+                        function: SCHEME.get_function("echo").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                                SCHEME.get_field_index("http.host").unwrap()
+                            )),
+                            FunctionCallArgExpr::Literal(RhsValue::Int(10)),
+                        ],
+                    }
+                )),
+                FunctionCallArgExpr::Literal(RhsValue::Int(10)),
+            ]
             .to_vec(),
         },
         ";"
@@ -268,9 +332,17 @@ fn test_function() {
                             {
                                 "kind": "LhsFieldExpr",
                                 "value": "http.host"
+                            },
+                            {
+                                "kind": "Literal",
+                                "value": 10
                             }
                         ]
                     }
+                },
+                {
+                    "kind": "Literal",
+                    "value": 10
                 }
             ]
         }
@@ -291,9 +363,16 @@ fn test_function() {
     assert_err!(
         FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
         LexErrorKind::InvalidArgumentType {
+            index: 0,
             given: Type::Ip,
             expected: Type::Bytes
         },
         "ip.addr );"
+    );
+
+    assert_err!(
+        FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
+        LexErrorKind::ExpectedLiteral(")"),
+        ", \"test\" );"
     );
 }
