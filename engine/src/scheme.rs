@@ -76,7 +76,8 @@ impl<'s> GetType for Field<'s> {
     }
 }
 
-/// An error that occurs if an unregistered field name was queried from a [`Scheme`].
+/// An error that occurs if an unregistered field name was queried from a
+/// [`Scheme`](struct@Scheme).
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "unknown field")]
 pub struct UnknownFieldError;
@@ -235,6 +236,8 @@ impl<'s> Scheme {
     }
 }
 
+/// A convenience macro for constructing a [`Scheme`](struct@Scheme) with static
+/// contents.
 #[macro_export]
 macro_rules! Scheme {
     (@stringify $($tt:tt)*) => {

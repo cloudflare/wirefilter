@@ -3,21 +3,21 @@ use scheme::{Field, Scheme};
 use types::{GetType, LhsValue, Type};
 
 /// An error that occurs if the type of the value for the field doesn't
-/// match the type specified in the [`Scheme`].
+/// match the type specified in the [`Scheme`](struct@Scheme).
 #[derive(Debug, PartialEq, Fail)]
 #[fail(
     display = "the field should have {:?} type, but {:?} was provided",
     field_type, value_type
 )]
 pub struct FieldValueTypeMismatchError {
-    /// The type of the field specified in the [`Scheme`].
+    /// The type of the field specified in the [`Scheme`](struct@Scheme).
     pub field_type: Type,
     /// Provided value type.
     pub value_type: Type,
 }
 
-/// An execution context stores an associated [`Scheme`] and a set of runtime
-/// values to execute [`Filter`](::Filter) against.
+/// An execution context stores an associated [`Scheme`](struct@Scheme) and a
+/// set of runtime values to execute [`Filter`](::Filter) against.
 ///
 /// It acts as a map in terms of public API, but provides a constant-time
 /// index-based access to values for a filter during execution.

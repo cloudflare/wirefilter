@@ -195,10 +195,10 @@ fn test_lhs_value_deserialize() {
         LhsValue::Bytes(b"a JSON string with unicode \xE2\x9D\xA4")
     );
 
-    /* Does not work because unicode escapes can't be borrowed directly from string
-     * but require another temporary string in which they are decoded and that string
-     * needs to be owned by someone, while LhsValue can hold only borrowed bytes
-     */
+    // Does not work because unicode escapes can't be borrowed directly from
+    // string but require another temporary string in which they are decoded
+    // and that string needs to be owned by someone, while LhsValue can hold
+    // only borrowed bytes.
     assert!(
         serde_json::from_str::<LhsValue<'_>>("\"a JSON string with escaped-unicode \\u2764\"")
             .is_err(),
