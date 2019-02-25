@@ -8,7 +8,6 @@ use std::{
     cmp::{max, min},
     error::Error,
     fmt::{self, Debug, Display, Formatter},
-    iter::FromIterator,
     ptr,
 };
 use types::{GetType, Type};
@@ -171,23 +170,6 @@ pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
 }
 
-impl FromIterator<(String, Type)> for Scheme {
-    fn from_iter<I: IntoIterator<Item = (String, Type)>>(iter: I) -> Self {
-        Scheme {
-            fields: IndexMap::from_iter(iter),
-        }
-    }
-}
-
-impl<I> From<I> for Scheme
-where
-    I: IntoIterator<Item = &'static (&'static str, Type)>,
-{
-    fn from(items: I) -> Self {
-        items.into_iter().map(|&(k, t)| (k.to_owned(), t)).collect()
-    }
-}
-
 impl PartialEq for Scheme {
     fn eq(&self, other: &Self) -> bool {
         ptr::eq(self, other)
@@ -218,6 +200,17 @@ impl<'s> Scheme {
                 Ok(())
             }
         }
+    }
+
+    /// Registers a series of fields from an iterable, reporting any conflicts.
+    pub fn try_from_iter(iter: impl IntoIterator<Item = (String, Type)>) -> Result<Self, FieldRedefinitionError> {
+        let iter = iter.into_iter();
+        let (low, _) = iter.size_hint();
+        let mut scheme = Scheme::with_capacity(low);
+        for (name, value) in iter {
+            scheme.add_field(name, value)?;
+        }
+        Ok(scheme)
     }
 
     pub(crate) fn get_field_index(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
