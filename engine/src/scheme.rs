@@ -197,6 +197,18 @@ impl PartialEq for Scheme {
 impl Eq for Scheme {}
 
 impl<'s> Scheme {
+    /// Creates a new scheme.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Creates a new scheme with capacity for `n` fields.
+    pub fn with_capacity(n: usize) -> Self {
+        Scheme {
+            fields: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
+        }
+    }
+
     /// Registers a field and its corresponding type.
     pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), FieldRedefinitionError> {
         match self.fields.entry(name) {
