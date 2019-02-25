@@ -1,8 +1,10 @@
 use cfg_if::cfg_if;
 use lex::{expect, span, Lex, LexErrorKind, LexResult};
 use serde::{Serialize, Serializer};
-use std::fmt::{self, Debug, Formatter};
-use std::str::FromStr;
+use std::{
+    fmt::{self, Debug, Formatter},
+    str::FromStr,
+};
 
 cfg_if! {
     if #[cfg(feature = "regex")] {

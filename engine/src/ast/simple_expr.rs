@@ -71,9 +71,8 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 fn test() {
     use execution_context::ExecutionContext;
     use lex::complete;
-    use types::Type;
 
-    let scheme = &(&[("t", Type::Bool)]).into();
+    let scheme = &Scheme! { t: Bool };
 
     let ctx = &mut ExecutionContext::new(scheme);
     ctx.set_field_value("t", true).unwrap();

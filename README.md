@@ -11,11 +11,11 @@ an executable IR and, finally, executing filters against provided values.
 use wirefilter::{Scheme, ExecutionContext, Type};
 
 // Create a map of possible filter fields
-let scheme: Scheme = (&[
-    ("http.method", Type::Bytes),
-    ("http.ua", Type::Bytes),
-    ("port", Type::Int),
-]).into();
+let scheme = Scheme! {
+    http.method: Bytes,
+    http.ua: Bytes,
+    port: Int,
+};
 
 // Create a filter
 let ast = scheme.parse(

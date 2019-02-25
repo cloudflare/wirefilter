@@ -203,7 +203,9 @@ impl<'s> Scheme {
     }
 
     /// Registers a series of fields from an iterable, reporting any conflicts.
-    pub fn try_from_iter(iter: impl IntoIterator<Item = (String, Type)>) -> Result<Self, FieldRedefinitionError> {
+    pub fn try_from_iter(
+        iter: impl IntoIterator<Item = (String, Type)>,
+    ) -> Result<Self, FieldRedefinitionError> {
         let iter = iter.into_iter();
         let (low, _) = iter.size_hint();
         let mut scheme = Scheme::with_capacity(low);
@@ -233,11 +235,30 @@ impl<'s> Scheme {
     }
 }
 
+#[macro_export]
+macro_rules! Scheme {
+    (@stringify $($tt:tt)*) => {
+        concat!($(stringify!($tt)),*).to_owned()
+    };
+
+    ($($($field:ident).+: $ty:ident),* $(,)*) => {
+        $crate::Scheme::try_from_iter(
+            [$(
+                ($crate::Scheme!(@stringify $($field).+), $crate::Type::$ty),
+            )*]
+            .iter()
+            .map(|(k, v)| (k.to_owned(), *v)),
+        )
+        // Treat duplciations in static schemes as a developer's mistake.
+        .unwrap_or_else(|err| panic!("{}", err))
+    };
+}
+
 #[test]
 fn test_parse_error() {
     use indoc::indoc;
 
-    let scheme: &Scheme = &(&[("num", Type::Int)]).into();
+    let scheme = &Scheme! { num: Int };
 
     {
         let err = scheme.parse("xyz").unwrap_err();
@@ -346,14 +367,11 @@ fn test_parse_error() {
 
 #[test]
 fn test_field() {
-    let scheme = &[
-        ("x", Type::Bytes),
-        ("x.y.z0", Type::Int),
-        ("is_TCP", Type::Bool),
-    ]
-    .iter()
-    .map(|&(k, t)| (k.to_owned(), t))
-    .collect();
+    let scheme = &Scheme! {
+        x: Bytes,
+        x.y.z0: Int,
+        is_TCP: Bool,
+    };
 
     assert_ok!(
         Field::lex_with("x;", scheme),
@@ -393,10 +411,15 @@ fn test_field() {
 }
 
 #[test]
-fn test_field_type_override() {
-    let mut scheme = Scheme::default();
+#[should_panic(expected = "attempt to redefine field foo")]
+fn test_static_field_type_override() {
+    Scheme! { foo: Int, foo: Int };
+}
 
-    assert!(scheme.add_field("foo".into(), Type::Int).is_ok());
+#[test]
+fn test_field_type_override() {
+    let mut scheme = Scheme! { foo: Int };
+
     assert_eq!(
         scheme.add_field("foo".into(), Type::Bytes),
         Err(FieldRedefinitionError("foo".into()))

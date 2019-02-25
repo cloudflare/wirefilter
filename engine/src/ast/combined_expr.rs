@@ -124,9 +124,11 @@ fn test() {
     use super::field_expr::FieldExpr;
     use execution_context::ExecutionContext;
     use lex::complete;
-    use types::Type;
 
-    let scheme = &(&[("t", Type::Bool), ("f", Type::Bool)]).into();
+    let scheme = &Scheme! {
+        t: Bool,
+        f: Bool,
+    };
 
     let ctx = &mut ExecutionContext::new(scheme);
 

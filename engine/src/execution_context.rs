@@ -85,9 +85,7 @@ impl<'e> ExecutionContext<'e> {
 
 #[test]
 fn test_field_value_type_mismatch() {
-    let mut scheme = Scheme::default();
-
-    scheme.add_field("foo".into(), Type::Int).unwrap();
+    let scheme = Scheme! { foo: Int };
 
     let mut ctx = ExecutionContext::new(&scheme);
 

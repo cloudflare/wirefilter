@@ -67,13 +67,11 @@ impl<'s> Filter<'s> {
 mod tests {
     use super::SchemeMismatchError;
     use execution_context::ExecutionContext;
-    use scheme::Scheme;
-    use types::Type;
 
     #[test]
     fn test_scheme_mismatch() {
-        let scheme1: Scheme = (&[("foo", Type::Int)]).into();
-        let scheme2: Scheme = (&[("foo", Type::Int), ("bar", Type::Int)]).into();
+        let scheme1 = Scheme! { foo: Int };
+        let scheme2 = Scheme! { foo: Int, bar: Int };
         let filter = scheme1.parse("foo == 42").unwrap().compile();
         let ctx = ExecutionContext::new(&scheme2);
 

@@ -10,11 +10,11 @@
 //!
 //! # fn main() -> Result<(), failure::Error> {
 //! // Create a map of possible filter fields
-//! let scheme: Scheme = (&[
-//!     ("http.method", Type::Bytes),
-//!     ("http.ua", Type::Bytes),
-//!     ("port", Type::Int),
-//! ]).into();
+//! let scheme = Scheme! {
+//!     http.method: Bytes,
+//!     http.ua: Bytes,
+//!     port: Int,
+//! };
 //!
 //! // Create a filter
 //! let ast = scheme.parse(
@@ -74,13 +74,15 @@ extern crate regex;
 #[macro_use]
 mod lex;
 
+#[macro_use]
+mod scheme;
+
 mod ast;
 mod execution_context;
 mod filter;
 mod heap_searcher;
 mod range_set;
 mod rhs_types;
-mod scheme;
 mod strict_partial_ord;
 mod types;
 
