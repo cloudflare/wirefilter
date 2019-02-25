@@ -5,7 +5,7 @@ This is an execution engine for Wireshark-style filters.
 It contains public APIs for parsing filter syntax, compiling them into
 an executable IR and, finally, executing filters against provided values.
 
-# Example
+## Example
 
 ```rust
 use wirefilter::{Scheme, ExecutionContext, Type};
@@ -46,3 +46,7 @@ ctx.set_field_value("port", 8080)?;
 
 println!("Filter matches: {:?}", filter.execute(&ctx)?); // false
 ```
+
+## Licensing
+ 
+Licensed under the MIT license. See the [LICENSE](LICENSE) file for details.
