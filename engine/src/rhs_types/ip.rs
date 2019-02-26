@@ -1,6 +1,6 @@
 use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr, NetworkParseError};
 use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::{
     cmp::Ordering,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -43,7 +43,19 @@ pub enum ExplicitIpRange {
 #[serde(untagged)]
 pub enum IpRange {
     Explicit(ExplicitIpRange),
+
+    #[serde(serialize_with = "serialize_ip_or_cidr")]
     Cidr(IpCidr),
+}
+
+// TODO: remove this helper when the upstream change is released.
+// See https://github.com/stbuehler/rust-cidr/pull/3.
+fn serialize_ip_or_cidr<S: Serializer>(cidr: &IpCidr, ser: S) -> Result<S::Ok, S::Error> {
+    if cidr.first_address() == cidr.last_address() {
+        cidr.first_address().serialize(ser)
+    } else {
+        cidr.serialize(ser)
+    }
 }
 
 impl<'i> Lex<'i> for IpRange {
