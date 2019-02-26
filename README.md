@@ -1,5 +1,9 @@
 # Wirefilter
 
+[![Build status](https://img.shields.io/travis/com/cloudflare/wirefilter.svg)](https://travis-ci.com/cloudflare/wirefilter)
+[![Crates.io](https://img.shields.io/crates/v/wirefilter-engine.svg)](https://crates.io/crates/wirefilter-engine)
+[![License](https://img.shields.io/github/license/cloudflare/wirefilter.svg)](LICENSE)
+
 This is an execution engine for Wireshark-style filters.
 
 It contains public APIs for parsing filter syntax, compiling them into
