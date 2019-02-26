@@ -1,0 +1,16 @@
+language: rust
+cache: cargo
+matrix:
+  include:
+    - name: "Tests and lints"
+      before_install:
+        - rustup component add clippy rustfmt
+      script:
+        - cargo test
+        - cargo clippy --all-targets -- -D warnings
+        - cargo fmt -- --check
+    - name: "WASM build"
+      before_install:
+        - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
+      script:
+        - wasm-pack build wasm --debug --target browser --scope cloudflare
