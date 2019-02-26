@@ -2,7 +2,7 @@
 authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-engine"
 version = "0.5.1"
-description = "Rust library for the Segments Filter engine"
+description = "An execution engine for Wireshark-like filters"
 publish = false
 
 [lib]

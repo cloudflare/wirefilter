@@ -2,7 +2,7 @@
 authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-wasm"
 version = "0.5.1"
-description = "WASM bindings for the Segments Filter engine"
+description = "WebAssembly bindings for the Wirefilter engine"
 publish = false
 
 [lib]

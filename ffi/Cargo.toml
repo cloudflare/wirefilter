@@ -2,7 +2,7 @@
 authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-ffi"
 version = "0.5.1"
-description = "Shared library for the Segments Filter engine FFI"
+description = "FFI bindings for the Wirefilter engine"
 publish = false
 
 [package.metadata.deb]
