@@ -240,17 +240,16 @@ impl<'s> Scheme {
 /// contents.
 #[macro_export]
 macro_rules! Scheme {
-    (@stringify $($tt:tt)*) => {
-        concat!($(stringify!($tt)),*).to_owned()
-    };
-
-    ($($($field:ident).+: $ty:ident),* $(,)*) => {
+    ($($ns:ident $(. $field:ident)*: $ty:ident),* $(,)*) => {
         $crate::Scheme::try_from_iter(
             [$(
-                ($crate::Scheme!(@stringify $($field).+), $crate::Type::$ty),
-            )*]
+                (
+                    concat!(stringify!($ns) $(, ".", stringify!($field))*),
+                    $crate::Type::$ty
+                )
+            ),*]
             .iter()
-            .map(|(k, v)| (k.to_owned(), *v)),
+            .map(|&(k, v)| (k.to_owned(), v)),
         )
         // Treat duplciations in static schemes as a developer's mistake.
         .unwrap_or_else(|err| panic!("{}", err))
