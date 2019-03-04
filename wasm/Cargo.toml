@@ -1,7 +1,7 @@
 [package]
 authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 name = "wirefilter-wasm"
-version = "0.6.0"
+version = "0.6.1"
 description = "WebAssembly bindings for the Wirefilter engine"
 publish = false
 
