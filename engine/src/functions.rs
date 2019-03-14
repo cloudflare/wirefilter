@@ -4,6 +4,7 @@ use types::{LhsValue, RhsValue, Type};
 type FunctionPtr = for<'a> fn(&[LhsValue<'a>]) -> LhsValue<'a>;
 
 /// Wrapper around a function pointer providing the runtime implemetation.
+#[derive(Clone)]
 pub struct FunctionImpl(FunctionPtr);
 
 impl FunctionImpl {
@@ -62,7 +63,7 @@ pub struct FunctionOptArg {
 }
 
 /// Defines a function.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Function {
     /// List of mandatory arguments.
     pub args: Vec<FunctionArg>,
