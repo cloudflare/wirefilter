@@ -67,7 +67,7 @@ pub struct Function {
     /// List of mandatory arguments.
     pub args: Vec<FunctionArg>,
     /// List of optional arguments that can be specified after manatory ones.
-    pub opts: Vec<FunctionOptArg>,
+    pub opt_args: Vec<FunctionOptArg>,
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.

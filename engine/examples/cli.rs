@@ -27,7 +27,7 @@ fn main() {
                     arg_kind: FunctionArgKind::Field,
                     val_type: Type::Bytes,
                 }],
-                opts: vec![],
+                opt_args: vec![],
                 return_type: Type::Bytes,
                 implementation: FunctionImpl::new(panic_function),
             },

@@ -109,7 +109,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let args_len = function.args.len();
 
-        let opts_len = function.opts.len();
+        let opts_len = function.opt_args.len();
 
         for i in 0..args_len {
             if i == 0 {
@@ -155,7 +155,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         }
 
         for i in 0..opts_len {
-            let opt_arg = &function.opts[i];
+            let opt_arg = &function.opt_args[i];
 
             input = match take(input, 1)? {
                 (",", mut rest) => {
@@ -234,7 +234,7 @@ fn test_function() {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
-                        opts: vec![FunctionOptArg {
+                        opt_args: vec![FunctionOptArg {
                             arg_kind: FunctionArgKind::Literal,
                             value: RhsValue::Int(10),
                         }],
