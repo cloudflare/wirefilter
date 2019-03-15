@@ -161,7 +161,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 (",", mut rest) => {
                     let arg_def = FunctionArg {
                         arg_kind: opt_arg.arg_kind.clone(),
-                        val_type: opt_arg.value.get_type(),
+                        val_type: opt_arg.default_value.get_type(),
                     };
 
                     rest = skip_space(rest);
@@ -184,7 +184,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 _ => {
                     function_call
                         .args
-                        .push(FunctionCallArgExpr::Literal(opt_arg.value.clone()));
+                        .push(FunctionCallArgExpr::Literal(opt_arg.default_value.clone()));
 
                     input
                 }
@@ -236,7 +236,7 @@ fn test_function() {
                         }],
                         opt_args: vec![FunctionOptArg {
                             arg_kind: FunctionArgKind::Literal,
-                            value: RhsValue::Int(10),
+                            default_value: RhsValue::Int(10),
                         }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),

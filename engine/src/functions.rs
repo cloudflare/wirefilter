@@ -58,7 +58,7 @@ pub struct FunctionOptArg {
     /// How the argument can be specified when calling a function.
     pub arg_kind: FunctionArgKind,
     /// The default value if the argument is missing.
-    pub value: RhsValue,
+    pub default_value: RhsValue,
 }
 
 /// Defines a function.
