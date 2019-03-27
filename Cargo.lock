@@ -774,6 +774,15 @@ dependencies = [
  "regex 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.27 (registry+https://github.com/rust-lang/crates.io-index)",
  "wirefilter-engine 0.6.1",
+ "wirefilter-ffi-ctests 0.1.0",
+]
+
+[[package]]
+name = "wirefilter-ffi-ctests"
+version = "0.1.0"
+dependencies = [
+ "cc 1.0.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "wirefilter-ffi 0.6.1",
 ]
 
 [[package]]

@@ -92,6 +92,11 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     }
 }
 
+#[no_mangle]
+pub extern "C" fn wirefilter_free_parsing_result(r: ParsingResult<'_>) {
+    drop(r);
+}
+
 /// Wrapper for Hasher that allows using Write API (e.g. with serializer).
 #[derive(Default)]
 struct HasherWrite<H: Hasher>(H);

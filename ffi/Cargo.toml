@@ -9,7 +9,7 @@ publish = false
 assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 # Avoid duplicate compilation error messages as we don't have doctests anyway
 doctest = false
 bench = false
@@ -25,3 +25,4 @@ path = "../engine"
 [dev-dependencies]
 regex = "1.0.1"
 indoc = "0.3.0"
+wirefilter-ffi-ctests = {path = "tests/ctests"}
