@@ -11,11 +11,31 @@ extern crate wirefilter;
 use criterion::{
     criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
 };
-use std::{fmt::Debug, net::IpAddr};
-use wirefilter::{ExecutionContext, GetType, LhsValue, Scheme};
+use std::{clone::Clone, fmt::Debug, net::IpAddr};
+use wirefilter::{
+    ExecutionContext, Function, FunctionArg, FunctionArgKind, FunctionImpl, GetType, LhsValue,
+    Scheme, Type,
+};
+
+fn lowercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
+    let input = &args[0];
+    match input {
+        LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
+        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+    }
+}
+
+fn uppercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
+    let input = &args[0];
+    match input {
+        LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_uppercase().into()),
+        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+    }
+}
 
 struct FieldBench<'a, T: 'static> {
     field: &'static str,
+    functions: &'a [(&'static str, Function)],
     filters: &'static [&'static str],
     values: &'a [T],
 }
@@ -24,6 +44,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
     fn run(self, c: &mut Criterion) {
         let FieldBench {
             filters,
+            functions,
             field,
             values,
         } = self;
@@ -44,23 +65,35 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
 
             c.bench(
                 "parsing",
-                Benchmark::new(name, move |b: &mut Bencher| {
+                Benchmark::new(name, {
                     let mut scheme = Scheme::default();
                     scheme.add_field(field.to_owned(), ty).unwrap();
-
-                    b.iter(|| scheme.parse(filter).unwrap());
+                    for (name, function) in functions {
+                        scheme
+                            .add_function((*name).into(), function.clone())
+                            .unwrap();
+                    }
+                    move |b: &mut Bencher| {
+                        b.iter(|| scheme.parse(filter).unwrap());
+                    }
                 }),
             );
 
             c.bench(
                 "compilation",
-                Benchmark::new(name, move |b: &mut Bencher| {
+                Benchmark::new(name, {
                     let mut scheme = Scheme::default();
                     scheme.add_field(field.to_owned(), ty).unwrap();
+                    for (name, function) in functions {
+                        scheme
+                            .add_function((*name).into(), function.clone())
+                            .unwrap();
+                    }
+                    move |b: &mut Bencher| {
+                        let filter = scheme.parse(filter).unwrap();
 
-                    let filter = scheme.parse(filter).unwrap();
-
-                    b.iter_with_setup(move || filter.clone(), |filter| filter.compile());
+                        b.iter_with_setup(move || filter.clone(), |filter| filter.compile());
+                    }
                 }),
             );
 
@@ -68,18 +101,24 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 "execution",
                 ParameterizedBenchmark::new(
                     name,
-                    move |b: &mut Bencher, value: &T| {
+                    {
                         let mut scheme = Scheme::default();
                         scheme.add_field(field.to_owned(), ty).unwrap();
+                        for (name, function) in functions {
+                            scheme
+                                .add_function((*name).into(), function.clone())
+                                .unwrap();
+                        }
+                        move |b: &mut Bencher, value: &T| {
+                            let filter = scheme.parse(filter).unwrap();
 
-                        let filter = scheme.parse(filter).unwrap();
+                            let filter = filter.compile();
 
-                        let filter = filter.compile();
+                            let mut exec_ctx = ExecutionContext::new(&scheme);
+                            exec_ctx.set_field_value(field, *value).unwrap();
 
-                        let mut exec_ctx = ExecutionContext::new(&scheme);
-                        exec_ctx.set_field_value(field, *value).unwrap();
-
-                        b.iter(|| filter.execute(&exec_ctx));
+                            b.iter(|| filter.execute(&exec_ctx));
+                        }
                     },
                     values.iter().cloned(),
                 ),
@@ -91,6 +130,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
 fn bench_ip_comparisons(c: &mut Criterion) {
     FieldBench {
         field: "ip.addr",
+        functions: &[],
         filters: &[
             "ip.addr == 173.245.48.1",
             "ip.addr == 2606:4700:4700::1111",
@@ -110,6 +150,7 @@ fn bench_ip_comparisons(c: &mut Criterion) {
 fn bench_int_comparisons(c: &mut Criterion) {
     FieldBench {
         field: "tcp.port",
+        functions: &[],
         filters: &[
             "tcp.port == 80",
             "tcp.port >= 1024",
@@ -123,6 +164,7 @@ fn bench_int_comparisons(c: &mut Criterion) {
 fn bench_string_comparisons(c: &mut Criterion) {
     FieldBench {
         field: "ip.geoip.country",
+        functions: &[],
         filters: &[
             r#"ip.geoip.country == "GB""#,
             r#"ip.geoip.country in { "AT" "BE" "BG" "HR" "CY" "CZ" "DK" "EE" "FI" "FR" "DE" "GR" "HU" "IE" "IT" "LV" "LT" "LU" "MT" "NL" "PL" "PT" "RO" "SK" "SI" "ES" "SE" "GB" "GF" "GP" "MQ" "ME" "YT" "RE" "MF" "GI" "AX" "PM" "GL" "BL" "SX" "AW" "CW" "WF" "PF" "NC" "TF" "AI" "BM" "IO" "VG" "KY" "FK" "MS" "PN" "SH" "GS" "TC" "AD" "LI" "MC" "SM" "VA" "JE" "GG" "GI" "CH" }"#,
@@ -134,6 +176,7 @@ fn bench_string_comparisons(c: &mut Criterion) {
 fn bench_string_matches(c: &mut Criterion) {
     FieldBench {
         field: "http.user_agent",
+        functions: &[],
         filters: &[
             r#"http.user_agent ~ "(?i)googlebot/\d+\.\d+""#,
             r#"http.user_agent ~ "Googlebot""#,
@@ -146,6 +189,84 @@ fn bench_string_matches(c: &mut Criterion) {
     }.run(c)
 }
 
+fn bench_simple_string_function_comparison(c: &mut Criterion) {
+    FieldBench {
+        field: "http.host",
+        functions: &[(
+            "lowercase",
+            Function {
+                args: vec![FunctionArg {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Bytes,
+                }],
+                opt_args: vec![],
+                return_type: Type::Bytes,
+                implementation: FunctionImpl::new(lowercase),
+            },
+        )],
+        filters: &[
+            r#"lowercase(http.host) == "EXAMPLE.ORG""#,
+            r#"lowercase(http.host) == "example.org""#,
+            r#"lowercase(http.host) in { "EXAMPLE.ORG" "example.org" }"#,
+        ],
+        values: &[
+            "example.org",
+            "EXAMPLE.ORG",
+            "ExAmPlE.oRg",
+            "cloudflare.org",
+            "CLOUDFLARE.ORG",
+            "ClOuDfArE.oRg",
+        ],
+    }
+    .run(c)
+}
+
+fn bench_nested_string_function_comparison(c: &mut Criterion) {
+    FieldBench {
+        field: "http.host",
+        functions: &[
+            (
+                "lowercase",
+                Function {
+                    args: vec![FunctionArg {
+                        arg_kind: FunctionArgKind::Field,
+                        val_type: Type::Bytes,
+                    }],
+                    opt_args: vec![],
+                    return_type: Type::Bytes,
+                    implementation: FunctionImpl::new(lowercase),
+                },
+            ),
+            (
+                "uppercase",
+                Function {
+                    args: vec![FunctionArg {
+                        arg_kind: FunctionArgKind::Field,
+                        val_type: Type::Bytes,
+                    }],
+                    opt_args: vec![],
+                    return_type: Type::Bytes,
+                    implementation: FunctionImpl::new(uppercase),
+                },
+            ),
+        ],
+        filters: &[
+            r#"uppercase(lowercase(http.host)) == "EXAMPLE.ORG""#,
+            r#"uppercase(lowercase(http.host)) == "example.org""#,
+            r#"uppercase(lowercase(http.host)) in { "EXAMPLE.ORG" "example.org" }"#,
+        ],
+        values: &[
+            "example.org",
+            "EXAMPLE.ORG",
+            "ExAmPlE.oRg",
+            "cloudflare.org",
+            "CLOUDFLARE.ORG",
+            "ClOuDfArE.oRg",
+        ],
+    }
+    .run(c)
+}
+
 criterion_group! {
     name = field_benchmarks;
     config = Criterion::default();
@@ -154,6 +275,8 @@ criterion_group! {
         bench_int_comparisons,
         bench_string_comparisons,
         bench_string_matches,
+        bench_simple_string_function_comparison,
+        bench_nested_string_function_comparison,
 }
 
 criterion_main!(field_benchmarks);
