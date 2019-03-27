@@ -1,0 +1,12 @@
+[package]
+authors = ["Elie ROUDNINSKI <elie@cloudflare.com>"]
+name = "wirefilter-ffi-ctests"
+version = "0.1.0"
+description = "C based tests for FFI bindings of the Wirefilter engine"
+publish = false
+
+[dependencies]
+wirefilter-ffi = {path = "../.."}
+
+[build-dependencies]
+cc = "1.0"
