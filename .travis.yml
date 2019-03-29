@@ -9,6 +9,14 @@ matrix:
         - cargo test
         - cargo clippy --all-targets -- -D warnings
         - cargo fmt -- --check
+    - name: "C tests on Windows"
+      os: windows
+      script:
+        - cargo test -p wirefilter-ffi-ctests
+    - name: "C tests on OS X"
+      os: osx
+      script:
+        - cargo test -p wirefilter-ffi-ctests
     - name: "WASM build"
       before_install:
         - curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh -s -- -f
