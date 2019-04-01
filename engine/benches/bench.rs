@@ -204,19 +204,8 @@ fn bench_simple_string_function_comparison(c: &mut Criterion) {
                 implementation: FunctionImpl::new(lowercase),
             },
         )],
-        filters: &[
-            r#"lowercase(http.host) == "EXAMPLE.ORG""#,
-            r#"lowercase(http.host) == "example.org""#,
-            r#"lowercase(http.host) in { "EXAMPLE.ORG" "example.org" }"#,
-        ],
-        values: &[
-            "example.org",
-            "EXAMPLE.ORG",
-            "ExAmPlE.oRg",
-            "cloudflare.org",
-            "CLOUDFLARE.ORG",
-            "ClOuDfArE.oRg",
-        ],
+        filters: &[r#"lowercase(http.host) == "example.org""#],
+        values: &["example.org", "EXAMPLE.ORG"],
     }
     .run(c)
 }
@@ -250,19 +239,8 @@ fn bench_nested_string_function_comparison(c: &mut Criterion) {
                 },
             ),
         ],
-        filters: &[
-            r#"uppercase(lowercase(http.host)) == "EXAMPLE.ORG""#,
-            r#"uppercase(lowercase(http.host)) == "example.org""#,
-            r#"uppercase(lowercase(http.host)) in { "EXAMPLE.ORG" "example.org" }"#,
-        ],
-        values: &[
-            "example.org",
-            "EXAMPLE.ORG",
-            "ExAmPlE.oRg",
-            "cloudflare.org",
-            "CLOUDFLARE.ORG",
-            "ClOuDfArE.oRg",
-        ],
+        filters: &[r#"uppercase(lowercase(http.host)) == "EXAMPLE.ORG""#],
+        values: &["example.org", "EXAMPLE.ORG"],
     }
     .run(c)
 }
