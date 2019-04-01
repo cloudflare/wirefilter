@@ -23,7 +23,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
+    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
                 LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
@@ -92,18 +92,13 @@ impl<'s> FunctionCallExpr<'s> {
     }
 
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        let values: Vec<LhsValue<'_>> = self
-            .args
-            .iter()
-            .map(|arg| arg.execute(ctx))
-            .chain(
+        self.function.implementation.execute(
+            self.args.iter().map(|arg| arg.execute(ctx)).chain(
                 self.function.opt_params[self.args.len() - self.function.params.len()..]
                     .iter()
                     .map(|opt_arg| opt_arg.default_value.as_ref()),
-            )
-            .collect();
-
-        self.function.implementation.execute(&values[..])
+            ),
+        )
     }
 }
 
@@ -213,7 +208,7 @@ fn test_function() {
     };
     use lazy_static::lazy_static;
 
-    fn echo_function<'a>(_: &[LhsValue<'a>]) -> LhsValue<'a> {
+    fn echo_function<'a>(_: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
         false.into()
     }
 

@@ -319,32 +319,32 @@ mod tests {
     use lazy_static::lazy_static;
     use std::net::IpAddr;
 
-    fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
-        let input = &args[0];
+    fn echo_function<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+        let input = args.next().unwrap();
         match input {
             LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_vec().into()),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }
 
-    fn lowercase_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
-        let input = &args[0];
+    fn lowercase_function<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+        let input = args.next().unwrap();
         match input {
             LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }
 
-    fn concat_function<'a, 'r>(args: &'r [LhsValue<'a>]) -> LhsValue<'a> {
-        match (&args[0], &args[1]) {
+    fn concat_function<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+        match (args.next().unwrap(), args.next().unwrap()) {
             (LhsValue::Bytes(buf1), LhsValue::Bytes(buf2)) => {
                 let mut vec1 = buf1.to_vec();
-                vec1.extend_from_slice(&*buf2);
+                vec1.extend_from_slice(&buf2);
                 LhsValue::Bytes(vec1.into())
             }
-            _ => panic!(
+            (arg1, arg2) => panic!(
                 "Invalid types: expected (Bytes, Bytes), got ({:?}, {:?})",
-                args[0], args[1]
+                arg1, arg2
             ),
         }
     }
