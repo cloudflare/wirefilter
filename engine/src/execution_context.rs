@@ -44,7 +44,7 @@ impl<'e> ExecutionContext<'e> {
         self.scheme
     }
 
-    pub(crate) fn get_field_value_unchecked(&'e self, field: Field<'e>) -> LhsValue<'_> {
+    pub(crate) fn get_field_value_unchecked(&'e self, field: Field<'e>) -> LhsValue<'e> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.

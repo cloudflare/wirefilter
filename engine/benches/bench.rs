@@ -14,16 +14,16 @@ use wirefilter::{
     LhsValue, Scheme, Type,
 };
 
-fn lowercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
-    let input = &args[0];
+fn lowercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+    let input = args.next().unwrap();
     match input {
         LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
     }
 }
 
-fn uppercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
-    let input = &args[0];
+fn uppercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+    let input = args.next().unwrap();
     match input {
         LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_uppercase().into()),
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),

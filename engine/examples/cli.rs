@@ -4,7 +4,7 @@ use wirefilter::{
     Type,
 };
 
-fn panic_function<'a>(_: &[LhsValue<'a>]) -> LhsValue<'a> {
+fn panic_function<'a>(_: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
     panic!();
 }
 
