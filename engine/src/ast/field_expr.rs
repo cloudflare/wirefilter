@@ -134,6 +134,20 @@ impl<'s> LhsFieldExpr<'s> {
             LhsFieldExpr::FunctionCallExpr(call) => call.uses(field),
         }
     }
+
+    fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
+    where
+        F: Fn(LhsValue<'_>) -> bool,
+    {
+        match self {
+            LhsFieldExpr::FunctionCallExpr(call) => {
+                CompiledExpr::new(move |ctx| func(call.execute(ctx)))
+            }
+            LhsFieldExpr::Field(f) => {
+                CompiledExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f)))
+            }
+        }
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for LhsFieldExpr<'s> {
@@ -227,15 +241,6 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
     fn compile(self) -> CompiledExpr<'s> {
         let lhs = self.lhs;
 
-        macro_rules! get_lhs_value {
-            ($ctx:expr) => {
-                match lhs {
-                    LhsFieldExpr::FunctionCallExpr(ref call) => call.execute($ctx),
-                    LhsFieldExpr::Field(f) => $ctx.get_field_value_unchecked(f),
-                }
-            };
-        }
-
         macro_rules! cast_value {
             ($value:expr, $ty:ident) => {
                 match $value {
@@ -246,26 +251,22 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => CompiledExpr::new(move |ctx| cast_value!(get_lhs_value!(ctx), Bool)),
-            FieldOp::Ordering { op, rhs } => CompiledExpr::new(move |ctx| {
-                op.matches_opt(get_lhs_value!(ctx).strict_partial_cmp(&rhs))
-            }),
+            FieldOp::IsTrue => lhs.compile_with(move |x| cast_value!(x, Bool)),
+            FieldOp::Ordering { op, rhs } => {
+                lhs.compile_with(move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
+            }
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => CompiledExpr::new(move |ctx| cast_value!(get_lhs_value!(ctx), Int) & rhs != 0),
+            } => lhs.compile_with(move |x| cast_value!(x, Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                CompiledExpr::new(move |ctx| {
-                    searcher
-                        .search_in(&cast_value!(get_lhs_value!(ctx), Bytes))
-                        .is_some()
-                })
+                lhs.compile_with(move |x| searcher.search_in(&cast_value!(x, Bytes)).is_some())
             }
-            FieldOp::Matches(regex) => CompiledExpr::new(move |ctx| {
-                regex.is_match(&cast_value!(get_lhs_value!(ctx), Bytes))
-            }),
+            FieldOp::Matches(regex) => {
+                lhs.compile_with(move |x| regex.is_match(&cast_value!(x, Bytes)))
+            }
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
@@ -278,24 +279,22 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     }
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
-                    CompiledExpr::new(move |ctx| match cast_value!(get_lhs_value!(ctx), Ip) {
+
+                    lhs.compile_with(move |x| match cast_value!(x, Ip) {
                         IpAddr::V4(addr) => v4.contains(&addr),
                         IpAddr::V6(addr) => v6.contains(&addr),
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
-                    CompiledExpr::new(move |ctx| {
-                        values.contains(&cast_value!(get_lhs_value!(ctx), Int))
-                    })
+
+                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Int)))
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(|value| value.into()).collect();
 
-                    CompiledExpr::new(move |ctx| {
-                        values.contains(&cast_value!(get_lhs_value!(ctx), Bytes) as &[u8])
-                    })
+                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
                 }
                 RhsValues::Bool(_) => unreachable!(),
             },
