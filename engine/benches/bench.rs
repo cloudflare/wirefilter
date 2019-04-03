@@ -189,28 +189,7 @@ fn bench_string_matches(c: &mut Criterion) {
     }.run(c)
 }
 
-fn bench_simple_string_function_comparison(c: &mut Criterion) {
-    FieldBench {
-        field: "http.host",
-        functions: &[(
-            "lowercase",
-            Function {
-                args: vec![FunctionArg {
-                    arg_kind: FunctionArgKind::Field,
-                    val_type: Type::Bytes,
-                }],
-                opt_args: vec![],
-                return_type: Type::Bytes,
-                implementation: FunctionImpl::new(lowercase),
-            },
-        )],
-        filters: &[r#"lowercase(http.host) == "example.org""#],
-        values: &["example.org", "EXAMPLE.ORG"],
-    }
-    .run(c)
-}
-
-fn bench_nested_string_function_comparison(c: &mut Criterion) {
+fn bench_string_function_comparison(c: &mut Criterion) {
     FieldBench {
         field: "http.host",
         functions: &[
@@ -239,7 +218,10 @@ fn bench_nested_string_function_comparison(c: &mut Criterion) {
                 },
             ),
         ],
-        filters: &[r#"uppercase(lowercase(http.host)) == "EXAMPLE.ORG""#],
+        filters: &[
+            r#"lowercase(http.host) == "example.org""#,
+            r#"uppercase(lowercase(http.host)) == "EXAMPLE.ORG""#,
+        ],
         values: &["example.org", "EXAMPLE.ORG"],
     }
     .run(c)
@@ -253,8 +235,7 @@ criterion_group! {
         bench_int_comparisons,
         bench_string_comparisons,
         bench_string_matches,
-        bench_simple_string_function_comparison,
-        bench_nested_string_function_comparison,
+        bench_string_function_comparison,
 }
 
 criterion_main!(field_benchmarks);
