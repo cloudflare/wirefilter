@@ -17,7 +17,10 @@ use wirefilter::{
 fn lowercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
     let input = args.next().unwrap();
     match input {
-        LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
+        LhsValue::Bytes(mut bytes) => {
+            bytes.to_mut().make_ascii_lowercase();
+            LhsValue::Bytes(bytes)
+        }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
     }
 }
@@ -25,7 +28,10 @@ fn lowercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
 fn uppercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
     let input = args.next().unwrap();
     match input {
-        LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_uppercase().into()),
+        LhsValue::Bytes(mut bytes) => {
+            bytes.to_mut().make_ascii_uppercase();
+            LhsValue::Bytes(bytes)
+        }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
     }
 }
