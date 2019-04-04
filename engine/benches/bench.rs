@@ -8,7 +8,7 @@ static A: System = System;
 use criterion::{
     criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
 };
-use std::{clone::Clone, fmt::Debug, net::IpAddr};
+use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
     ExecutionContext, FilterAst, Function, FunctionArgKind, FunctionImpl, FunctionParam, GetType,
     LhsValue, Scheme, Type,
@@ -18,7 +18,13 @@ fn lowercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
     let input = args.next().unwrap();
     match input {
         LhsValue::Bytes(mut bytes) => {
-            bytes.to_mut().make_ascii_lowercase();
+            let make_lowercase = match bytes {
+                Cow::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_uppercase),
+                _ => true,
+            };
+            if make_lowercase {
+                bytes.to_mut().make_ascii_lowercase();
+            }
             LhsValue::Bytes(bytes)
         }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
@@ -29,7 +35,13 @@ fn uppercase<'a>(args: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
     let input = args.next().unwrap();
     match input {
         LhsValue::Bytes(mut bytes) => {
-            bytes.to_mut().make_ascii_uppercase();
+            let make_uppercase = match bytes {
+                Cow::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_lowercase),
+                _ => true,
+            };
+            if make_uppercase {
+                bytes.to_mut().make_ascii_uppercase();
+            }
             LhsValue::Bytes(bytes)
         }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
