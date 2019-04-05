@@ -179,6 +179,19 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
     }
 }
 
+impl<'a> LhsValue<'a> {
+    /// Converts a reference to an LhsValue to an LhsValue with an internal
+    /// references
+    pub fn as_ref(&'a self) -> Self {
+        match self {
+            LhsValue::Ip(ip) => LhsValue::Ip(*ip),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
+            LhsValue::Int(integer) => LhsValue::Int(*integer),
+            LhsValue::Bool(b) => LhsValue::Bool(*b),
+        }
+    }
+}
+
 declare_types!(
     /// An IPv4 or IPv6 field.
     ///

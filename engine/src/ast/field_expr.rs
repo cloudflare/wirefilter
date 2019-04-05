@@ -310,7 +310,7 @@ mod tests {
     use execution_context::ExecutionContext;
     use functions::{Function, FunctionArg, FunctionArgKind, FunctionImpl, FunctionOptArg};
     use lazy_static::lazy_static;
-    use rhs_types::{Bytes, IpRange};
+    use rhs_types::IpRange;
     use std::net::IpAddr;
 
     fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
@@ -389,7 +389,7 @@ mod tests {
                         }],
                         opt_args: vec![FunctionOptArg {
                             arg_kind: FunctionArgKind::Literal,
-                            default_value: RhsValue::Bytes(Bytes::from("".to_owned())),
+                            default_value: "".into(),
                         }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(concat_function),
@@ -928,10 +928,9 @@ mod tests {
                 lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                     name: String::from("concat"),
                     function: SCHEME.get_function("concat").unwrap(),
-                    args: vec![
-                        FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(field("http.host"))),
-                        FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from("".to_owned()))),
-                    ],
+                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                        field("http.host")
+                    ))],
                 }),
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
@@ -949,11 +948,7 @@ mod tests {
                         {
                             "kind": "LhsFieldExpr",
                             "value": "http.host"
-                        },
-                        {
-                            "kind": "Literal",
-                            "value": ""
-                        },
+                        }
                     ]
                 },
                 "op": "Equal",

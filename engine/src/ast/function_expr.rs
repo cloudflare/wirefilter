@@ -66,16 +66,22 @@ impl<'s> FunctionCallExpr<'s> {
     }
 
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        let mut values: Vec<LhsValue<'_>> = Vec::with_capacity(self.args.len());
-        for arg in &self.args {
-            values.push(match arg {
+        let values: Vec<LhsValue<'_>> = self
+            .args
+            .iter()
+            .map(|arg| match arg {
                 FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
                     LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
                     LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
                 },
                 FunctionCallArgExpr::Literal(literal) => literal.into(),
             })
-        }
+            .chain(
+                self.function.opt_args[self.args.len() - self.function.args.len()..]
+                    .iter()
+                    .map(|opt_arg| opt_arg.default_value.as_ref()),
+            )
+            .collect();
         self.function.implementation.execute(&values[..])
     }
 
@@ -154,51 +160,38 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             ));
         }
 
-        for i in 0..opts_len {
-            let opt_arg = &function.opt_args[i];
+        let mut index = 0;
 
-            input = match take(input, 1)? {
-                (",", mut rest) => {
-                    let arg_def = FunctionArg {
-                        arg_kind: opt_arg.arg_kind.clone(),
-                        val_type: opt_arg.default_value.get_type(),
-                    };
+        while let Some(',') = input.chars().next() {
+            input = skip_space(take(input, 1)?.1);
 
-                    rest = skip_space(rest);
-
-                    let arg = FunctionCallArgExpr::lex_with(
-                        rest,
-                        SchemeFunctionArg {
-                            scheme,
-                            funcarg: &arg_def,
-                            index: args_len + i,
-                        },
-                    )?;
-
-                    function_call.args.push(arg.0);
-
-                    rest = skip_space(arg.1);
-
-                    rest
-                }
-                _ => {
-                    function_call
-                        .args
-                        .push(FunctionCallArgExpr::Literal(opt_arg.default_value.clone()));
-
-                    input
-                }
-            }
-        }
-
-        if args_len + opts_len != function_call.args.len() {
-            return Err((
+            let opt_arg = function.opt_args.get(index).ok_or((
                 LexErrorKind::IncompatibleNumberArguments {
                     expected_min: args_len,
                     expected_max: args_len + opts_len,
                 },
                 input,
-            ));
+            ))?;
+
+            let arg_def = FunctionArg {
+                arg_kind: opt_arg.arg_kind.clone(),
+                val_type: opt_arg.default_value.get_type(),
+            };
+
+            let arg = FunctionCallArgExpr::lex_with(
+                input,
+                SchemeFunctionArg {
+                    scheme,
+                    funcarg: &arg_def,
+                    index: args_len + index,
+                },
+            )?;
+
+            function_call.args.push(arg.0);
+
+            input = skip_space(arg.1);
+
+            index += 1;
         }
 
         input = expect(input, ")")?;
@@ -236,7 +229,7 @@ fn test_function() {
                         }],
                         opt_args: vec![FunctionOptArg {
                             arg_kind: FunctionArgKind::Literal,
-                            default_value: RhsValue::Int(10),
+                            default_value: LhsValue::Int(10),
                         }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
@@ -252,12 +245,9 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: vec![
-                FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                    SCHEME.get_field_index("http.host").unwrap()
-                )),
-                FunctionCallArgExpr::Literal(RhsValue::Int(10)),
-            ],
+            args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                SCHEME.get_field_index("http.host").unwrap()
+            ))],
         },
         ";"
     );
@@ -270,10 +260,6 @@ fn test_function() {
                 {
                     "kind": "LhsFieldExpr",
                     "value": "http.host"
-                },
-                {
-                    "kind": "Literal",
-                    "value": 10
                 }
             ]
         }
@@ -299,21 +285,15 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: [
-                FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::FunctionCallExpr(
-                    FunctionCallExpr {
-                        name: String::from("echo"),
-                        function: SCHEME.get_function("echo").unwrap(),
-                        args: vec![
-                            FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                                SCHEME.get_field_index("http.host").unwrap()
-                            )),
-                            FunctionCallArgExpr::Literal(RhsValue::Int(10)),
-                        ],
-                    }
-                )),
-                FunctionCallArgExpr::Literal(RhsValue::Int(10)),
-            ]
+            args: [FunctionCallArgExpr::LhsFieldExpr(
+                LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                    name: String::from("echo"),
+                    function: SCHEME.get_function("echo").unwrap(),
+                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
+                        SCHEME.get_field_index("http.host").unwrap()
+                    ))],
+                })
+            )]
             .to_vec(),
         },
         ";"
@@ -332,17 +312,9 @@ fn test_function() {
                             {
                                 "kind": "LhsFieldExpr",
                                 "value": "http.host"
-                            },
-                            {
-                                "kind": "Literal",
-                                "value": 10
                             }
                         ]
                     }
-                },
-                {
-                    "kind": "Literal",
-                    "value": 10
                 }
             ]
         }
@@ -372,7 +344,10 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
-        LexErrorKind::ExpectedLiteral(")"),
-        ", \"test\" );"
+        LexErrorKind::IncompatibleNumberArguments {
+            expected_min: 1,
+            expected_max: 2,
+        },
+        "\"test\" );"
     );
 }
