@@ -1,5 +1,5 @@
 use std::fmt;
-use types::{LhsValue, RhsValue, Type};
+use types::{LhsValue, Type};
 
 type FunctionPtr = for<'a> fn(&[LhsValue<'a>]) -> LhsValue<'a>;
 
@@ -59,7 +59,7 @@ pub struct FunctionOptArg {
     /// How the argument can be specified when calling a function.
     pub arg_kind: FunctionArgKind,
     /// The default value if the argument is missing.
-    pub default_value: RhsValue,
+    pub default_value: LhsValue<'static>,
 }
 
 /// Defines a function.

@@ -1,7 +1,9 @@
 extern crate wirefilter;
 
 use std::env::args;
-use wirefilter::{Function, FunctionArg, FunctionArgKind, FunctionImpl, LhsValue, Scheme, Type};
+use wirefilter::{
+    Function, FunctionArg, FunctionArgKind, FunctionImpl, FunctionOptArg, LhsValue, Scheme, Type,
+};
 
 fn panic_function<'a>(_: &[LhsValue<'a>]) -> LhsValue<'a> {
     panic!();
@@ -27,7 +29,10 @@ fn main() {
                     arg_kind: FunctionArgKind::Field,
                     val_type: Type::Bytes,
                 }],
-                opt_args: vec![],
+                opt_args: vec![FunctionOptArg {
+                    arg_kind: FunctionArgKind::Literal,
+                    default_value: "".into(),
+                }],
                 return_type: Type::Bytes,
                 implementation: FunctionImpl::new(panic_function),
             },

@@ -1,6 +1,5 @@
 use failure::Fail;
 use scheme::{Field, Scheme};
-use std::borrow::Cow;
 use types::{GetType, LhsValue, Type};
 
 /// An error that occurs if the type of the value for the field doesn't
@@ -58,10 +57,7 @@ impl<'e> ExecutionContext<'e> {
                 field.name()
             );
         });
-        match lhs_value {
-            LhsValue::Bytes(ref b) => LhsValue::Bytes(Cow::Borrowed(b)),
-            _ => lhs_value.clone(),
-        }
+        lhs_value.as_ref()
     }
 
     /// Sets a runtime value for a given field name.
