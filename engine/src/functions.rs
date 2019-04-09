@@ -46,7 +46,7 @@ pub enum FunctionArgKind {
 
 /// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionArg {
+pub struct FunctionParam {
     /// How the argument can be specified when calling a function.
     pub arg_kind: FunctionArgKind,
     /// The type of its associated value.
@@ -55,7 +55,7 @@ pub struct FunctionArg {
 
 /// Defines an optional function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionOptArg {
+pub struct FunctionOptParam {
     /// How the argument can be specified when calling a function.
     pub arg_kind: FunctionArgKind,
     /// The default value if the argument is missing.
@@ -66,9 +66,9 @@ pub struct FunctionOptArg {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Function {
     /// List of mandatory arguments.
-    pub args: Vec<FunctionArg>,
+    pub params: Vec<FunctionParam>,
     /// List of optional arguments that can be specified after manatory ones.
-    pub opt_args: Vec<FunctionOptArg>,
+    pub opt_params: Vec<FunctionOptParam>,
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.
