@@ -54,8 +54,8 @@ pub enum LexErrorKind {
     #[fail(display = "unrecognised input")]
     EOF,
 
-    #[fail(display = "incompatible number of arguments")]
-    IncompatibleNumberArguments {
+    #[fail(display = "invalid number of arguments")]
+    InvalidArgumentsCount {
         expected_min: usize,
         expected_max: usize,
     },

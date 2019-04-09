@@ -103,9 +103,9 @@ impl<'s> FunctionCallExpr<'s> {
     }
 }
 
-fn incompatible_number_arguments_err<'i>(function: &Function, input: &'i str) -> LexError<'i> {
+fn invalid_args_count<'i>(function: &Function, input: &'i str) -> LexError<'i> {
     (
-        LexErrorKind::IncompatibleNumberArguments {
+        LexErrorKind::InvalidArgumentsCount {
             expected_min: function.params.len(),
             expected_max: function.params.len() + function.opt_params.len(),
         },
@@ -140,7 +140,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 }
             } else {
                 input = expect(input, ",")
-                    .map_err(|(_, input)| incompatible_number_arguments_err(&function, input))?;
+                    .map_err(|(_, input)| invalid_args_count(&function, input))?;
             }
 
             input = skip_space(input);
@@ -160,7 +160,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         }
 
         if function_call.args.len() != function.params.len() {
-            return Err(incompatible_number_arguments_err(&function, input));
+            return Err(invalid_args_count(&function, input));
         }
 
         let mut index = 0;
@@ -171,7 +171,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             let opt_param = function
                 .opt_params
                 .get(index)
-                .ok_or_else(|| incompatible_number_arguments_err(&function, input))?;
+                .ok_or_else(|| invalid_args_count(&function, input))?;
 
             let param = FunctionParam {
                 arg_kind: opt_param.arg_kind.clone(),
@@ -267,7 +267,7 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments {
+        LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
             expected_max: 2
         },
@@ -344,7 +344,7 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments {
+        LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
             expected_max: 2,
         },
