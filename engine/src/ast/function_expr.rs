@@ -13,6 +13,25 @@ pub(crate) enum FunctionCallArgExpr<'s> {
     Literal(RhsValue),
 }
 
+impl<'s> FunctionCallArgExpr<'s> {
+    pub fn uses(&self, field: Field<'s>) -> bool {
+        match self {
+            FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.uses(field),
+            FunctionCallArgExpr::Literal(_) => false,
+        }
+    }
+
+    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
+        match self {
+            FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
+                LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
+                LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
+            },
+            FunctionCallArgExpr::Literal(literal) => literal.into(),
+        }
+    }
+}
+
 struct SchemeFunctionArg<'s, 'a> {
     scheme: &'s Scheme,
     funcarg: &'a FunctionArg,
@@ -65,31 +84,23 @@ impl<'s> FunctionCallExpr<'s> {
         }
     }
 
+    pub fn uses(&self, field: Field<'s>) -> bool {
+        self.args.iter().any(|arg| arg.uses(field))
+    }
+
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
         let values: Vec<LhsValue<'_>> = self
             .args
             .iter()
-            .map(|arg| match arg {
-                FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
-                    LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
-                    LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
-                },
-                FunctionCallArgExpr::Literal(literal) => literal.into(),
-            })
+            .map(|arg| arg.execute(ctx))
             .chain(
                 self.function.opt_args[self.args.len() - self.function.args.len()..]
                     .iter()
                     .map(|opt_arg| opt_arg.default_value.as_ref()),
             )
             .collect();
-        self.function.implementation.execute(&values[..])
-    }
 
-    pub fn uses(&self, field: Field<'s>) -> bool {
-        self.args.iter().any(|arg| match arg {
-            FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.uses(field),
-            FunctionCallArgExpr::Literal(_) => false,
-        })
+        self.function.implementation.execute(&values[..])
     }
 }
 
