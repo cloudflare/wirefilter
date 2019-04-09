@@ -1,7 +1,7 @@
 use super::field_expr::LhsFieldExpr;
 use execution_context::ExecutionContext;
 use functions::{Function, FunctionArg, FunctionArgKind};
-use lex::{expect, skip_space, take, take_while, LexErrorKind, LexResult, LexWith};
+use lex::{expect, skip_space, take, take_while, LexError, LexErrorKind, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
 use types::{GetType, LhsValue, RhsValue};
@@ -104,6 +104,16 @@ impl<'s> FunctionCallExpr<'s> {
     }
 }
 
+fn incompatible_number_arguments_err<'i>(function: &Function, input: &'i str) -> LexError<'i> {
+    (
+        LexErrorKind::IncompatibleNumberArguments {
+            expected_min: function.args.len(),
+            expected_max: function.args.len() + function.opt_args.len(),
+        },
+        input,
+    )
+}
+
 impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
@@ -124,25 +134,14 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
-        let args_len = function.args.len();
-
-        let opts_len = function.opt_args.len();
-
-        for i in 0..args_len {
+        for i in 0..function.args.len() {
             if i == 0 {
                 if take(input, 1)?.0 == ")" {
                     break;
                 }
             } else {
-                input = expect(input, ",").map_err(|(_, input)| {
-                    (
-                        LexErrorKind::IncompatibleNumberArguments {
-                            expected_min: args_len,
-                            expected_max: args_len + opts_len,
-                        },
-                        input,
-                    )
-                })?;
+                input = expect(input, ",")
+                    .map_err(|(_, input)| incompatible_number_arguments_err(&function, input))?;
             }
 
             input = skip_space(input);
@@ -162,13 +161,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         }
 
         if function.args.len() != function_call.args.len() {
-            return Err((
-                LexErrorKind::IncompatibleNumberArguments {
-                    expected_min: args_len,
-                    expected_max: args_len + opts_len,
-                },
-                input,
-            ));
+            return Err(incompatible_number_arguments_err(&function, input));
         }
 
         let mut index = 0;
@@ -176,13 +169,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         while let Some(',') = input.chars().next() {
             input = skip_space(take(input, 1)?.1);
 
-            let opt_arg = function.opt_args.get(index).ok_or((
-                LexErrorKind::IncompatibleNumberArguments {
-                    expected_min: args_len,
-                    expected_max: args_len + opts_len,
-                },
-                input,
-            ))?;
+            let opt_arg = function
+                .opt_args
+                .get(index)
+                .ok_or_else(|| incompatible_number_arguments_err(&function, input))?;
 
             let arg_def = FunctionArg {
                 arg_kind: opt_arg.arg_kind.clone(),
@@ -194,7 +184,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 SchemeFunctionArg {
                     scheme,
                     funcarg: &arg_def,
-                    index: args_len + index,
+                    index: function.args.len() + index,
                 },
             )?;
 
