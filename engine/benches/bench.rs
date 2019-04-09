@@ -13,7 +13,7 @@ use criterion::{
 };
 use std::{clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, Function, FunctionArg, FunctionArgKind, FunctionImpl, GetType, LhsValue,
+    ExecutionContext, Function, FunctionArgKind, FunctionImpl, FunctionParam, GetType, LhsValue,
     Scheme, Type,
 };
 
@@ -196,11 +196,11 @@ fn bench_string_function_comparison(c: &mut Criterion) {
             (
                 "lowercase",
                 Function {
-                    args: vec![FunctionArg {
+                    params: vec![FunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
-                    opt_args: vec![],
+                    opt_params: vec![],
                     return_type: Type::Bytes,
                     implementation: FunctionImpl::new(lowercase),
                 },
@@ -208,11 +208,11 @@ fn bench_string_function_comparison(c: &mut Criterion) {
             (
                 "uppercase",
                 Function {
-                    args: vec![FunctionArg {
+                    params: vec![FunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
-                    opt_args: vec![],
+                    opt_params: vec![],
                     return_type: Type::Bytes,
                     implementation: FunctionImpl::new(uppercase),
                 },

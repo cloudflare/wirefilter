@@ -1,7 +1,7 @@
 use super::field_expr::LhsFieldExpr;
 use execution_context::ExecutionContext;
-use functions::{Function, FunctionArg, FunctionArgKind};
-use lex::{expect, skip_space, take, take_while, LexErrorKind, LexResult, LexWith};
+use functions::{Function, FunctionArgKind, FunctionParam};
+use lex::{expect, skip_space, take, take_while, LexError, LexErrorKind, LexResult, LexWith};
 use scheme::{Field, Scheme};
 use serde::Serialize;
 use types::{GetType, LhsValue, RhsValue};
@@ -32,25 +32,25 @@ impl<'s> FunctionCallArgExpr<'s> {
     }
 }
 
-struct SchemeFunctionArg<'s, 'a> {
+struct SchemeFunctionParam<'s, 'a> {
     scheme: &'s Scheme,
-    funcarg: &'a FunctionArg,
+    param: &'a FunctionParam,
     index: usize,
 }
 
-impl<'i, 's, 'a> LexWith<'i, SchemeFunctionArg<'s, 'a>> for FunctionCallArgExpr<'s> {
-    fn lex_with(input: &'i str, scheme_funcarg: SchemeFunctionArg<'s, 'a>) -> LexResult<'i, Self> {
+impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExpr<'s> {
+    fn lex_with(input: &'i str, ctx: SchemeFunctionParam<'s, 'a>) -> LexResult<'i, Self> {
         let initial_input = input;
 
-        match scheme_funcarg.funcarg.arg_kind {
+        match ctx.param.arg_kind {
             FunctionArgKind::Field => {
-                let (lhs, input) = LhsFieldExpr::lex_with(input, scheme_funcarg.scheme)?;
-                if lhs.get_type() != scheme_funcarg.funcarg.val_type {
+                let (lhs, input) = LhsFieldExpr::lex_with(input, ctx.scheme)?;
+                if lhs.get_type() != ctx.param.val_type {
                     Err((
                         LexErrorKind::InvalidArgumentType {
-                            index: scheme_funcarg.index,
+                            index: ctx.index,
                             given: lhs.get_type(),
-                            expected: scheme_funcarg.funcarg.val_type,
+                            expected: ctx.param.val_type,
                         },
                         initial_input,
                     ))
@@ -59,8 +59,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionArg<'s, 'a>> for FunctionCallArgExpr<
                 }
             }
             FunctionArgKind::Literal => {
-                let (rhs_value, input) =
-                    RhsValue::lex_with(input, scheme_funcarg.funcarg.val_type)?;
+                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type)?;
                 Ok((FunctionCallArgExpr::Literal(rhs_value), input))
             }
         }
@@ -94,7 +93,7 @@ impl<'s> FunctionCallExpr<'s> {
             .iter()
             .map(|arg| arg.execute(ctx))
             .chain(
-                self.function.opt_args[self.args.len() - self.function.args.len()..]
+                self.function.opt_params[self.args.len() - self.function.params.len()..]
                     .iter()
                     .map(|opt_arg| opt_arg.default_value.as_ref()),
             )
@@ -102,6 +101,16 @@ impl<'s> FunctionCallExpr<'s> {
 
         self.function.implementation.execute(&values[..])
     }
+}
+
+fn invalid_args_count<'i>(function: &Function, input: &'i str) -> LexError<'i> {
+    (
+        LexErrorKind::InvalidArgumentsCount {
+            expected_min: function.params.len(),
+            expected_max: function.params.len() + function.opt_params.len(),
+        },
+        input,
+    )
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
@@ -124,34 +133,23 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
-        let args_len = function.args.len();
-
-        let opts_len = function.opt_args.len();
-
-        for i in 0..args_len {
+        for i in 0..function.params.len() {
             if i == 0 {
                 if take(input, 1)?.0 == ")" {
                     break;
                 }
             } else {
-                input = expect(input, ",").map_err(|(_, input)| {
-                    (
-                        LexErrorKind::IncompatibleNumberArguments {
-                            expected_min: args_len,
-                            expected_max: args_len + opts_len,
-                        },
-                        input,
-                    )
-                })?;
+                input = expect(input, ",")
+                    .map_err(|(_, input)| invalid_args_count(&function, input))?;
             }
 
             input = skip_space(input);
 
             let arg = FunctionCallArgExpr::lex_with(
                 input,
-                SchemeFunctionArg {
+                SchemeFunctionParam {
                     scheme,
-                    funcarg: &function.args[i],
+                    param: &function.params[i],
                     index: i,
                 },
             )?;
@@ -161,14 +159,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             input = skip_space(arg.1);
         }
 
-        if function.args.len() != function_call.args.len() {
-            return Err((
-                LexErrorKind::IncompatibleNumberArguments {
-                    expected_min: args_len,
-                    expected_max: args_len + opts_len,
-                },
-                input,
-            ));
+        if function_call.args.len() != function.params.len() {
+            return Err(invalid_args_count(&function, input));
         }
 
         let mut index = 0;
@@ -176,31 +168,28 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         while let Some(',') = input.chars().next() {
             input = skip_space(take(input, 1)?.1);
 
-            let opt_arg = function.opt_args.get(index).ok_or((
-                LexErrorKind::IncompatibleNumberArguments {
-                    expected_min: args_len,
-                    expected_max: args_len + opts_len,
-                },
-                input,
-            ))?;
+            let opt_param = function
+                .opt_params
+                .get(index)
+                .ok_or_else(|| invalid_args_count(&function, input))?;
 
-            let arg_def = FunctionArg {
-                arg_kind: opt_arg.arg_kind.clone(),
-                val_type: opt_arg.default_value.get_type(),
+            let param = FunctionParam {
+                arg_kind: opt_param.arg_kind.clone(),
+                val_type: opt_param.default_value.get_type(),
             };
 
-            let arg = FunctionCallArgExpr::lex_with(
+            let (arg, rest) = FunctionCallArgExpr::lex_with(
                 input,
-                SchemeFunctionArg {
+                SchemeFunctionParam {
                     scheme,
-                    funcarg: &arg_def,
-                    index: args_len + index,
+                    param: &param,
+                    index: function.params.len() + index,
                 },
             )?;
 
-            function_call.args.push(arg.0);
+            function_call.args.push(arg);
 
-            input = skip_space(arg.1);
+            input = skip_space(rest);
 
             index += 1;
         }
@@ -213,7 +202,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
 #[test]
 fn test_function() {
-    use functions::{FunctionImpl, FunctionOptArg};
+    use functions::{FunctionImpl, FunctionOptParam};
     use lazy_static::lazy_static;
     use scheme::UnknownFieldError;
     use types::Type;
@@ -234,11 +223,11 @@ fn test_function() {
                 .add_function(
                     "echo".into(),
                     Function {
-                        args: vec![FunctionArg {
+                        params: vec![FunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
-                        opt_args: vec![FunctionOptArg {
+                        opt_params: vec![FunctionOptParam {
                             arg_kind: FunctionArgKind::Literal,
                             default_value: LhsValue::Int(10),
                         }],
@@ -278,7 +267,7 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments {
+        LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
             expected_max: 2
         },
@@ -355,7 +344,7 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
-        LexErrorKind::IncompatibleNumberArguments {
+        LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
             expected_max: 2,
         },
