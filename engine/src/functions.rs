@@ -1,7 +1,10 @@
 use crate::types::{LhsValue, Type};
 use std::fmt;
 
-type FunctionPtr = for<'a> fn(&mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a>;
+/// An iterator over function arguments as [`LhsValue`]s.
+pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = LhsValue<'a>>;
+
+type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> LhsValue<'a>;
 
 /// Wrapper around a function pointer providing the runtime implemetation.
 #[derive(Clone)]

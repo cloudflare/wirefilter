@@ -202,13 +202,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 #[test]
 fn test_function() {
     use crate::{
-        functions::{FunctionImpl, FunctionOptParam},
+        functions::{FunctionArgs, FunctionImpl, FunctionOptParam},
         scheme::UnknownFieldError,
         types::Type,
     };
     use lazy_static::lazy_static;
 
-    fn echo_function<'a>(_: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+    fn echo_function<'a>(_: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
         false.into()
     }
 

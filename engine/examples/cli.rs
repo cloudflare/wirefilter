@@ -1,10 +1,10 @@
 use std::env::args;
 use wirefilter::{
-    Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam, LhsValue, Scheme,
-    Type,
+    Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
+    LhsValue, Scheme, Type,
 };
 
-fn panic_function<'a>(_: &mut dyn Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
     panic!();
 }
 
