@@ -322,11 +322,7 @@ mod tests {
     use std::net::IpAddr;
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        let input = args.next().unwrap();
-        match input {
-            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_vec().into()),
-            _ => panic!("Invalid type: expected Bytes, got {:?}", input),
-        }
+        args.next().unwrap()
     }
 
     fn lowercase_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {

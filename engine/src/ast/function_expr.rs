@@ -208,8 +208,8 @@ fn test_function() {
     };
     use lazy_static::lazy_static;
 
-    fn echo_function<'a>(_: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        false.into()
+    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+        args.next().unwrap()
     }
 
     lazy_static! {
