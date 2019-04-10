@@ -308,7 +308,7 @@ mod tests {
     use ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
     use cidr::{Cidr, IpCidr};
     use execution_context::ExecutionContext;
-    use functions::{Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam};
+    use functions::{Function, FunctionArgKind};
     use lazy_static::lazy_static;
     use rhs_types::IpRange;
     use std::net::IpAddr;
@@ -354,46 +354,23 @@ mod tests {
             scheme
                 .add_function(
                     "echo".into(),
-                    Function {
-                        params: vec![FunctionParam {
-                            arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
-                        }],
-                        opt_params: vec![],
-                        return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(echo_function),
-                    },
+                    Function::new(Type::Bytes, echo_function)
+                        .param(FunctionArgKind::Field, Type::Bytes),
                 )
                 .unwrap();
             scheme
                 .add_function(
                     "lowercase".into(),
-                    Function {
-                        params: vec![FunctionParam {
-                            arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
-                        }],
-                        opt_params: vec![],
-                        return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(lowercase_function),
-                    },
+                    Function::new(Type::Bytes, lowercase_function)
+                        .param(FunctionArgKind::Field, Type::Bytes),
                 )
                 .unwrap();
             scheme
                 .add_function(
                     "concat".into(),
-                    Function {
-                        params: vec![FunctionParam {
-                            arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
-                        }],
-                        opt_params: vec![FunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
-                            default_value: "".into(),
-                        }],
-                        return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(concat_function),
-                    },
+                    Function::new(Type::Bytes, concat_function)
+                        .param(FunctionArgKind::Field, Type::Bytes)
+                        .opt_param(FunctionArgKind::Literal, "".into()),
                 )
                 .unwrap();
             scheme

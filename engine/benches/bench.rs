@@ -12,10 +12,7 @@ use criterion::{
     criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
 };
 use std::{clone::Clone, fmt::Debug, net::IpAddr};
-use wirefilter::{
-    ExecutionContext, Function, FunctionArgKind, FunctionImpl, FunctionParam, GetType, LhsValue,
-    Scheme, Type,
-};
+use wirefilter::{ExecutionContext, Function, FunctionArgKind, GetType, LhsValue, Scheme, Type};
 
 fn lowercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
     let input = &args[0];
@@ -195,27 +192,11 @@ fn bench_string_function_comparison(c: &mut Criterion) {
         functions: &[
             (
                 "lowercase",
-                Function {
-                    params: vec![FunctionParam {
-                        arg_kind: FunctionArgKind::Field,
-                        val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
-                    return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(lowercase),
-                },
+                Function::new(Type::Bytes, lowercase).param(FunctionArgKind::Field, Type::Bytes),
             ),
             (
                 "uppercase",
-                Function {
-                    params: vec![FunctionParam {
-                        arg_kind: FunctionArgKind::Field,
-                        val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
-                    return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(uppercase),
-                },
+                Function::new(Type::Bytes, uppercase).param(FunctionArgKind::Field, Type::Bytes),
             ),
         ],
         filters: &[

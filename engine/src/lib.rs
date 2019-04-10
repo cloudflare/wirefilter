@@ -96,7 +96,7 @@ pub use self::{
     ast::FilterAst,
     execution_context::{ExecutionContext, FieldValueTypeMismatchError},
     filter::{Filter, SchemeMismatchError},
-    functions::{Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam},
+    functions::{Function, FunctionArgKind},
     scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
     types::{GetType, LhsValue, Type},
 };

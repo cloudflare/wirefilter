@@ -202,7 +202,6 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
 #[test]
 fn test_function() {
-    use functions::{FunctionImpl, FunctionOptParam};
     use lazy_static::lazy_static;
     use scheme::UnknownFieldError;
     use types::Type;
@@ -222,18 +221,9 @@ fn test_function() {
             scheme
                 .add_function(
                     "echo".into(),
-                    Function {
-                        params: vec![FunctionParam {
-                            arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
-                        }],
-                        opt_params: vec![FunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
-                            default_value: LhsValue::Int(10),
-                        }],
-                        return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(echo_function),
-                    },
+                    Function::new(Type::Bytes, echo_function)
+                        .param(FunctionArgKind::Field, Type::Bytes)
+                        .opt_param(FunctionArgKind::Literal, 10.into()),
                 )
                 .unwrap();
             scheme
