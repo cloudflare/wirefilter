@@ -55,27 +55,6 @@
 //! ```
 #![warn(missing_docs)]
 
-extern crate cfg_if;
-extern crate failure;
-extern crate serde;
-
-#[cfg(test)]
-extern crate indoc;
-
-#[cfg(test)]
-extern crate lazy_static;
-
-#[cfg(test)]
-extern crate serde_json;
-
-extern crate cidr;
-extern crate fnv;
-extern crate indexmap;
-extern crate memmem;
-
-#[cfg(feature = "regex")]
-extern crate regex;
-
 #[macro_use]
 mod lex;
 

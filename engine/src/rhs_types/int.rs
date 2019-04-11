@@ -1,6 +1,8 @@
-use lex::{expect, span, take_while, Lex, LexErrorKind, LexResult};
+use crate::{
+    lex::{expect, span, take_while, Lex, LexErrorKind, LexResult},
+    strict_partial_ord::StrictPartialOrd,
+};
 use std::ops::RangeInclusive;
-use strict_partial_ord::StrictPartialOrd;
 
 fn lex_digits(input: &str) -> LexResult<'_, &str> {
     // Lex any supported digits (up to radix 16) for better error locations.

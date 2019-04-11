@@ -4,9 +4,11 @@ mod function_expr;
 mod simple_expr;
 
 use self::combined_expr::CombinedExpr;
-use filter::{CompiledExpr, Filter};
-use lex::{LexResult, LexWith};
-use scheme::{Field, Scheme, UnknownFieldError};
+use crate::{
+    filter::{CompiledExpr, Filter},
+    lex::{LexResult, LexWith},
+    scheme::{Field, Scheme, UnknownFieldError},
+};
 use serde::Serialize;
 use std::fmt::{self, Debug};
 

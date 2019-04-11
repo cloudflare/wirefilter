@@ -1,10 +1,12 @@
 use super::field_expr::LhsFieldExpr;
-use execution_context::ExecutionContext;
-use functions::{Function, FunctionArgKind, FunctionParam};
-use lex::{expect, skip_space, take, take_while, LexError, LexErrorKind, LexResult, LexWith};
-use scheme::{Field, Scheme};
+use crate::{
+    execution_context::ExecutionContext,
+    functions::{Function, FunctionArgKind, FunctionParam},
+    lex::{expect, skip_space, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
+    scheme::{Field, Scheme},
+    types::{GetType, LhsValue, RhsValue},
+};
 use serde::Serialize;
-use types::{GetType, LhsValue, RhsValue};
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
@@ -202,10 +204,12 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
 #[test]
 fn test_function() {
-    use functions::{FunctionImpl, FunctionOptParam};
+    use crate::{
+        functions::{FunctionImpl, FunctionOptParam},
+        scheme::UnknownFieldError,
+        types::Type,
+    };
     use lazy_static::lazy_static;
-    use scheme::UnknownFieldError;
-    use types::Type;
 
     fn echo_function<'a>(_: &[LhsValue<'a>]) -> LhsValue<'a> {
         false.into()

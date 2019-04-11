@@ -1,9 +1,11 @@
+use crate::{
+    rhs_types::RegexError,
+    scheme::{UnknownFieldError, UnknownFunctionError},
+    types::Type,
+};
 use cidr::NetworkParseError;
 use failure::Fail;
-use rhs_types::RegexError;
-use scheme::{UnknownFieldError, UnknownFunctionError};
 use std::num::ParseIntError;
-use types::Type;
 
 #[derive(Debug, PartialEq, Fail)]
 pub enum LexErrorKind {

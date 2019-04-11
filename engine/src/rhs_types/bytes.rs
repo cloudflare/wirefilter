@@ -1,4 +1,7 @@
-use lex::{expect, take, Lex, LexErrorKind, LexResult};
+use crate::{
+    lex::{expect, take, Lex, LexErrorKind, LexResult},
+    strict_partial_ord::StrictPartialOrd,
+};
 use serde::Serialize;
 use std::{
     borrow::Borrow,
@@ -7,7 +10,6 @@ use std::{
     ops::Deref,
     str,
 };
-use strict_partial_ord::StrictPartialOrd;
 
 #[derive(PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]

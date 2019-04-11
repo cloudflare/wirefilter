@@ -1,9 +1,12 @@
-use ast::FilterAst;
+use crate::{
+    ast::FilterAst,
+    functions::Function,
+    lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith},
+    types::{GetType, Type},
+};
 use failure::Fail;
 use fnv::FnvBuildHasher;
-use functions::Function;
 use indexmap::map::{Entry, IndexMap};
-use lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
     cmp::{max, min},
@@ -11,7 +14,6 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     ptr,
 };
-use types::{GetType, Type};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub(crate) struct Field<'s> {

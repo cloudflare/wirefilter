@@ -1,5 +1,8 @@
-use lex::{expect, skip_space, Lex, LexResult, LexWith};
-use rhs_types::{Bytes, IpRange, UninhabitedBool};
+use crate::{
+    lex::{expect, skip_space, Lex, LexResult, LexWith},
+    rhs_types::{Bytes, IpRange, UninhabitedBool},
+    strict_partial_ord::StrictPartialOrd,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -8,7 +11,6 @@ use std::{
     net::IpAddr,
     ops::RangeInclusive,
 };
-use strict_partial_ord::StrictPartialOrd;
 
 fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
     let mut input = expect(input, "{")?;

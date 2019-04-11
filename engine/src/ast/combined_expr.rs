@@ -1,6 +1,9 @@
-use super::{simple_expr::SimpleExpr, CompiledExpr, Expr};
-use lex::{skip_space, Lex, LexResult, LexWith};
-use scheme::{Field, Scheme};
+use super::{simple_expr::SimpleExpr, Expr};
+use crate::{
+    filter::CompiledExpr,
+    lex::{skip_space, Lex, LexResult, LexWith},
+    scheme::{Field, Scheme},
+};
 use serde::Serialize;
 
 lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
@@ -122,8 +125,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 #[test]
 fn test() {
     use super::field_expr::FieldExpr;
-    use execution_context::ExecutionContext;
-    use lex::complete;
+    use crate::{execution_context::ExecutionContext, lex::complete};
 
     let scheme = &Scheme! {
         t: Bool,

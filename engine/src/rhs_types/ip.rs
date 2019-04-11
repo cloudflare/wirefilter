@@ -1,5 +1,8 @@
+use crate::{
+    lex::{take_while, Lex, LexError, LexErrorKind, LexResult},
+    strict_partial_ord::StrictPartialOrd,
+};
 use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr, NetworkParseError};
-use lex::{take_while, Lex, LexError, LexErrorKind, LexResult};
 use serde::Serialize;
 use std::{
     cmp::Ordering,
@@ -7,7 +10,6 @@ use std::{
     ops::RangeInclusive,
     str::FromStr,
 };
-use strict_partial_ord::StrictPartialOrd;
 
 fn match_addr_or_cidr(input: &str) -> LexResult<'_, &str> {
     take_while(input, "IP address character", |c| match c {

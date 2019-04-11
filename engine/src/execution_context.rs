@@ -1,6 +1,8 @@
+use crate::{
+    scheme::{Field, Scheme},
+    types::{GetType, LhsValue, Type},
+};
 use failure::Fail;
-use scheme::{Field, Scheme};
-use types::{GetType, LhsValue, Type};
 
 /// An error that occurs if the type of the value for the field doesn't
 /// match the type specified in the [`Scheme`](struct@Scheme).
