@@ -16,7 +16,7 @@ pub(crate) enum FunctionCallArgExpr<'s> {
 }
 
 impl<'s> FunctionCallArgExpr<'s> {
-    pub fn uses(&self, field: Field<'s>) -> bool {
+    pub fn uses(&self, field: &Field<'s>) -> bool {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
@@ -26,7 +26,7 @@ impl<'s> FunctionCallArgExpr<'s> {
     pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
-                LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
+                LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(field),
                 LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
             },
             FunctionCallArgExpr::Literal(literal) => literal.into(),
@@ -53,7 +53,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                             index: ctx.index,
                             mismatch: TypeMismatchError {
                                 actual: lhs.get_type(),
-                                expected: ctx.param.val_type,
+                                expected: ctx.param.val_type.clone(),
                             },
                         },
                         span(initial_input, input),
@@ -63,7 +63,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                 }
             }
             FunctionArgKind::Literal => {
-                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type)?;
+                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type.clone())?;
                 Ok((FunctionCallArgExpr::Literal(rhs_value), input))
             }
         }
@@ -87,7 +87,7 @@ impl<'s> FunctionCallExpr<'s> {
         }
     }
 
-    pub fn uses(&self, field: Field<'s>) -> bool {
+    pub fn uses(&self, field: &Field<'s>) -> bool {
         self.args.iter().any(|arg| arg.uses(field))
     }
 

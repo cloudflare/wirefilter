@@ -87,10 +87,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for CombinedExpr<'s> {
 }
 
 impl<'s> Expr<'s> for CombinedExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    fn uses(&self, field: &Field<'s>) -> bool {
         match self {
             CombinedExpr::Simple(op) => op.uses(field),
-            CombinedExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),
+            CombinedExpr::Combining { items, .. } => items.iter().any(|op| op.uses(&field)),
         }
     }
 

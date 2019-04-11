@@ -46,7 +46,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
 }
 
 impl<'s> Expr<'s> for SimpleExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    fn uses(&self, field: &Field<'s>) -> bool {
         match self {
             SimpleExpr::Field(op) => op.uses(field),
             SimpleExpr::Parenthesized(op) => op.uses(field),

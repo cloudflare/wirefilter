@@ -132,9 +132,9 @@ pub(crate) enum LhsFieldExpr<'s> {
 }
 
 impl<'s> LhsFieldExpr<'s> {
-    pub fn uses(&self, field: Field<'s>) -> bool {
+    pub fn uses(&self, field: &Field<'s>) -> bool {
         match self {
-            LhsFieldExpr::Field(f) => *f == field,
+            LhsFieldExpr::Field(f) => f == field,
             LhsFieldExpr::FunctionCallExpr(call) => call.uses(field),
         }
     }
@@ -148,7 +148,7 @@ impl<'s> LhsFieldExpr<'s> {
                 CompiledExpr::new(move |ctx| func(call.execute(ctx)))
             }
             LhsFieldExpr::Field(f) => {
-                CompiledExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f)))
+                CompiledExpr::new(move |ctx| func(ctx.get_field_value_unchecked(&f)))
             }
         }
     }
@@ -171,7 +171,7 @@ impl<'s> GetType for LhsFieldExpr<'s> {
     fn get_type(&self) -> Type {
         match self {
             LhsFieldExpr::Field(field) => field.get_type(),
-            LhsFieldExpr::FunctionCallExpr(call) => call.function.return_type,
+            LhsFieldExpr::FunctionCallExpr(call) => call.function.return_type.clone(),
         }
     }
 }
@@ -201,7 +201,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 
             let input = skip_space(input);
 
-            match (lhs_type, op) {
+            match (&lhs_type, op) {
                 (_, ComparisonOp::In) => {
                     let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
                     (FieldOp::OneOf(rhs), input)
@@ -238,7 +238,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 }
 
 impl<'s> Expr<'s> for FieldExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    fn uses(&self, field: &Field<'s>) -> bool {
         self.lhs.uses(field)
     }
 
@@ -301,6 +301,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
                 }
                 RhsValues::Bool(_) => unreachable!(),
+                RhsValues::Map(_) => unreachable!(),
             },
         }
     }
