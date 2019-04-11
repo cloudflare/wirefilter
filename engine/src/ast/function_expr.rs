@@ -53,7 +53,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                             index: ctx.index,
                             mismatch: TypeMismatchError {
                                 actual: lhs.get_type(),
-                                expected: ctx.param.val_type,
+                                expected: ctx.param.val_type.clone(),
                             },
                         },
                         span(initial_input, input),
@@ -63,7 +63,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                 }
             }
             FunctionArgKind::Literal => {
-                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type)?;
+                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type.clone())?;
                 Ok((FunctionCallArgExpr::Literal(rhs_value), input))
             }
         }

@@ -82,7 +82,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 "parsing",
                 Benchmark::new(name, {
                     let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty).unwrap();
+                    scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                     for (name, function) in functions {
                         scheme
                             .add_function((*name).into(), function.clone())
@@ -98,7 +98,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 "compilation",
                 Benchmark::new(name, {
                     let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty).unwrap();
+                    scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                     for (name, function) in functions {
                         scheme
                             .add_function((*name).into(), function.clone())
@@ -118,7 +118,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                     name,
                     {
                         let mut scheme = Scheme::default();
-                        scheme.add_field(field.to_owned(), ty).unwrap();
+                        scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                         for (name, function) in functions {
                             scheme
                                 .add_function((*name).into(), function.clone())

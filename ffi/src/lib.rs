@@ -14,6 +14,14 @@ use wirefilter::{ExecutionContext, Filter, FilterAst, ParseError, Scheme, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[repr(C)]
+pub enum SimpleType {
+    Ip,
+    Bytes,
+    Int,
+    Bool,
+}
+
 #[repr(u8)]
 pub enum ParsingResult<'s> {
     Err(RustAllocatedString),
@@ -55,8 +63,14 @@ pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
     scheme: &mut Scheme,
     name: ExternallyAllocatedStr<'_>,
-    ty: Type,
+    ty: SimpleType,
 ) {
+    let ty = match ty {
+        SimpleType::Ip => Type::Ip,
+        SimpleType::Bytes => Type::Bytes,
+        SimpleType::Int => Type::Int,
+        SimpleType::Bool => Type::Bool,
+    };
     scheme.add_field(name.into_ref().to_owned(), ty).unwrap();
 }
 
@@ -244,34 +258,34 @@ mod ffi_test {
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("ip1"),
-            Type::Ip,
+            SimpleType::Ip,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("ip2"),
-            Type::Ip,
+            SimpleType::Ip,
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("str1"),
-            Type::Bytes,
+            SimpleType::Bytes,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("str2"),
-            Type::Bytes,
+            SimpleType::Bytes,
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("num1"),
-            Type::Int,
+            SimpleType::Int,
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("num2"),
-            Type::Int,
+            SimpleType::Int,
         );
 
         scheme
