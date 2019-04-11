@@ -1,6 +1,5 @@
-use execution_context::ExecutionContext;
+use crate::{execution_context::ExecutionContext, scheme::Scheme};
 use failure::Fail;
-use scheme::Scheme;
 
 /// An error that occurs if filter and provided [`ExecutionContext`] have
 /// different [schemes](struct@Scheme).
@@ -67,7 +66,7 @@ impl<'s> Filter<'s> {
 #[cfg(test)]
 mod tests {
     use super::SchemeMismatchError;
-    use execution_context::ExecutionContext;
+    use crate::execution_context::ExecutionContext;
 
     #[test]
     fn test_scheme_mismatch() {

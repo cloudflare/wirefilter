@@ -5,9 +5,6 @@ use std::alloc::System;
 #[global_allocator]
 static A: System = System;
 
-extern crate criterion;
-extern crate wirefilter;
-
 use criterion::{
     criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
 };

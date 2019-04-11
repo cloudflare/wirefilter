@@ -1,6 +1,8 @@
 use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
-use lex::{expect, skip_space, Lex, LexResult, LexWith};
-use scheme::{Field, Scheme};
+use crate::{
+    lex::{expect, skip_space, Lex, LexResult, LexWith},
+    scheme::{Field, Scheme},
+};
 use serde::Serialize;
 
 lex_enum!(UnaryOp {
@@ -69,8 +71,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 
 #[test]
 fn test() {
-    use execution_context::ExecutionContext;
-    use lex::complete;
+    use crate::{execution_context::ExecutionContext, lex::complete};
 
     let scheme = &Scheme! { t: Bool };
 

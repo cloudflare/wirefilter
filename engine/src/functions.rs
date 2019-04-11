@@ -1,5 +1,5 @@
+use crate::types::{LhsValue, Type};
 use std::fmt;
-use types::{LhsValue, Type};
 
 type FunctionPtr = for<'a> fn(&[LhsValue<'a>]) -> LhsValue<'a>;
 

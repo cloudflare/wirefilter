@@ -1,16 +1,20 @@
-use super::{function_expr::FunctionCallExpr, CompiledExpr, Expr};
+// use crate::filter::CompiledExpr;
+use super::{function_expr::FunctionCallExpr, Expr};
+use crate::{
+    filter::CompiledExpr,
+    heap_searcher::HeapSearcher,
+    lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    range_set::RangeSet,
+    rhs_types::{Bytes, ExplicitIpRange, Regex},
+    scheme::{Field, Scheme},
+    strict_partial_ord::StrictPartialOrd,
+    types::{GetType, LhsValue, RhsValue, RhsValues, Type},
+};
 use fnv::FnvBuildHasher;
-use heap_searcher::HeapSearcher;
 use indexmap::IndexSet;
-use lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith};
 use memmem::Searcher;
-use range_set::RangeSet;
-use rhs_types::{Bytes, ExplicitIpRange, Regex};
-use scheme::{Field, Scheme};
 use serde::{Serialize, Serializer};
 use std::{cmp::Ordering, net::IpAddr};
-use strict_partial_ord::StrictPartialOrd;
-use types::{GetType, LhsValue, RhsValue, RhsValues, Type};
 
 const LESS: u8 = 0b001;
 const GREATER: u8 = 0b010;
@@ -305,12 +309,14 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
+    use crate::{
+        ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
+        execution_context::ExecutionContext,
+        functions::{Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam},
+        rhs_types::IpRange,
+    };
     use cidr::{Cidr, IpCidr};
-    use execution_context::ExecutionContext;
-    use functions::{Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam};
     use lazy_static::lazy_static;
-    use rhs_types::IpRange;
     use std::net::IpAddr;
 
     fn echo_function<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {

@@ -1,7 +1,9 @@
-use lex::{Lex, LexResult};
+use crate::{
+    lex::{Lex, LexResult},
+    strict_partial_ord::StrictPartialOrd,
+};
 use serde::Serialize;
 use std::{borrow::Borrow, cmp::Ordering};
-use strict_partial_ord::StrictPartialOrd;
 
 /// [Uninhabited / empty type](https://doc.rust-lang.org/nomicon/exotic-sizes.html#empty-types)
 /// for `bool` with traits we need for RHS values.

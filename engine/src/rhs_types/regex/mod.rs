@@ -1,5 +1,5 @@
+use crate::lex::{expect, span, Lex, LexErrorKind, LexResult};
 use cfg_if::cfg_if;
-use lex::{expect, span, Lex, LexErrorKind, LexResult};
 use serde::{Serialize, Serializer};
 use std::{
     fmt::{self, Debug, Formatter},

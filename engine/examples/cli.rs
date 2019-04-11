@@ -1,5 +1,3 @@
-extern crate wirefilter;
-
 use std::env::args;
 use wirefilter::{
     Function, FunctionArgKind, FunctionImpl, FunctionOptParam, FunctionParam, LhsValue, Scheme,
