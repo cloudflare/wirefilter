@@ -1,6 +1,7 @@
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
-    rhs_types::{Bytes, IpRange, UninhabitedBool},
+    rhs_types::{Bytes, IpRange, UninhabitedBool, UninhabitedMap},
+    scheme::FieldPathItem,
     strict_partial_ord::StrictPartialOrd,
 };
 use failure::Fail;
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    convert::TryFrom,
+    collections::HashMap,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
     ops::RangeInclusive,
@@ -43,6 +44,20 @@ pub struct TypeMismatchError {
     pub actual: Type,
 }
 
+macro_rules! replace_underscore {
+    ($name:ident ($val_ty:ty)) => {Type::$name(_)};
+    ($name:ident) => {Type::$name};
+}
+
+macro_rules! specialized_get_type {
+    (Map, $value:ident) => {
+        Type::Map(Box::new($value.get_type()))
+    };
+    ($name:ident, $value:ident) => {
+        Type::$name
+    };
+}
+
 macro_rules! declare_types {
     ($(# $attrs:tt)* enum $name:ident $(<$lt:tt>)* { $($(# $vattrs:tt)* $variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
@@ -54,7 +69,7 @@ macro_rules! declare_types {
         impl $(<$lt>)* GetType for $name $(<$lt>)* {
             fn get_type(&self) -> Type {
                 match self {
-                    $($name::$variant(_) => Type::$variant,)*
+                    $($name::$variant(_value) => specialized_get_type!($variant, _value),)*
                 }
             }
         }
@@ -68,12 +83,22 @@ macro_rules! declare_types {
         }
     };
 
-    ($($(# $attrs:tt)* $name:ident ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
+    ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
         #[repr(C)]
         pub enum Type {
-            $($(# $attrs)* $name,)*
+            $($(# $attrs)* $name$(($val_ty))?,)*
+        }
+
+        impl Type {
+            /// Returns the inner type when available (e.g: for a Map)
+            pub fn next(&self) -> Option<Type> {
+                match self {
+                    Type::Map(ty) => Some(*ty.clone()),
+                    _ => None,
+                }
+            }
         }
 
         /// Provides a way to get a [`Type`] of the implementor.
@@ -84,7 +109,7 @@ macro_rules! declare_types {
 
         impl GetType for Type {
             fn get_type(&self) -> Type {
-                *self
+                self.clone()
             }
         }
 
@@ -107,20 +132,6 @@ macro_rules! declare_types {
             }
         })*
 
-        $(impl<'a> TryFrom<LhsValue<'a>> for $lhs_ty {
-            type Error = TypeMismatchError;
-
-            fn try_from(value: LhsValue<'a>) -> Result<$lhs_ty, TypeMismatchError> {
-                match value {
-                    LhsValue::$name(value) => Ok(value),
-                    _ => Err(TypeMismatchError {
-                        expected: Type::$name,
-                        actual: value.get_type(),
-                    }),
-                }
-            }
-        })*
-
         declare_types! {
             /// An RHS value parsed from a filter string.
             #[derive(PartialEq, Eq, Clone, Serialize)]
@@ -133,7 +144,7 @@ macro_rules! declare_types {
         impl<'i> LexWith<'i, Type> for RhsValue {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
-                    $(Type::$name => {
+                    $(replace_underscore!($name $(($val_ty))?) => {
                         let (value, input) = <$rhs_ty>::lex(input)?;
                         (RhsValue::$name(value), input)
                     })*
@@ -175,7 +186,7 @@ macro_rules! declare_types {
         impl<'i> LexWith<'i, Type> for RhsValues {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
-                    $(Type::$name => {
+                    $(replace_underscore!($name $(($val_ty))?) => {
                         let (value, input) = lex_rhs_values(input)?;
                         (RhsValues::$name(value), input)
                     })*
@@ -185,7 +196,21 @@ macro_rules! declare_types {
     };
 }
 
-// special cases for simply passing owned and borrowed bytes
+/// A map of string to [`Type`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Map<'a> {
+    pub val_type: Type,
+    #[serde(borrow)]
+    pub data: HashMap<String, LhsValue<'a>>,
+}
+
+impl<'a> GetType for Map<'a> {
+    fn get_type(&self) -> Type {
+        self.val_type.clone()
+    }
+}
+
+// special case for simply passing bytes
 impl<'a> From<&'a [u8]> for LhsValue<'a> {
     #[inline]
     fn from(b: &'a [u8]) -> Self {
@@ -222,6 +247,7 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
             RhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             RhsValue::Int(integer) => LhsValue::Int(*integer),
             RhsValue::Bool(b) => match *b {},
+            RhsValue::Map(m) => match *m {},
         }
     }
 }
@@ -235,6 +261,25 @@ impl<'a> LhsValue<'a> {
             LhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             LhsValue::Int(integer) => LhsValue::Int(*integer),
             LhsValue::Bool(b) => LhsValue::Bool(*b),
+            LhsValue::Map(m) => LhsValue::Map(m.clone()),
+        }
+    }
+
+    /// Retrieve an element from an LhsValue given a path item and a specified
+    /// type.
+    /// Returns a TypeMismatchError error if current type does not support it
+    /// nested element. Only LhsValue::Map supports nested elements for now.
+    pub fn get(
+        &self,
+        item: &FieldPathItem,
+        ty: &Type,
+    ) -> Result<Option<&LhsValue>, TypeMismatchError> {
+        match (self, item) {
+            (LhsValue::Map(map), FieldPathItem::Name(ref name)) => Ok(map.data.get(name)),
+            (_, FieldPathItem::Name(_name)) => Err(TypeMismatchError {
+                expected: Type::Map(Box::new(ty.clone())),
+                actual: self.get_type(),
+            }),
         }
     }
 }
@@ -256,6 +301,9 @@ declare_types!(
 
     /// A boolean.
     Bool(bool | UninhabitedBool | UninhabitedBool),
+
+    /// A map of string to [`Type`].
+    Map[Box<Type>](Map<'a> | UninhabitedMap | UninhabitedMap),
 );
 
 #[test]

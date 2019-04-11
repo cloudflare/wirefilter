@@ -171,7 +171,7 @@ impl<'s> GetType for LhsFieldExpr<'s> {
     fn get_type(&self) -> Type {
         match self {
             LhsFieldExpr::Field(field) => field.get_type(),
-            LhsFieldExpr::FunctionCallExpr(call) => call.function.return_type,
+            LhsFieldExpr::FunctionCallExpr(call) => call.function.return_type.clone(),
         }
     }
 }
@@ -201,7 +201,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 
             let input = skip_space(input);
 
-            match (lhs_type, op) {
+            match (&lhs_type, op) {
                 (_, ComparisonOp::In) => {
                     let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
                     (FieldOp::OneOf(rhs), input)
@@ -301,6 +301,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
                 }
                 RhsValues::Bool(_) => unreachable!(),
+                RhsValues::Map(_) => unreachable!(),
             },
         }
     }

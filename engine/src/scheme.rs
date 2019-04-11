@@ -12,8 +12,14 @@ use std::{
     cmp::{max, min},
     error::Error,
     fmt::{self, Debug, Display, Formatter},
+    iter::Iterator,
     ptr,
 };
+
+#[derive(PartialEq, Eq, Clone)]
+pub enum FieldPathItem {
+    Name(String),
+}
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub(crate) struct Field<'s> {
@@ -75,7 +81,7 @@ impl<'s> Field<'s> {
 
 impl<'s> GetType for Field<'s> {
     fn get_type(&self) -> Type {
-        *self.scheme.fields.get_index(self.index).unwrap().1
+        self.scheme.fields.get_index(self.index).unwrap().1.clone()
     }
 }
 
@@ -313,11 +319,11 @@ macro_rules! Scheme {
             [$(
                 (
                     concat!(stringify!($ns) $(, ".", stringify!($field))*),
-                    $crate::Type::$ty
+                    $crate::Type::$ty,
                 )
             ),*]
             .iter()
-            .map(|&(k, v)| (k.to_owned(), v)),
+            .map(|&(k, ref v)| (k.to_owned(), v.clone())),
         )
         // Treat duplciations in static schemes as a developer's mistake.
         .unwrap_or_else(|err| panic!("{}", err))
