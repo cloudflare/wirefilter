@@ -1,25 +1,14 @@
-extern crate fnv;
-extern crate libc;
-extern crate serde_json;
-extern crate wirefilter;
-
-#[cfg(test)]
-extern crate regex;
-
-#[cfg(test)]
-extern crate indoc;
-
 pub mod transfer_types;
 
+use crate::transfer_types::{
+    ExternallyAllocatedByteArr, ExternallyAllocatedStr, RustAllocatedString, RustBox,
+    StaticRustAllocatedString,
+};
 use fnv::FnvHasher;
 use std::{
     hash::Hasher,
     io::{self, Write},
     net::IpAddr,
-};
-use transfer_types::{
-    ExternallyAllocatedByteArr, ExternallyAllocatedStr, RustAllocatedString, RustBox,
-    StaticRustAllocatedString,
 };
 use wirefilter::{ExecutionContext, Filter, FilterAst, ParseError, Scheme, Type};
 

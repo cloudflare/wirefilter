@@ -1,4 +1,4 @@
-extern crate cc;
+use cc;
 
 fn main() {
     cc::Build::new()

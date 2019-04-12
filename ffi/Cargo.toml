@@ -4,6 +4,7 @@ name = "wirefilter-ffi"
 version = "0.6.1"
 description = "FFI bindings for the Wirefilter engine"
 publish = false
+edition = "2018"
 
 [package.metadata.deb]
 assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]

@@ -1,7 +1,3 @@
-extern crate js_sys;
-extern crate wasm_bindgen;
-extern crate wirefilter;
-
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
