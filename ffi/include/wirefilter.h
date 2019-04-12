@@ -114,7 +114,7 @@ bool wirefilter_match(
 );
 
 bool wirefilter_filter_uses(
-    wirefilter_filter_t *filter,
+    wirefilter_filter_ast_t *ast,
     wirefilter_externally_allocated_str_t field_name
 );
 

@@ -33,6 +33,7 @@ mod ffi_ctest {
         add_fields_to_scheme,
         parse_good_filter,
         parse_bad_filter,
+        filter_uses_field,
         compile_filter,
         create_execution_context,
         add_values_to_execution_context,
