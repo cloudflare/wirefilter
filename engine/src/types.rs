@@ -3,10 +3,12 @@ use crate::{
     rhs_types::{Bytes, IpRange, UninhabitedBool},
     strict_partial_ord::StrictPartialOrd,
 };
+use failure::Fail;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     cmp::Ordering,
+    convert::TryFrom,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
     ops::RangeInclusive,
@@ -26,6 +28,19 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
             input = rest;
         }
     }
+}
+
+/// An error that occurs on a type mismatch.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(
+    display = "expected value of type {:?}, but got {:?}",
+    expected, actual
+)]
+pub struct TypeMismatchError {
+    /// Expected value type.
+    pub expected: Type,
+    /// Provided value type.
+    pub actual: Type,
 }
 
 macro_rules! declare_types {
@@ -89,6 +104,20 @@ macro_rules! declare_types {
         $(impl<'a> From<$lhs_ty> for LhsValue<'a> {
             fn from(value: $lhs_ty) -> Self {
                 LhsValue::$name(value)
+            }
+        })*
+
+        $(impl<'a> TryFrom<LhsValue<'a>> for $lhs_ty {
+            type Error = TypeMismatchError;
+
+            fn try_from(value: LhsValue<'a>) -> Result<$lhs_ty, TypeMismatchError> {
+                match value {
+                    LhsValue::$name(value) => Ok(value),
+                    _ => Err(TypeMismatchError {
+                        expected: Type::$name,
+                        actual: value.get_type(),
+                    }),
+                }
             }
         })*
 
