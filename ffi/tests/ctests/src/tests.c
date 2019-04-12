@@ -13,6 +13,29 @@ static wirefilter_externally_allocated_str_t wirefilter_string(const char *s) {
     return str;
 }
 
+void initialize_scheme(wirefilter_scheme_t *scheme) {
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("http.host"),
+        WIREFILTER_TYPE_BYTES
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("ip.addr"),
+        WIREFILTER_TYPE_IP
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("ssl"),
+        WIREFILTER_TYPE_BOOL
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("tcp.port"),
+        WIREFILTER_TYPE_INT
+    );
+}
+
 void wirefilter_ffi_ctest_create_scheme() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
@@ -23,26 +46,7 @@ void wirefilter_ffi_ctest_add_fields_to_scheme() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_free_scheme(scheme);
 }
@@ -51,26 +55,7 @@ void wirefilter_ffi_ctest_parse_good_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_parsing_result_t result = wirefilter_parse_filter(
         scheme,
@@ -88,26 +73,7 @@ void wirefilter_ffi_ctest_parse_bad_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_parsing_result_t result = wirefilter_parse_filter(
         scheme,
@@ -125,26 +91,7 @@ void wirefilter_ffi_ctest_filter_uses_field() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_parsing_result_t result = wirefilter_parse_filter(
         scheme,
@@ -172,26 +119,7 @@ void wirefilter_ffi_ctest_compile_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_parsing_result_t result = wirefilter_parse_filter(
         scheme,
@@ -224,26 +152,7 @@ void wirefilter_ffi_ctest_add_values_to_execution_context() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -285,26 +194,7 @@ void wirefilter_ffi_ctest_match_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("http.host"),
-        WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ip.addr"),
-        WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("ssl"),
-        WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
-        scheme,
-        wirefilter_string("tcp.port"),
-        WIREFILTER_TYPE_INT
-    );
+    initialize_scheme(scheme);
 
     wirefilter_parsing_result_t result = wirefilter_parse_filter(
         scheme,
