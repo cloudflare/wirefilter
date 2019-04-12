@@ -1,4 +1,4 @@
-extern crate wirefilter_ffi as _;
+use wirefilter_ffi as _;
 
 #[no_mangle]
 unsafe extern "C" fn rust_assert(check: bool, msg: *const std::os::raw::c_char) {

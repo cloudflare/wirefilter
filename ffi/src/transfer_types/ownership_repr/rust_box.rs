@@ -1,9 +1,9 @@
+use crate::transfer_types::raw_ptr_repr::ExternPtrRepr;
 use std::{
     marker::PhantomData,
     mem,
     ops::{Deref, DerefMut},
 };
-use transfer_types::raw_ptr_repr::ExternPtrRepr;
 
 #[repr(transparent)]
 pub struct RustBox<T: ?Sized + ExternPtrRepr> {

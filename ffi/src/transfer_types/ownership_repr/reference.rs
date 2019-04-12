@@ -1,5 +1,5 @@
+use crate::transfer_types::raw_ptr_repr::ExternPtrRepr;
 use std::marker::PhantomData;
-use transfer_types::raw_ptr_repr::ExternPtrRepr;
 
 #[repr(transparent)]
 pub struct Ref<'a, T: ?Sized + ExternPtrRepr> {

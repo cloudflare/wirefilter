@@ -4,6 +4,7 @@ name = "wirefilter-wasm"
 version = "0.6.1"
 description = "WebAssembly bindings for the Wirefilter engine"
 publish = false
+edition = "2018"
 
 [lib]
 crate-type = ["cdylib"]
