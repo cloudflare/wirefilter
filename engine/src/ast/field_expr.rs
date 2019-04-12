@@ -296,7 +296,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
-                        values.into_iter().map(|value| value.into()).collect();
+                        values.into_iter().map(Into::into).collect();
 
                     lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
                 }

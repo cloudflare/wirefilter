@@ -100,7 +100,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
             CombinedExpr::Combining { op, items } => {
                 let items = items
                     .into_iter()
-                    .map(|item| item.compile())
+                    .map(Expr::compile)
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
 
