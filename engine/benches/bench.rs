@@ -10,8 +10,8 @@ use criterion::{
 };
 use std::{clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, Function, FunctionArgKind, FunctionImpl, FunctionParam, GetType, LhsValue,
-    Scheme, Type,
+    ExecutionContext, FilterAst, Function, FunctionArgKind, FunctionImpl, FunctionParam, GetType,
+    LhsValue, Scheme, Type,
 };
 
 fn lowercase<'a>(args: &[LhsValue<'a>]) -> LhsValue<'a> {
@@ -89,7 +89,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                     move |b: &mut Bencher| {
                         let filter = scheme.parse(filter).unwrap();
 
-                        b.iter_with_setup(move || filter.clone(), |filter| filter.compile());
+                        b.iter_with_setup(move || filter.clone(), FilterAst::compile);
                     }
                 }),
             );
