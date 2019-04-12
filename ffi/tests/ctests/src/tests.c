@@ -121,6 +121,53 @@ void wirefilter_ffi_ctest_parse_bad_filter() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_filter_uses_field() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("http.host"),
+        WIREFILTER_TYPE_BYTES
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("ip.addr"),
+        WIREFILTER_TYPE_IP
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("ssl"),
+        WIREFILTER_TYPE_BOOL
+    );
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("tcp.port"),
+        WIREFILTER_TYPE_INT
+    );
+
+    wirefilter_parsing_result_t result = wirefilter_parse_filter(
+        scheme,
+        wirefilter_string("tcp.port == 80")
+    );
+    rust_assert(result.success == 1, "could not parse good filter");
+    rust_assert(result.ok.ast != NULL, "could not parse good filter");
+
+    rust_assert(
+        wirefilter_filter_uses(result.ok.ast, wirefilter_string("tcp.port")) == true,
+        "filter should be using field tcp.port"
+    );
+
+    rust_assert(
+        wirefilter_filter_uses(result.ok.ast, wirefilter_string("ip.addr")) == false,
+        "filter should not be using field ip.addr"
+    );
+
+    wirefilter_free_parsing_result(result);
+
+    wirefilter_free_scheme(scheme);
+}
+
 void wirefilter_ffi_ctest_compile_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
