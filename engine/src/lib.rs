@@ -73,11 +73,11 @@ mod types;
 
 pub use self::{
     ast::FilterAst,
-    execution_context::{ExecutionContext, FieldValueTypeMismatchError},
+    execution_context::ExecutionContext,
     filter::{Filter, SchemeMismatchError},
     functions::{
         Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
     },
     scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
-    types::{GetType, LhsValue, Type},
+    types::{GetType, LhsValue, Type, TypeMismatchError},
 };

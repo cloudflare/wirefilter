@@ -1,7 +1,7 @@
 use crate::{
     rhs_types::RegexError,
     scheme::{UnknownFieldError, UnknownFunctionError},
-    types::Type,
+    types::{Type, TypeMismatchError},
 };
 use cidr::NetworkParseError;
 use failure::Fail;
@@ -62,11 +62,11 @@ pub enum LexErrorKind {
         expected_max: usize,
     },
 
-    #[fail(display = "invalid argument type")]
+    #[fail(display = "invalid type of argument #{}: {}", index, mismatch)]
     InvalidArgumentType {
         index: usize,
-        given: Type,
-        expected: Type,
+        #[cause]
+        mismatch: TypeMismatchError,
     },
 }
 

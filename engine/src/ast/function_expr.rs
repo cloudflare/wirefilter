@@ -2,9 +2,9 @@ use super::field_expr::LhsFieldExpr;
 use crate::{
     execution_context::ExecutionContext,
     functions::{Function, FunctionArgKind, FunctionParam},
-    lex::{expect, skip_space, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{GetType, LhsValue, RhsValue},
+    types::{GetType, LhsValue, RhsValue, TypeMismatchError},
 };
 use serde::Serialize;
 
@@ -51,10 +51,12 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                     Err((
                         LexErrorKind::InvalidArgumentType {
                             index: ctx.index,
-                            given: lhs.get_type(),
-                            expected: ctx.param.val_type,
+                            mismatch: TypeMismatchError {
+                                actual: lhs.get_type(),
+                                expected: ctx.param.val_type,
+                            },
                         },
-                        initial_input,
+                        span(initial_input, input),
                     ))
                 } else {
                     Ok((FunctionCallArgExpr::LhsFieldExpr(lhs), input))
@@ -335,10 +337,12 @@ fn test_function() {
         FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
         LexErrorKind::InvalidArgumentType {
             index: 0,
-            given: Type::Ip,
-            expected: Type::Bytes
+            mismatch: TypeMismatchError {
+                actual: Type::Ip,
+                expected: Type::Bytes,
+            }
         },
-        "ip.addr );"
+        "ip.addr"
     );
 
     assert_err!(

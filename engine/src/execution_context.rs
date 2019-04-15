@@ -1,22 +1,7 @@
 use crate::{
     scheme::{Field, Scheme},
-    types::{GetType, LhsValue, Type},
+    types::{GetType, LhsValue, TypeMismatchError},
 };
-use failure::Fail;
-
-/// An error that occurs if the type of the value for the field doesn't
-/// match the type specified in the [`Scheme`](struct@Scheme).
-#[derive(Debug, PartialEq, Fail)]
-#[fail(
-    display = "the field should have {:?} type, but {:?} was provided",
-    field_type, value_type
-)]
-pub struct FieldValueTypeMismatchError {
-    /// The type of the field specified in the [`Scheme`](struct@Scheme).
-    pub field_type: Type,
-    /// Provided value type.
-    pub value_type: Type,
-}
 
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
 /// set of runtime values to execute [`Filter`](::Filter) against.
@@ -67,7 +52,7 @@ impl<'e> ExecutionContext<'e> {
         &mut self,
         name: &str,
         value: V,
-    ) -> Result<(), FieldValueTypeMismatchError> {
+    ) -> Result<(), TypeMismatchError> {
         let field = self.scheme.get_field_index(name).unwrap();
         let value = value.into();
 
@@ -78,9 +63,9 @@ impl<'e> ExecutionContext<'e> {
             self.values[field.index()] = Some(value);
             Ok(())
         } else {
-            Err(FieldValueTypeMismatchError {
-                field_type,
-                value_type,
+            Err(TypeMismatchError {
+                expected: field_type,
+                actual: value_type,
             })
         }
     }
@@ -88,15 +73,17 @@ impl<'e> ExecutionContext<'e> {
 
 #[test]
 fn test_field_value_type_mismatch() {
+    use crate::types::Type;
+
     let scheme = Scheme! { foo: Int };
 
     let mut ctx = ExecutionContext::new(&scheme);
 
     assert_eq!(
         ctx.set_field_value("foo", LhsValue::Bool(false)),
-        Err(FieldValueTypeMismatchError {
-            field_type: Type::Int,
-            value_type: Type::Bool
+        Err(TypeMismatchError {
+            expected: Type::Int,
+            actual: Type::Bool
         })
     );
 }
