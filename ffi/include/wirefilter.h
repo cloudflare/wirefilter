@@ -62,7 +62,7 @@ void wirefilter_add_type_field_to_scheme(
 );
 
 wirefilter_parsing_result_t wirefilter_parse_filter(
-    wirefilter_scheme_t *scheme,
+    const wirefilter_scheme_t *scheme,
     wirefilter_externally_allocated_str_t input
 );
 
@@ -72,7 +72,7 @@ wirefilter_filter_t *wirefilter_compile_filter(wirefilter_filter_ast_t *ast);
 void wirefilter_free_compiled_filter(wirefilter_filter_t *filter);
 
 wirefilter_execution_context_t *wirefilter_create_execution_context(
-    wirefilter_scheme_t *scheme
+    const wirefilter_scheme_t *scheme
 );
 void wirefilter_free_execution_context(
     wirefilter_execution_context_t *exec_ctx
@@ -109,12 +109,12 @@ void wirefilter_add_bool_value_to_execution_context(
 );
 
 bool wirefilter_match(
-    wirefilter_filter_t *filter,
-    wirefilter_execution_context_t *exec_ctx
+    const wirefilter_filter_t *filter,
+    const wirefilter_execution_context_t *exec_ctx
 );
 
 bool wirefilter_filter_uses(
-    wirefilter_filter_ast_t *ast,
+    const wirefilter_filter_ast_t *ast,
     wirefilter_externally_allocated_str_t field_name
 );
 
