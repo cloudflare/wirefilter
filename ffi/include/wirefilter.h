@@ -118,6 +118,14 @@ bool wirefilter_filter_uses(
     wirefilter_externally_allocated_str_t field_name
 );
 
+uint64_t wirefilter_get_filter_hash(const wirefilter_filter_ast_t *ast);
+
+wirefilter_rust_allocated_str_t wirefilter_serialize_filter_to_json(
+    const wirefilter_filter_ast_t *ast
+);
+
+void wirefilter_free_string(wirefilter_rust_allocated_str_t str);
+
 wirefilter_static_rust_allocated_str_t wirefilter_get_version();
 
 #ifdef __cplusplus
