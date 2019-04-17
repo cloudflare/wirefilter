@@ -115,6 +115,70 @@ void wirefilter_ffi_ctest_filter_uses_field() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_filter_hash() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_parsing_result_t result1 = wirefilter_parse_filter(
+        scheme,
+        wirefilter_string("tcp.port == 80")
+    );
+    rust_assert(result1.success == 1, "could not parse good filter");
+    rust_assert(result1.ok.ast != NULL, "could not parse good filter");
+
+    wirefilter_parsing_result_t result2 = wirefilter_parse_filter(
+        scheme,
+        wirefilter_string("tcp.port              ==80")
+    );
+    rust_assert(result2.success == 1, "could not parse good filter");
+    rust_assert(result2.ok.ast != NULL, "could not parse good filter");
+
+    uint64_t hash1 = wirefilter_get_filter_hash(result1.ok.ast);
+
+    uint64_t hash2 = wirefilter_get_filter_hash(result2.ok.ast);
+
+    rust_assert(hash1 != 0, "could not compute hash");
+
+    rust_assert(hash1 == hash2, "both filters should have the same hash");
+
+    wirefilter_free_parsing_result(result1);
+
+    wirefilter_free_parsing_result(result2);
+
+    wirefilter_free_scheme(scheme);
+}
+
+void wirefilter_ffi_ctest_filter_serialize() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_parsing_result_t result = wirefilter_parse_filter(
+        scheme,
+        wirefilter_string("tcp.port == 80")
+    );
+    rust_assert(result.success == 1, "could not parse good filter");
+    rust_assert(result.ok.ast != NULL, "could not parse good filter");
+
+    wirefilter_rust_allocated_str_t json = wirefilter_serialize_filter_to_json(result.ok.ast);
+
+    rust_assert(json.data != NULL && json.length > 0, "could not serialize filter to JSON");
+
+    rust_assert(
+        strncmp(json.data, "{\"lhs\":\"tcp.port\",\"op\":\"Equal\",\"rhs\":80}", json.length) == 0,
+        "invalid JSON serialization"
+    );
+
+    wirefilter_free_string(json);
+
+    wirefilter_free_parsing_result(result);
+
+    wirefilter_free_scheme(scheme);
+}
+
 void wirefilter_ffi_ctest_compile_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");

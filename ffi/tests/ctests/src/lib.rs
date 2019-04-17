@@ -34,6 +34,8 @@ mod ffi_ctest {
         parse_good_filter,
         parse_bad_filter,
         filter_uses_field,
+        filter_hash,
+        filter_serialize,
         compile_filter,
         create_execution_context,
         add_values_to_execution_context,
