@@ -1,6 +1,8 @@
 // use crate::filter::CompiledExpr;
 use super::{function_expr::FunctionCallExpr, Expr};
 use crate::{
+    ast::index_expr::IndexExpr,
+    execution_context::ExecutionContext,
     filter::CompiledExpr,
     heap_searcher::HeapSearcher,
     lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
@@ -139,17 +141,10 @@ impl<'s> LhsFieldExpr<'s> {
         }
     }
 
-    fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
-    where
-        F: Fn(LhsValue<'_>) -> bool,
-    {
+    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
         match self {
-            LhsFieldExpr::FunctionCallExpr(call) => {
-                CompiledExpr::new(move |ctx| func(call.execute(ctx)))
-            }
-            LhsFieldExpr::Field(f) => {
-                CompiledExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f)))
-            }
+            LhsFieldExpr::Field(f) => ctx.get_field_value_unchecked(*f),
+            LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
         }
     }
 }
@@ -178,7 +173,7 @@ impl<'s> GetType for LhsFieldExpr<'s> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct FieldExpr<'s> {
-    lhs: LhsFieldExpr<'s>,
+    lhs: IndexExpr<'s>,
 
     #[serde(flatten)]
     op: FieldOp,
@@ -188,7 +183,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
-        let (lhs, input) = LhsFieldExpr::lex_with(input, scheme)?;
+        let (lhs, input) = IndexExpr::lex_with(input, scheme)?;
 
         let lhs_type = lhs.get_type();
 
@@ -317,10 +312,12 @@ mod tests {
             Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
         },
         rhs_types::IpRange,
+        scheme::FieldIndex,
+        types::Map,
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
-    use std::net::IpAddr;
+    use std::{collections::HashMap, net::IpAddr};
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
         args.next().unwrap()
@@ -357,6 +354,7 @@ mod tests {
                 ip.addr: Ip,
                 ssl: Bool,
                 tcp.port: Int,
+                http.headers: Map(Bytes),
             };
             scheme
                 .add_function(
@@ -419,7 +417,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with("ssl", &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("ssl")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("ssl")),
+                    indexes: vec![],
+                },
                 op: FieldOp::IsTrue
             }
         );
@@ -447,7 +448,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("ip.addr")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("ip.addr")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::LessThanEqual,
                     rhs: RhsValue::Ip(IpAddr::from([
@@ -499,7 +503,10 @@ mod tests {
             let expr = assert_ok!(
                 FieldExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", &SCHEME),
                 FieldExpr {
-                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    lhs: IndexExpr {
+                        lhs: LhsFieldExpr::Field(field("http.host")),
+                        indexes: vec![],
+                    },
                     op: FieldOp::Ordering {
                         op: OrderingOp::GreaterThanEqual,
                         rhs: RhsValue::Bytes(
@@ -524,7 +531,10 @@ mod tests {
             let expr = assert_ok!(
                 FieldExpr::lex_with(r#"http.host < 12"#, &SCHEME),
                 FieldExpr {
-                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    lhs: IndexExpr {
+                        lhs: LhsFieldExpr::Field(field("http.host")),
+                        indexes: vec![],
+                    },
                     op: FieldOp::Ordering {
                         op: OrderingOp::LessThan,
                         rhs: RhsValue::Bytes(vec![0x12].into()),
@@ -545,7 +555,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"http.host == "example.org""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("http.host")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
@@ -577,7 +590,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with("tcp.port & 1", &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("tcp.port")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("tcp.port")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Int {
                     op: IntOp::BitwiseAnd,
                     rhs: 1,
@@ -609,7 +625,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("tcp.port")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("tcp.port")),
+                    indexes: vec![],
+                },
                 op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083])),
             }
         );
@@ -657,7 +676,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("http.host")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
                 op: FieldOp::OneOf(RhsValues::Bytes(
                     ["example.org", "example.com",]
                         .iter()
@@ -700,7 +722,10 @@ mod tests {
                 &SCHEME
             ),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("ip.addr")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("ip.addr")),
+                    indexes: vec![],
+                },
                 op: FieldOp::OneOf(RhsValues::Ip(vec![
                     IpRange::Cidr(IpCidr::new([127, 0, 0, 0].into(), 8).unwrap()),
                     IpRange::Cidr(IpCidr::new_host([0, 0, 0, 0, 0, 0, 0, 1].into())),
@@ -753,7 +778,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"http.host contains "abc""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("http.host")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Contains("abc".to_owned().into())
             }
         );
@@ -782,7 +810,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("http.host")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into()),
             }
         );
@@ -811,7 +842,10 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"tcp.port < 8000"#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::Field(field("tcp.port")),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("tcp.port")),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::LessThan,
                     rhs: RhsValue::Int(8000)
@@ -839,17 +873,71 @@ mod tests {
     }
 
     #[test]
+    fn test_map_of_bytes_contains_str() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.headers["host"] contains "abc""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.headers")),
+                    indexes: vec![FieldIndex::MapKey("host".to_string())],
+                },
+                op: FieldOp::Contains("abc".to_owned().into()),
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.headers", "host"],
+                "op": "Contains",
+                "rhs": "abc",
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let headers = LhsValue::Map(Map {
+            val_type: Type::Bytes,
+            data: {
+                let mut map = HashMap::new();
+                map.insert("host".to_string(), "example.org".into());
+                map
+            },
+        });
+
+        ctx.set_field_value("http.headers", headers).unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        let headers = LhsValue::Map(Map {
+            val_type: Type::Bytes,
+            data: {
+                let mut map = HashMap::new();
+                map.insert("host".to_string(), "abc.net.au".into());
+                map
+            },
+        });
+
+        ctx.set_field_value("http.headers", headers).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
     fn test_bytes_compare_with_echo_function() {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"echo(http.host) == "example.org""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("echo"),
-                    function: SCHEME.get_function("echo").unwrap(),
-                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                        field("http.host")
-                    ))],
-                }),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("echo"),
+                        function: SCHEME.get_function("echo").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.host")),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
@@ -864,7 +952,7 @@ mod tests {
                     "name": "echo",
                     "args": [
                         {
-                            "kind": "LhsFieldExpr",
+                            "kind": "IndexExpr",
                             "value": "http.host"
                         }
                     ]
@@ -889,13 +977,17 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"lowercase(http.host) == "example.org""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("lowercase"),
-                    function: SCHEME.get_function("lowercase").unwrap(),
-                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                        field("http.host")
-                    ))],
-                }),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("lowercase"),
+                        function: SCHEME.get_function("lowercase").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.host")),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
@@ -910,7 +1002,7 @@ mod tests {
                     "name": "lowercase",
                     "args": [
                         {
-                            "kind": "LhsFieldExpr",
+                            "kind": "IndexExpr",
                             "value": "http.host"
                         }
                     ]
@@ -935,13 +1027,17 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"concat(http.host) == "example.org""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("concat"),
-                    function: SCHEME.get_function("concat").unwrap(),
-                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                        field("http.host")
-                    ))],
-                }),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("concat"),
+                        function: SCHEME.get_function("concat").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.host")),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
@@ -956,7 +1052,7 @@ mod tests {
                     "name": "concat",
                     "args": [
                         {
-                            "kind": "LhsFieldExpr",
+                            "kind": "IndexExpr",
                             "value": "http.host"
                         }
                     ]
@@ -978,16 +1074,22 @@ mod tests {
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"concat(http.host, ".org") == "example.org""#, &SCHEME),
             FieldExpr {
-                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("concat"),
-                    function: SCHEME.get_function("concat").unwrap(),
-                    args: vec![
-                        FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(field("http.host"))),
-                        FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
-                            ".org".to_owned()
-                        ))),
-                    ],
-                }),
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("concat"),
+                        function: SCHEME.get_function("concat").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("http.host")),
+                                indexes: vec![],
+                            }),
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                                ".org".to_owned()
+                            ))),
+                        ],
+                    }),
+                    indexes: vec![],
+                },
                 op: FieldOp::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
@@ -1002,7 +1104,7 @@ mod tests {
                     "name": "concat",
                     "args": [
                         {
-                            "kind": "LhsFieldExpr",
+                            "kind": "IndexExpr",
                             "value": "http.host"
                         },
                         {
