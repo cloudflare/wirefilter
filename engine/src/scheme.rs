@@ -16,9 +16,17 @@ use std::{
     ptr,
 };
 
-#[derive(PartialEq, Eq, Clone)]
-pub enum FieldPathItem {
-    Name(String),
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[serde(untagged)]
+pub enum FieldIndex {
+    MapKey(String),
+}
+
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "cannot access index {:?} for type {:?}", _0, _1)]
+pub struct IndexAccessError {
+    pub index: FieldIndex,
+    pub actual: Type,
 }
 
 #[derive(PartialEq, Eq, Clone)]
@@ -314,12 +322,12 @@ impl<'s> Scheme {
 /// contents.
 #[macro_export]
 macro_rules! Scheme {
-    ($($ns:ident $(. $field:ident)*: $ty:ident),* $(,)*) => {
+    ($($ns:ident $(. $field:ident)*: $ty:ident $(($subty:tt))?),* $(,)*) => {
         $crate::Scheme::try_from_iter(
             [$(
                 (
                     concat!(stringify!($ns) $(, ".", stringify!($field))*),
-                    $crate::Type::$ty,
+                    Scheme!($ty $(($subty))?),
                 )
             ),*]
             .iter()
@@ -328,6 +336,7 @@ macro_rules! Scheme {
         // Treat duplciations in static schemes as a developer's mistake.
         .unwrap_or_else(|err| panic!("{}", err))
     };
+    ($ty:ident $(($subty:tt))?) => {crate::Type::$ty$((Box::new(Scheme!($subty))))?};
 }
 
 #[test]
@@ -447,6 +456,7 @@ fn test_field() {
         x: Bytes,
         x.y.z0: Int,
         is_TCP: Bool,
+        map: Map(Bytes)
     };
 
     assert_ok!(
