@@ -1,6 +1,6 @@
 use crate::{
     rhs_types::RegexError,
-    scheme::{UnknownFieldError, UnknownFunctionError},
+    scheme::{IndexAccessError, UnknownFieldError, UnknownFunctionError},
     types::{Type, TypeMismatchError},
 };
 use cidr::NetworkParseError;
@@ -68,6 +68,9 @@ pub enum LexErrorKind {
         #[cause]
         mismatch: TypeMismatchError,
     },
+
+    #[fail(display = "{}", _0)]
+    InvalidIndexAccess(#[cause] IndexAccessError),
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

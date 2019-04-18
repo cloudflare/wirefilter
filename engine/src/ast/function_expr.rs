@@ -1,5 +1,5 @@
-use super::field_expr::LhsFieldExpr;
 use crate::{
+    ast::index_expr::IndexExpr,
     execution_context::ExecutionContext,
     functions::{Function, FunctionArgKind, FunctionParam},
     lex::{expect, skip_space, span, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
@@ -11,24 +11,21 @@ use serde::Serialize;
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub(crate) enum FunctionCallArgExpr<'s> {
-    LhsFieldExpr(LhsFieldExpr<'s>),
+    IndexExpr(IndexExpr<'s>),
     Literal(RhsValue),
 }
 
 impl<'s> FunctionCallArgExpr<'s> {
     pub fn uses(&self, field: Field<'s>) -> bool {
         match self {
-            FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.uses(field),
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
         }
     }
 
     pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
         match self {
-            FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
-                LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
-                LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
-            },
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.execute(ctx),
             FunctionCallArgExpr::Literal(literal) => literal.into(),
         }
     }
@@ -46,7 +43,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
 
         match ctx.param.arg_kind {
             FunctionArgKind::Field => {
-                let (lhs, input) = LhsFieldExpr::lex_with(input, ctx.scheme)?;
+                let (lhs, input) = IndexExpr::lex_with(input, ctx.scheme)?;
                 if lhs.get_type() != ctx.param.val_type {
                     Err((
                         LexErrorKind::InvalidArgumentType {
@@ -59,7 +56,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                         span(initial_input, input),
                     ))
                 } else {
-                    Ok((FunctionCallArgExpr::LhsFieldExpr(lhs), input))
+                    Ok((FunctionCallArgExpr::IndexExpr(lhs), input))
                 }
             }
             FunctionArgKind::Literal => {
@@ -210,6 +207,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
 #[test]
 fn test_function() {
+    use super::field_expr::LhsFieldExpr;
     use crate::{
         functions::{FunctionArgs, FunctionImpl, FunctionOptParam},
         scheme::UnknownFieldError,
@@ -255,9 +253,10 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                SCHEME.get_field_index("http.host").unwrap()
-            ))],
+            args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                indexes: vec![],
+            })],
         },
         ";"
     );
@@ -268,7 +267,7 @@ fn test_function() {
             "name": "echo",
             "args": [
                 {
-                    "kind": "LhsFieldExpr",
+                    "kind": "IndexExpr",
                     "value": "http.host"
                 }
             ]
@@ -295,15 +294,17 @@ fn test_function() {
         FunctionCallExpr {
             name: String::from("echo"),
             function: SCHEME.get_function("echo").unwrap(),
-            args: [FunctionCallArgExpr::LhsFieldExpr(
-                LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+            args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
+                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                     name: String::from("echo"),
                     function: SCHEME.get_function("echo").unwrap(),
-                    args: vec![FunctionCallArgExpr::LhsFieldExpr(LhsFieldExpr::Field(
-                        SCHEME.get_field_index("http.host").unwrap()
-                    ))],
-                })
-            )]
+                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                        indexes: vec![],
+                    })],
+                }),
+                indexes: vec![],
+            })]
             .to_vec(),
         },
         ";"
@@ -315,12 +316,12 @@ fn test_function() {
             "name": "echo",
             "args": [
                 {
-                    "kind": "LhsFieldExpr",
+                    "kind": "IndexExpr",
                     "value": {
                         "name": "echo",
                         "args": [
                             {
-                                "kind": "LhsFieldExpr",
+                                "kind": "IndexExpr",
                                 "value": "http.host"
                             }
                         ]

@@ -1,7 +1,7 @@
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     rhs_types::{Bytes, IpRange, UninhabitedBool, UninhabitedMap},
-    scheme::FieldPathItem,
+    scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
 use failure::Fail;
@@ -204,6 +204,19 @@ pub struct Map<'a> {
     pub data: HashMap<String, LhsValue<'a>>,
 }
 
+impl<'a> Map<'a> {
+    pub fn to_owned<'b>(&self) -> Map<'b> {
+        let mut map = Map {
+            val_type: self.val_type.clone(),
+            data: Default::default(),
+        };
+        for (k, v) in self.data.iter() {
+            map.data.insert(k.clone(), v.to_owned());
+        }
+        map
+    }
+}
+
 impl<'a> GetType for Map<'a> {
     fn get_type(&self) -> Type {
         self.val_type.clone()
@@ -269,17 +282,29 @@ impl<'a> LhsValue<'a> {
     /// type.
     /// Returns a TypeMismatchError error if current type does not support it
     /// nested element. Only LhsValue::Map supports nested elements for now.
-    pub fn get(
-        &self,
-        item: &FieldPathItem,
-        ty: &Type,
-    ) -> Result<Option<&LhsValue>, TypeMismatchError> {
+    pub fn get(&'a self, item: &FieldIndex) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
         match (self, item) {
-            (LhsValue::Map(map), FieldPathItem::Name(ref name)) => Ok(map.data.get(name)),
-            (_, FieldPathItem::Name(_name)) => Err(TypeMismatchError {
-                expected: Type::Map(Box::new(ty.clone())),
+            (LhsValue::Map(map), FieldIndex::MapKey(ref name)) => Ok(map.data.get(name)),
+            (_, FieldIndex::MapKey(_name)) => Err(IndexAccessError {
+                index: item.clone(),
                 actual: self.get_type(),
             }),
+        }
+    }
+
+    /// Deep clone of an LhsValue.
+    /// Will convert any Cow::Borrowed to Cow::Owned and copy
+    /// already existing Cow::Owned.
+    pub fn to_owned<'b>(&self) -> LhsValue<'b> {
+        match &self {
+            LhsValue::Ip(ip) => LhsValue::Ip(*ip),
+            LhsValue::Bytes(bytes) => match bytes {
+                Cow::Borrowed(raw) => LhsValue::Bytes(Cow::Owned(raw.to_vec())),
+                Cow::Owned(raw) => LhsValue::Bytes(Cow::Owned(raw.to_vec())),
+            },
+            LhsValue::Int(integer) => LhsValue::Int(*integer),
+            LhsValue::Bool(b) => LhsValue::Bool(*b),
+            LhsValue::Map(m) => LhsValue::Map(m.to_owned()),
         }
     }
 }
