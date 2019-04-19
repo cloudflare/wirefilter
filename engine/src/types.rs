@@ -199,12 +199,38 @@ macro_rules! declare_types {
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
-    pub val_type: Type,
+    val_type: Type,
     #[serde(borrow)]
-    pub data: HashMap<String, LhsValue<'a>>,
+    data: HashMap<String, LhsValue<'a>>,
 }
 
 impl<'a> Map<'a> {
+    pub fn new(val_type: Type) -> Self {
+        Self {
+            val_type,
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<&LhsValue<'a>> {
+        self.data.get(key)
+    }
+
+    pub fn insert(
+        &mut self,
+        key: String,
+        value: LhsValue<'a>,
+    ) -> Result<Option<LhsValue<'a>>, TypeMismatchError> {
+        let value_type = value.get_type();
+        if self.val_type != value_type {
+            return Err(TypeMismatchError {
+                expected: self.val_type.clone(),
+                actual: value_type,
+            });
+        }
+        Ok(self.data.insert(key, value))
+    }
+
     pub fn to_owned<'b>(&self) -> Map<'b> {
         let mut map = Map {
             val_type: self.val_type.clone(),
