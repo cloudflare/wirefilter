@@ -32,6 +32,13 @@ impl<'s> FunctionCallArgExpr<'s> {
             FunctionCallArgExpr::Literal(literal) => literal.into(),
         }
     }
+
+    pub fn depth(&self) -> usize {
+        match self {
+            FunctionCallArgExpr::LhsFieldExpr(lhs) => lhs.depth(),
+            FunctionCallArgExpr::Literal(_) => 0,
+        }
+    }
 }
 
 struct SchemeFunctionParam<'s, 'a> {
@@ -99,6 +106,15 @@ impl<'s> FunctionCallExpr<'s> {
                     .map(|opt_arg| opt_arg.default_value.as_ref()),
             ),
         )
+    }
+
+    pub fn depth(&self) -> usize {
+        1 + self
+            .args
+            .iter()
+            .map(FunctionCallArgExpr::depth)
+            .max()
+            .unwrap_or(0)
     }
 }
 

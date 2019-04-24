@@ -78,6 +78,6 @@ pub use self::{
     functions::{
         Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
     },
-    scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
+    scheme::{FieldRedefinitionError, ParseError, Scheme, SchemeConfig, UnknownFieldError},
     types::{GetType, LhsValue, Type, TypeMismatchError},
 };

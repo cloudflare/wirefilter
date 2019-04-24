@@ -152,6 +152,13 @@ impl<'s> LhsFieldExpr<'s> {
             }
         }
     }
+
+    pub fn depth(&self) -> usize {
+        match self {
+            LhsFieldExpr::Field(_) => 0,
+            LhsFieldExpr::FunctionCallExpr(call) => call.depth(),
+        }
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for LhsFieldExpr<'s> {
@@ -189,6 +196,16 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
         let initial_input = input;
 
         let (lhs, input) = LhsFieldExpr::lex_with(input, scheme)?;
+
+        if lhs.depth() > scheme.get_config().call_stack_depth_limit {
+            return Err((
+                LexErrorKind::CallStackTooDeep {
+                    limit: scheme.get_config().call_stack_depth_limit,
+                    actual: lhs.depth(),
+                },
+                input,
+            ));
+        }
 
         let lhs_type = lhs.get_type();
 
@@ -400,6 +417,7 @@ mod tests {
                     },
                 )
                 .unwrap();
+            scheme.get_mut_config().call_stack_depth_limit = 2;
             scheme
         };
     }
@@ -1018,5 +1036,20 @@ mod tests {
 
         ctx.set_field_value("http.host", "cloudflare").unwrap();
         assert_eq!(expr.execute(ctx), false);
+    }
+
+    #[test]
+    fn test_call_stack_depth_limit() {
+        assert_err!(
+            FieldExpr::lex_with(
+                r#"lowercase ( lowercase ( lowercase ( http.host ) ) ) == "cloudflare.com";"#,
+                &SCHEME
+            ),
+            LexErrorKind::CallStackTooDeep {
+                limit: 2,
+                actual: 3
+            },
+            r#" == "cloudflare.com";"#
+        );
     }
 }

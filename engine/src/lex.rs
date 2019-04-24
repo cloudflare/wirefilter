@@ -68,6 +68,12 @@ pub enum LexErrorKind {
         #[cause]
         mismatch: TypeMismatchError,
     },
+
+    #[fail(
+        display = "call stack depth should not exceed {} levels, but {} levels",
+        limit, actual
+    )]
+    CallStackTooDeep { limit: usize, actual: usize },
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

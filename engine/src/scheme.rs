@@ -183,6 +183,37 @@ impl<'i> Display for ParseError<'i> {
     }
 }
 
+macro_rules! declare_config {
+    ($($(#[$attr:meta])* let $name:ident : $type:ty = $value:expr),*) => {
+        /// Repository of all configuration options.
+        #[derive(Deserialize)]
+        pub struct SchemeConfig {
+            $($(#[$attr])* pub $name: $type),*
+        }
+
+        impl SchemeConfig {
+            /// Creates a new scheme configuration repository
+            /// with default values.
+            pub fn new() -> Self {
+                Self {
+                    $($name: $value),*
+                }
+            }
+        }
+
+        impl Default for SchemeConfig {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    };
+}
+
+declare_config!(
+    #[doc="Call stack depth limit"]
+    let call_stack_depth_limit: usize = std::usize::MAX
+);
+
 /// The main registry for fields and their associated types.
 ///
 /// This is necessary to provide typechecking for runtime values provided
@@ -194,6 +225,8 @@ pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
     #[serde(skip)]
     functions: IndexMap<String, Function, FnvBuildHasher>,
+    #[serde(skip)]
+    config: SchemeConfig,
 }
 
 impl PartialEq for Scheme {
@@ -214,8 +247,20 @@ impl<'s> Scheme {
     pub fn with_capacity(n: usize) -> Self {
         Scheme {
             fields: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
-            functions: Default::default(),
+            ..Default::default()
         }
+    }
+
+    /// Retrieves the scheme configuration as immutable.
+    /// Usually used to read configuration values.
+    pub fn get_config(&self) -> &SchemeConfig {
+        &self.config
+    }
+
+    /// Retrieves the scheme configuration as mutable.
+    /// Usually used to write configuration values.
+    pub fn get_mut_config(&mut self) -> &mut SchemeConfig {
+        &mut self.config
     }
 
     /// Registers a field and its corresponding type.
