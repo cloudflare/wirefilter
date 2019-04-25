@@ -139,17 +139,20 @@ impl<'s> LhsFieldExpr<'s> {
         }
     }
 
-    fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
+    // See https://github.com/rust-lang/rust-clippy/issues/1439
+    #[allow(clippy::redundant_closure)]
+    fn compile_with<F: 's>(self, default: bool, func: F) -> CompiledExpr<'s>
     where
         F: Fn(LhsValue<'_>) -> bool,
     {
         match self {
             LhsFieldExpr::FunctionCallExpr(call) => {
-                CompiledExpr::new(move |ctx| func(call.execute(ctx)))
+                CompiledExpr::new(move |ctx| call.execute(ctx).map_or(default, |x| func(x)))
             }
-            LhsFieldExpr::Field(f) => {
-                CompiledExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f)))
-            }
+            LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
+                ctx.get_field_value_unchecked(f)
+                    .map_or(default, |x| func(x))
+            }),
         }
     }
 }
@@ -255,21 +258,26 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => lhs.compile_with(move |x| cast_value!(x, Bool)),
-            FieldOp::Ordering { op, rhs } => {
-                lhs.compile_with(move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
-            }
+            FieldOp::IsTrue => lhs.compile_with(false, move |x| cast_value!(x, Bool)),
+            FieldOp::Ordering { op, rhs } => match op {
+                OrderingOp::NotEqual => {
+                    lhs.compile_with(true, move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
+                }
+                _ => lhs.compile_with(false, move |x| op.matches_opt(x.strict_partial_cmp(&rhs))),
+            },
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(move |x| cast_value!(x, Int) & rhs != 0),
+            } => lhs.compile_with(false, move |x| cast_value!(x, Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                lhs.compile_with(move |x| searcher.search_in(&cast_value!(x, Bytes)).is_some())
+                lhs.compile_with(false, move |x| {
+                    searcher.search_in(&cast_value!(x, Bytes)).is_some()
+                })
             }
             FieldOp::Matches(regex) => {
-                lhs.compile_with(move |x| regex.is_match(&cast_value!(x, Bytes)))
+                lhs.compile_with(false, move |x| regex.is_match(&cast_value!(x, Bytes)))
             }
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
@@ -284,7 +292,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(move |x| match cast_value!(x, Ip) {
+                    lhs.compile_with(false, move |x| match cast_value!(x, Ip) {
                         IpAddr::V4(addr) => v4.contains(&addr),
                         IpAddr::V6(addr) => v6.contains(&addr),
                     })
@@ -292,13 +300,15 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Int)))
+                    lhs.compile_with(false, move |x| values.contains(&cast_value!(x, Int)))
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
+                    lhs.compile_with(false, move |x| {
+                        values.contains(&cast_value!(x, Bytes) as &[u8])
+                    })
                 }
                 RhsValues::Bool(_) => unreachable!(),
             },
@@ -321,24 +331,24 @@ mod tests {
     use lazy_static::lazy_static;
     use std::net::IpAddr;
 
-    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        args.next().unwrap()
+    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        args.next()?.ok()
     }
 
-    fn lowercase_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        let input = args.next().unwrap();
+    fn lowercase_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        let input = args.next()?.ok()?;
         match input {
-            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
+            LhsValue::Bytes(bytes) => Some(LhsValue::Bytes(bytes.to_ascii_lowercase().into())),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }
 
-    fn concat_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        match (args.next().unwrap(), args.next().unwrap()) {
+    fn concat_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        match (args.next()?.ok()?, args.next()?.ok()?) {
             (LhsValue::Bytes(buf1), LhsValue::Bytes(buf2)) => {
                 let mut vec1 = buf1.to_vec();
                 vec1.extend_from_slice(&buf2);
-                LhsValue::Bytes(vec1.into())
+                Some(LhsValue::Bytes(vec1.into()))
             }
             (arg1, arg2) => panic!(
                 "Invalid types: expected (Bytes, Bytes), got ({:?}, {:?})",

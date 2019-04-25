@@ -14,8 +14,8 @@ use wirefilter::{
     FunctionParam, GetType, LhsValue, Scheme, Type,
 };
 
-fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-    let input = args.next().unwrap();
+fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_lowercase = match bytes {
@@ -25,14 +25,14 @@ fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
             if make_lowercase {
                 bytes.to_mut().make_ascii_lowercase();
             }
-            LhsValue::Bytes(bytes)
+            Some(LhsValue::Bytes(bytes))
         }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
     }
 }
 
-fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-    let input = args.next().unwrap();
+fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_uppercase = match bytes {
@@ -42,7 +42,7 @@ fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
             if make_uppercase {
                 bytes.to_mut().make_ascii_uppercase();
             }
-            LhsValue::Bytes(bytes)
+            Some(LhsValue::Bytes(bytes))
         }
         _ => panic!("Invalid type: expected Bytes, got {:?}", input),
     }

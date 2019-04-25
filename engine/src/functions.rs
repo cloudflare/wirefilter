@@ -2,9 +2,9 @@ use crate::types::{LhsValue, Type};
 use std::fmt;
 
 /// An iterator over function arguments as [`LhsValue`]s.
-pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = LhsValue<'a>>;
+pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = Result<LhsValue<'a>, ()>>;
 
-type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> LhsValue<'a>;
+type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 
 /// Wrapper around a function pointer providing the runtime implemetation.
 #[derive(Clone)]
@@ -17,7 +17,10 @@ impl FunctionImpl {
     }
 
     /// Calls the wrapped function pointer.
-    pub fn execute<'a>(&self, args: impl IntoIterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+    pub fn execute<'a>(
+        &self,
+        args: impl IntoIterator<Item = Result<LhsValue<'a>, ()>>,
+    ) -> Option<LhsValue<'a>> {
         (self.0)(&mut args.into_iter())
     }
 }

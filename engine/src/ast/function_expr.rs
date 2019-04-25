@@ -23,13 +23,13 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
+    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> Option<LhsValue<'s>> {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
                 LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
                 LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
             },
-            FunctionCallArgExpr::Literal(literal) => literal.into(),
+            FunctionCallArgExpr::Literal(literal) => Some(literal.into()),
         }
     }
 }
@@ -91,13 +91,26 @@ impl<'s> FunctionCallExpr<'s> {
         self.args.iter().any(|arg| arg.uses(field))
     }
 
-    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
+    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> Option<LhsValue<'_>> {
         self.function.implementation.execute(
-            self.args.iter().map(|arg| arg.execute(ctx)).chain(
-                self.function.opt_params[self.args.len() - self.function.params.len()..]
-                    .iter()
-                    .map(|opt_arg| opt_arg.default_value.as_ref()),
-            ),
+            self.args[..self.function.params.len()]
+                .iter()
+                .map(|arg| arg.execute(ctx).ok_or(()))
+                .chain(
+                    self.args[self.function.params.len()..self.args.len()]
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, arg)| {
+                            Ok(arg.execute(ctx).unwrap_or_else(|| {
+                                self.function.opt_params[idx].default_value.as_ref()
+                            }))
+                        }),
+                )
+                .chain(
+                    self.function.opt_params[self.args.len() - self.function.params.len()..]
+                        .iter()
+                        .map(|opt_arg| Ok(opt_arg.default_value.as_ref())),
+                ),
         )
     }
 }
@@ -208,8 +221,8 @@ fn test_function() {
     };
     use lazy_static::lazy_static;
 
-    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        args.next().unwrap()
+    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        args.next()?.ok()
     }
 
     lazy_static! {
