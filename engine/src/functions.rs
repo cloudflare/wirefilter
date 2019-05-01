@@ -1,4 +1,5 @@
 use crate::types::{LhsValue, Type};
+use failure::Fail;
 use std::fmt;
 
 /// An iterator over function arguments as [`LhsValue`]s.
@@ -39,12 +40,25 @@ impl PartialEq for FunctionImpl {
 impl Eq for FunctionImpl {}
 
 /// Defines what kind of argument a function expects.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum FunctionArgKind {
     /// Allow only literal as argument.
     Literal,
     /// Allow only field as argument.
     Field,
+}
+
+/// An error that occurs on a kind mismatch.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(
+    display = "expected argument of kind {:?}, but got {:?}",
+    expected, actual
+)]
+pub struct FunctionArgKindMismatchError {
+    /// Expected value type.
+    pub expected: FunctionArgKind,
+    /// Provided value type.
+    pub actual: FunctionArgKind,
 }
 
 /// Defines a mandatory function argument.

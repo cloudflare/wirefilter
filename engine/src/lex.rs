@@ -1,4 +1,5 @@
 use crate::{
+    functions::FunctionArgKindMismatchError,
     rhs_types::RegexError,
     scheme::{IndexAccessError, UnknownFieldError, UnknownFunctionError},
     types::{Type, TypeMismatchError},
@@ -60,6 +61,13 @@ pub enum LexErrorKind {
     InvalidArgumentsCount {
         expected_min: usize,
         expected_max: usize,
+    },
+
+    #[fail(display = "invalid kind of argument #{}: {}", index, mismatch)]
+    InvalidArgumentKind {
+        index: usize,
+        #[cause]
+        mismatch: FunctionArgKindMismatchError,
     },
 
     #[fail(display = "invalid type of argument #{}: {}", index, mismatch)]

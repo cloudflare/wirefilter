@@ -1,10 +1,10 @@
 use crate::{
     ast::index_expr::IndexExpr,
     execution_context::ExecutionContext,
-    functions::{Function, FunctionArgKind, FunctionParam},
+    functions::{Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionParam},
     lex::{expect, skip_space, span, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{GetType, LhsValue, RhsValue, TypeMismatchError},
+    types::{GetType, LhsValue, RhsValue, Type, TypeMismatchError},
 };
 use serde::Serialize;
 
@@ -29,40 +29,49 @@ impl<'s> FunctionCallArgExpr<'s> {
             FunctionCallArgExpr::Literal(literal) => literal.into(),
         }
     }
+
+    pub fn get_kind(&self) -> FunctionArgKind {
+        match self {
+            FunctionCallArgExpr::IndexExpr(_) => FunctionArgKind::Field,
+            FunctionCallArgExpr::Literal(_) => FunctionArgKind::Literal,
+        }
+    }
 }
 
-struct SchemeFunctionParam<'s, 'a> {
-    scheme: &'s Scheme,
-    param: &'a FunctionParam,
-    index: usize,
+impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        let _initial_input = input;
+
+        IndexExpr::lex_with(input, scheme)
+            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+            .or_else(|_| {
+                RhsValue::lex_with(input, Type::Ip)
+                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
+            })
+            .or_else(|_| {
+                RhsValue::lex_with(input, Type::Int)
+                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
+            })
+            // try to parse Bytes after Int because digit literals < 255 are wrongly interpreted
+            // as Bytes
+            .or_else(|_| {
+                RhsValue::lex_with(input, Type::Bytes)
+                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
+            })
+            .or_else(|_| {
+                Err((
+                    LexErrorKind::ExpectedName("a valid function argument"),
+                    _initial_input,
+                ))
+            })
+    }
 }
 
-impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExpr<'s> {
-    fn lex_with(input: &'i str, ctx: SchemeFunctionParam<'s, 'a>) -> LexResult<'i, Self> {
-        let initial_input = input;
-
-        match ctx.param.arg_kind {
-            FunctionArgKind::Field => {
-                let (lhs, input) = IndexExpr::lex_with(input, ctx.scheme)?;
-                if lhs.get_type() != ctx.param.val_type {
-                    Err((
-                        LexErrorKind::InvalidArgumentType {
-                            index: ctx.index,
-                            mismatch: TypeMismatchError {
-                                actual: lhs.get_type(),
-                                expected: ctx.param.val_type.clone().into(),
-                            },
-                        },
-                        span(initial_input, input),
-                    ))
-                } else {
-                    Ok((FunctionCallArgExpr::IndexExpr(lhs), input))
-                }
-            }
-            FunctionArgKind::Literal => {
-                let (rhs_value, input) = RhsValue::lex_with(input, ctx.param.val_type.clone())?;
-                Ok((FunctionCallArgExpr::Literal(rhs_value), input))
-            }
+impl<'s> GetType for FunctionCallArgExpr<'s> {
+    fn get_type(&self) -> Type {
+        match self {
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.get_type(),
+            FunctionCallArgExpr::Literal(literal) => literal.get_type(),
         }
     }
 }
@@ -141,14 +150,33 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             input = skip_space(input);
 
-            let arg = FunctionCallArgExpr::lex_with(
-                input,
-                SchemeFunctionParam {
-                    scheme,
-                    param: &function.params[i],
-                    index: i,
-                },
-            )?;
+            let arg = FunctionCallArgExpr::lex_with(input, scheme)?;
+
+            if arg.0.get_kind() != function.params[i].arg_kind {
+                return Err((
+                    LexErrorKind::InvalidArgumentKind {
+                        index: i,
+                        mismatch: FunctionArgKindMismatchError {
+                            actual: arg.0.get_kind(),
+                            expected: function.params[i].arg_kind,
+                        },
+                    },
+                    span(input, arg.1),
+                ));
+            }
+
+            if arg.0.get_type() != function.params[i].val_type {
+                return Err((
+                    LexErrorKind::InvalidArgumentType {
+                        index: i,
+                        mismatch: TypeMismatchError {
+                            actual: arg.0.get_type(),
+                            expected: function.params[i].val_type.clone().into(),
+                        },
+                    },
+                    span(input, arg.1),
+                ));
+            }
 
             function_call.args.push(arg.0);
 
@@ -178,19 +206,38 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 .get(index)
                 .ok_or_else(|| invalid_args_count(&function, input))?;
 
-            let param = FunctionParam {
-                arg_kind: opt_param.arg_kind.clone(),
+            let _param = FunctionParam {
+                arg_kind: opt_param.arg_kind,
                 val_type: opt_param.default_value.get_type(),
             };
 
-            let (arg, rest) = FunctionCallArgExpr::lex_with(
-                input,
-                SchemeFunctionParam {
-                    scheme,
-                    param: &param,
-                    index: function.params.len() + index,
-                },
-            )?;
+            let (arg, rest) = FunctionCallArgExpr::lex_with(input, scheme)?;
+
+            if arg.get_kind() != opt_param.arg_kind {
+                return Err((
+                    LexErrorKind::InvalidArgumentKind {
+                        index: function.params.len() + index,
+                        mismatch: FunctionArgKindMismatchError {
+                            actual: arg.get_kind(),
+                            expected: opt_param.arg_kind,
+                        },
+                    },
+                    span(input, rest),
+                ));
+            }
+
+            if arg.get_type() != opt_param.default_value.get_type() {
+                return Err((
+                    LexErrorKind::InvalidArgumentType {
+                        index: function.params.len() + index,
+                        mismatch: TypeMismatchError {
+                            actual: arg.get_type(),
+                            expected: opt_param.default_value.get_type().into(),
+                        },
+                    },
+                    span(input, rest),
+                ));
+            }
 
             function_call.args.push(arg);
 
@@ -210,7 +257,6 @@ fn test_function() {
     use super::field_expr::LhsFieldExpr;
     use crate::{
         functions::{FunctionArgs, FunctionImpl, FunctionOptParam},
-        scheme::UnknownFieldError,
         types::Type,
     };
     use lazy_static::lazy_static;
@@ -285,8 +331,14 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.host , http.host );", &SCHEME),
-        LexErrorKind::ExpectedName("digit"),
-        "http.host );"
+        LexErrorKind::InvalidArgumentKind {
+            index: 1,
+            mismatch: FunctionArgKindMismatchError {
+                actual: FunctionArgKind::Field,
+                expected: FunctionArgKind::Literal,
+            }
+        },
+        "http.host"
     );
 
     let expr = assert_ok!(
@@ -333,13 +385,25 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( \"test\" );", &SCHEME),
-        LexErrorKind::ExpectedName("identifier character"),
-        "\"test\" );"
+        LexErrorKind::InvalidArgumentKind {
+            index: 0,
+            mismatch: FunctionArgKindMismatchError {
+                actual: FunctionArgKind::Literal,
+                expected: FunctionArgKind::Field,
+            }
+        },
+        "\"test\""
     );
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( 10 );", &SCHEME),
-        LexErrorKind::UnknownField(UnknownFieldError),
+        LexErrorKind::InvalidArgumentKind {
+            index: 0,
+            mismatch: FunctionArgKindMismatchError {
+                actual: FunctionArgKind::Literal,
+                expected: FunctionArgKind::Field,
+            }
+        },
         "10"
     );
 
@@ -362,5 +426,11 @@ fn test_function() {
             expected_max: 2,
         },
         "\"test\" );"
+    );
+
+    assert_err!(
+        FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
+        LexErrorKind::ExpectedName("a valid function argument"),
+        "http.test );"
     );
 }
