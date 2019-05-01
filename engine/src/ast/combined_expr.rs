@@ -122,55 +122,54 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
     }
 }
 
-#[test]
-fn test() {
-    use super::field_expr::FieldExpr;
-    use crate::{execution_context::ExecutionContext, lex::complete};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ast::field_expr::FieldExpr, execution_context::ExecutionContext, lex::complete};
+    use lazy_static::lazy_static;
 
-    let scheme = &Scheme! {
-        t: Bool,
-        f: Bool,
-    };
+    lazy_static! {
+        static ref SCHEME: Scheme = Scheme! {
+            t: Bool,
+            f: Bool,
+        };
+        static ref T_EXPR: CombinedExpr<'static> = CombinedExpr::Simple(SimpleExpr::Field(
+            complete(FieldExpr::lex_with("t", &SCHEME)).unwrap(),
+        ));
+        static ref F_EXPR: CombinedExpr<'static> = CombinedExpr::Simple(SimpleExpr::Field(
+            complete(FieldExpr::lex_with("f", &SCHEME)).unwrap(),
+        ));
+    }
 
-    let ctx = &mut ExecutionContext::new(scheme);
-
-    let t_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("t", scheme)).unwrap(),
-    ));
-
-    let t_expr = || t_expr.clone();
-
-    let f_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("f", scheme)).unwrap(),
-    ));
-
-    let f_expr = || f_expr.clone();
-
-    assert_ok!(CombinedExpr::lex_with("t", scheme), t_expr());
-
-    ctx.set_field_value("t", true).unwrap();
-    ctx.set_field_value("f", false).unwrap();
-
-    {
+    #[test]
+    fn test_true_and_true() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t and t", scheme),
+            CombinedExpr::lex_with("t and t", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::And,
-                items: vec![t_expr(), t_expr()],
+                items: vec![T_EXPR.clone(), T_EXPR.clone()],
             }
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
-    {
+    #[test]
+    fn test_true_and_false() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t and f", scheme),
+            CombinedExpr::lex_with("t and f", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::And,
-                items: vec![t_expr(), f_expr()],
+                items: vec![T_EXPR.clone(), F_EXPR.clone()],
             }
         );
 
@@ -192,16 +191,24 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_true_or_false() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t or f", scheme),
+            CombinedExpr::lex_with("t or f", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::Or,
-                items: vec![t_expr(), f_expr()],
+                items: vec![T_EXPR.clone(), F_EXPR.clone()],
             }
         );
 
@@ -223,30 +230,46 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
-    {
+    #[test]
+    fn test_false_or_false() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f or f", scheme),
+            CombinedExpr::lex_with("f or f", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::Or,
-                items: vec![f_expr(), f_expr()],
+                items: vec![F_EXPR.clone(), F_EXPR.clone()],
             }
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_true_xor_false() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t xor f", scheme),
+            CombinedExpr::lex_with("t xor f", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
-                items: vec![t_expr(), f_expr()],
+                items: vec![T_EXPR.clone(), F_EXPR.clone()],
             }
         );
 
@@ -268,60 +291,86 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
-    {
+    #[test]
+    fn test_false_xor_false() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f xor f", scheme),
+            CombinedExpr::lex_with("f xor f", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
-                items: vec![f_expr(), f_expr()],
+                items: vec![F_EXPR.clone(), F_EXPR.clone()],
             }
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), false);
     }
 
-    {
+    #[test]
+    fn test_false_xor_true() {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f xor t", scheme),
+            CombinedExpr::lex_with("f xor t", &SCHEME),
             CombinedExpr::Combining {
                 op: CombiningOp::Xor,
-                items: vec![f_expr(), t_expr()],
+                items: vec![F_EXPR.clone(), T_EXPR.clone()],
             }
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("f", false).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
-    assert_ok!(
-        CombinedExpr::lex_with("t or t && t and t or t ^^ t and t || t", scheme),
-        CombinedExpr::Combining {
-            op: CombiningOp::Or,
-            items: vec![
-                t_expr(),
-                CombinedExpr::Combining {
-                    op: CombiningOp::And,
-                    items: vec![t_expr(), t_expr(), t_expr()],
-                },
-                CombinedExpr::Combining {
-                    op: CombiningOp::Xor,
-                    items: vec![
-                        t_expr(),
-                        CombinedExpr::Combining {
-                            op: CombiningOp::And,
-                            items: vec![t_expr(), t_expr()],
-                        },
-                    ],
-                },
-                t_expr(),
-            ],
-        }
-    );
+    #[test]
+    fn test_complex_ast() {
+        assert_ok!(
+            CombinedExpr::lex_with("t or t && t and t or t ^^ t and t || t", &SCHEME),
+            CombinedExpr::Combining {
+                op: CombiningOp::Or,
+                items: vec![
+                    T_EXPR.clone(),
+                    CombinedExpr::Combining {
+                        op: CombiningOp::And,
+                        items: vec![T_EXPR.clone(), T_EXPR.clone(), T_EXPR.clone()],
+                    },
+                    CombinedExpr::Combining {
+                        op: CombiningOp::Xor,
+                        items: vec![
+                            T_EXPR.clone(),
+                            CombinedExpr::Combining {
+                                op: CombiningOp::And,
+                                items: vec![T_EXPR.clone(), T_EXPR.clone()],
+                            },
+                        ],
+                    },
+                    T_EXPR.clone(),
+                ],
+            }
+        );
+    }
 }

@@ -439,6 +439,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("ssl", true).unwrap();
         assert_eq!(expr.execute(ctx), true);
 
@@ -472,6 +474,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
@@ -569,6 +573,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("http.host", "example.com").unwrap();
         assert_eq!(expr.execute(ctx), false);
 
@@ -600,6 +606,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
         assert_eq!(expr.execute(ctx), false);
@@ -633,6 +641,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
         assert_eq!(expr.execute(ctx), true);
@@ -686,6 +696,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("http.host", "example.com").unwrap();
         assert_eq!(expr.execute(ctx), true);
 
@@ -731,6 +743,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
             .unwrap();
         assert_eq!(expr.execute(ctx), true);
@@ -774,6 +788,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("http.host", "example.org").unwrap();
         assert_eq!(expr.execute(ctx), false);
 
@@ -802,6 +818,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
         assert_eq!(expr.execute(ctx), false);
@@ -834,6 +852,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
         assert_eq!(expr.execute(ctx), true);
@@ -881,6 +901,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("http.host", "example.com").unwrap();
         assert_eq!(expr.execute(ctx), false);
 
@@ -927,6 +949,8 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
+        assert_eq!(expr.execute(ctx), false);
+
         ctx.set_field_value("http.host", "EXAMPLE.COM").unwrap();
         assert_eq!(expr.execute(ctx), false);
 
@@ -972,6 +996,8 @@ mod tests {
 
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
         assert_eq!(expr.execute(ctx), true);

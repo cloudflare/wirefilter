@@ -75,9 +75,6 @@ fn test() {
 
     let scheme = &Scheme! { t: Bool };
 
-    let ctx = &mut ExecutionContext::new(scheme);
-    ctx.set_field_value("t", true).unwrap();
-
     let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
 
@@ -93,7 +90,11 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(scheme);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -114,7 +115,11 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(scheme);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
@@ -138,7 +143,11 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(scheme);
 
+        assert_eq!(expr.execute(ctx), true);
+
+        ctx.set_field_value("t", true).unwrap();
         assert_eq!(expr.execute(ctx), false);
     }
 
@@ -165,7 +174,11 @@ fn test() {
         );
 
         let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(scheme);
 
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("t", true).unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
