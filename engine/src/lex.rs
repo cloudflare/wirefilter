@@ -60,7 +60,7 @@ pub enum LexErrorKind {
     #[fail(display = "invalid number of arguments")]
     InvalidArgumentsCount {
         expected_min: usize,
-        expected_max: usize,
+        expected_max: Option<usize>,
     },
 
     #[fail(display = "invalid kind of argument #{}: {}", index, mismatch)]

@@ -169,7 +169,7 @@ impl<'s> GetType for LhsFieldExpr<'s> {
     fn get_type(&self) -> Type {
         match self {
             LhsFieldExpr::Field(field) => field.get_type(),
-            LhsFieldExpr::FunctionCallExpr(call) => call.function.return_type.clone(),
+            LhsFieldExpr::FunctionCallExpr(call) => call.function.get_type(),
         }
     }
 }
