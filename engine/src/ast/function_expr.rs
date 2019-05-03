@@ -1,11 +1,12 @@
 use crate::{
     ast::index_expr::IndexExpr,
     execution_context::ExecutionContext,
-    functions::{Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionParam},
+    functions::{FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionParam},
     lex::{expect, skip_space, span, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{GetType, LhsValue, RhsValue, Type, TypeMismatchError},
 };
+use derivative::Derivative;
 use serde::Serialize;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -76,16 +77,18 @@ impl<'s> GetType for FunctionCallArgExpr<'s> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Derivative, Serialize)]
+#[derivative(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct FunctionCallExpr<'s> {
     pub name: String,
     #[serde(skip)]
-    pub function: &'s Function,
+    #[derivative(PartialEq = "ignore")]
+    pub function: &'s Box<dyn FunctionDefinition>,
     pub args: Vec<FunctionCallArgExpr<'s>>,
 }
 
 impl<'s> FunctionCallExpr<'s> {
-    pub fn new(name: &str, function: &'s Function) -> Self {
+    pub fn new(name: &str, function: &'s Box<dyn FunctionDefinition>) -> Self {
         Self {
             name: name.into(),
             function,
@@ -98,21 +101,24 @@ impl<'s> FunctionCallExpr<'s> {
     }
 
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        self.function.implementation.execute(
-            self.args.iter().map(|arg| arg.execute(ctx)).chain(
-                self.function.opt_params[self.args.len() - self.function.params.len()..]
-                    .iter()
-                    .map(|opt_arg| opt_arg.default_value.as_ref()),
+        self.function.execute(
+            &mut self.args.iter().map(|arg| arg.execute(ctx)).chain(
+                (self.args.len()
+                    ..self
+                        .function
+                        .max_arg_count()
+                        .unwrap_or_else(|| self.args.len()))
+                    .map(|index| self.function.default_value(index).unwrap()),
             ),
         )
     }
 }
 
-fn invalid_args_count<'i>(function: &Function, input: &'i str) -> LexError<'i> {
+fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str) -> LexError<'i> {
     (
         LexErrorKind::InvalidArgumentsCount {
-            expected_min: function.params.len(),
-            expected_max: function.params.len() + function.opt_params.len(),
+            expected_min: function.min_arg_count(),
+            expected_max: function.max_arg_count(),
         },
         input,
     )
@@ -138,7 +144,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
-        for i in 0..function.params.len() {
+        for i in 0..function.min_arg_count() {
             if i == 0 {
                 if take(input, 1)?.0 == ")" {
                     break;
@@ -152,26 +158,35 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             let arg = FunctionCallArgExpr::lex_with(input, scheme)?;
 
-            if arg.0.get_kind() != function.params[i].arg_kind {
+            let next_param = FunctionParam {
+                arg_kind: arg.0.get_kind(),
+                val_type: arg.0.get_type(),
+            };
+
+            let param = function
+                .check_param(i, &next_param)
+                .ok_or_else(|| invalid_args_count(function, input))?;
+
+            if next_param.arg_kind != param.arg_kind {
                 return Err((
                     LexErrorKind::InvalidArgumentKind {
                         index: i,
                         mismatch: FunctionArgKindMismatchError {
-                            actual: arg.0.get_kind(),
-                            expected: function.params[i].arg_kind,
+                            actual: next_param.arg_kind,
+                            expected: param.arg_kind,
                         },
                     },
                     span(input, arg.1),
                 ));
             }
 
-            if arg.0.get_type() != function.params[i].val_type {
+            if next_param.val_type != param.val_type {
                 return Err((
                     LexErrorKind::InvalidArgumentType {
                         index: i,
                         mismatch: TypeMismatchError {
-                            actual: arg.0.get_type(),
-                            expected: function.params[i].val_type.clone().into(),
+                            actual: next_param.val_type,
+                            expected: param.val_type.into(),
                         },
                     },
                     span(input, arg.1),
@@ -183,7 +198,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             input = skip_space(arg.1);
         }
 
-        if function_call.args.len() != function.params.len() {
+        if function_call.args.len() != function.min_arg_count() {
             return Err(invalid_args_count(&function, input));
         }
 
@@ -201,24 +216,23 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             input = skip_space(input);
 
-            let opt_param = function
-                .opt_params
-                .get(index)
-                .ok_or_else(|| invalid_args_count(&function, input))?;
-
-            let _param = FunctionParam {
-                arg_kind: opt_param.arg_kind,
-                val_type: opt_param.default_value.get_type(),
-            };
-
             let (arg, rest) = FunctionCallArgExpr::lex_with(input, scheme)?;
 
-            if arg.get_kind() != opt_param.arg_kind {
+            let next_param = FunctionParam {
+                arg_kind: arg.get_kind(),
+                val_type: arg.get_type(),
+            };
+
+            let opt_param = function
+                .check_param(function.min_arg_count() + index, &next_param)
+                .ok_or_else(|| invalid_args_count(function, input))?;
+
+            if next_param.arg_kind != opt_param.arg_kind {
                 return Err((
                     LexErrorKind::InvalidArgumentKind {
-                        index: function.params.len() + index,
+                        index: function.min_arg_count() + index,
                         mismatch: FunctionArgKindMismatchError {
-                            actual: arg.get_kind(),
+                            actual: next_param.arg_kind,
                             expected: opt_param.arg_kind,
                         },
                     },
@@ -226,13 +240,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 ));
             }
 
-            if arg.get_type() != opt_param.default_value.get_type() {
+            if next_param.val_type != opt_param.val_type {
                 return Err((
                     LexErrorKind::InvalidArgumentType {
-                        index: function.params.len() + index,
+                        index: function.min_arg_count() + index,
                         mismatch: TypeMismatchError {
-                            actual: arg.get_type(),
-                            expected: opt_param.default_value.get_type().into(),
+                            actual: next_param.val_type,
+                            expected: opt_param.val_type.into(),
                         },
                     },
                     span(input, rest),
@@ -256,7 +270,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 fn test_function() {
     use super::field_expr::LhsFieldExpr;
     use crate::{
-        functions::{FunctionArgs, FunctionImpl, FunctionOptParam},
+        functions::{Function, FunctionArgs, FunctionImpl, FunctionOptParam},
         types::Type,
     };
     use lazy_static::lazy_static;
@@ -324,7 +338,7 @@ fn test_function() {
         FunctionCallExpr::lex_with("echo ( );", &SCHEME),
         LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
-            expected_max: 2
+            expected_max: Some(2),
         },
         ");"
     );
@@ -423,7 +437,7 @@ fn test_function() {
         FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
         LexErrorKind::InvalidArgumentsCount {
             expected_min: 1,
-            expected_max: 2,
+            expected_max: Some(2),
         },
         "\"test\" );"
     );

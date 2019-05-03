@@ -1,6 +1,6 @@
 use crate::{
     ast::FilterAst,
-    functions::Function,
+    functions::FunctionDefinition,
     lex::{complete, expect, span, take_while, Lex, LexErrorKind, LexResult, LexWith},
     types::{GetType, RhsValue, Type},
 };
@@ -248,7 +248,7 @@ impl<'i> Display for ParseError<'i> {
 pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,
     #[serde(skip)]
-    functions: IndexMap<String, Function, FnvBuildHasher>,
+    functions: IndexMap<String, Box<dyn FunctionDefinition>, FnvBuildHasher>,
 }
 
 impl PartialEq for Scheme {
@@ -322,7 +322,7 @@ impl<'s> Scheme {
     pub fn add_function(
         &mut self,
         name: String,
-        function: Function,
+        function: impl FunctionDefinition + 'static,
     ) -> Result<(), ItemRedefinitionError> {
         if self.fields.contains_key(&name) {
             return Err(ItemRedefinitionError::Field(FieldRedefinitionError(name)));
@@ -332,24 +332,27 @@ impl<'s> Scheme {
                 FunctionRedefinitionError(entry.key().to_string()),
             )),
             Entry::Vacant(entry) => {
-                entry.insert(function);
+                entry.insert(Box::new(function));
                 Ok(())
             }
         }
     }
 
     /// Registers a list of functions
-    pub fn add_functions<I>(&mut self, functions: I) -> Result<(), ItemRedefinitionError>
-    where
-        I: IntoIterator<Item = (String, Function)>,
-    {
+    pub fn add_functions(
+        &mut self,
+        functions: impl IntoIterator<Item = (String, impl FunctionDefinition + 'static)>,
+    ) -> Result<(), ItemRedefinitionError> {
         for (name, func) in functions {
             self.add_function(name, func)?;
         }
         Ok(())
     }
 
-    pub(crate) fn get_function(&'s self, name: &str) -> Result<&'s Function, UnknownFunctionError> {
+    pub(crate) fn get_function(
+        &'s self,
+        name: &str,
+    ) -> Result<&'s Box<dyn FunctionDefinition>, UnknownFunctionError> {
         self.functions.get(name).ok_or(UnknownFunctionError)
     }
 
