@@ -349,6 +349,7 @@ impl<'s> Scheme {
         Ok(())
     }
 
+    #[allow(clippy::borrowed_box)]
     pub(crate) fn get_function(
         &'s self,
         name: &str,

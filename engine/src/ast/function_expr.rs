@@ -83,11 +83,13 @@ pub(crate) struct FunctionCallExpr<'s> {
     pub name: String,
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
+    #[allow(clippy::borrowed_box)]
     pub function: &'s Box<dyn FunctionDefinition>,
     pub args: Vec<FunctionCallArgExpr<'s>>,
 }
 
 impl<'s> FunctionCallExpr<'s> {
+    #[allow(clippy::borrowed_box)]
     pub fn new(name: &str, function: &'s Box<dyn FunctionDefinition>) -> Self {
         Self {
             name: name.into(),
@@ -114,6 +116,7 @@ impl<'s> FunctionCallExpr<'s> {
     }
 }
 
+#[allow(clippy::borrowed_box)]
 fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str) -> LexError<'i> {
     (
         LexErrorKind::InvalidArgumentsCount {
@@ -150,8 +153,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                     break;
                 }
             } else {
-                input = expect(input, ",")
-                    .map_err(|(_, input)| invalid_args_count(&function, input))?;
+                input =
+                    expect(input, ",").map_err(|(_, input)| invalid_args_count(function, input))?;
             }
 
             input = skip_space(input);
