@@ -334,17 +334,19 @@ mod tests {
     }
 
     fn concat_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        match (args.next().unwrap(), args.next().unwrap()) {
-            (LhsValue::Bytes(buf1), LhsValue::Bytes(buf2)) => {
-                let mut vec1 = buf1.to_vec();
-                vec1.extend_from_slice(&buf2);
-                LhsValue::Bytes(vec1.into())
+        let mut output = Vec::new();
+        for (index, arg) in args.enumerate() {
+            match arg {
+                LhsValue::Bytes(bytes) => {
+                    output.extend_from_slice(&bytes);
+                }
+                arg => panic!(
+                    "Invalid type for argument {:?}: expected Bytes, got {:?}",
+                    index, arg
+                ),
             }
-            (arg1, arg2) => panic!(
-                "Invalid types: expected (Bytes, Bytes), got ({:?}, {:?})",
-                arg1, arg2
-            ),
         }
+        LhsValue::Bytes(output.into())
     }
 
     lazy_static! {
@@ -387,14 +389,17 @@ mod tests {
                 .add_function(
                     "concat".into(),
                     Function {
-                        params: vec![FunctionParam {
-                            arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
-                        }],
-                        opt_params: vec![FunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
-                            default_value: "".into(),
-                        }],
+                        params: vec![],
+                        opt_params: vec![
+                            FunctionOptParam {
+                                arg_kind: FunctionArgKind::Field,
+                                default_value: "".into(),
+                            },
+                            FunctionOptParam {
+                                arg_kind: FunctionArgKind::Literal,
+                                default_value: "".into(),
+                            },
+                        ],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(concat_function),
                     },

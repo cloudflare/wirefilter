@@ -164,8 +164,17 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut index = 0;
 
-        while let Some(',') = input.chars().next() {
-            input = skip_space(take(input, 1)?.1);
+        while let Some(c) = input.chars().next() {
+            if c == ')' {
+                break;
+            }
+            // ',' is expected only if the current optional argument
+            // is not the first one in the list of specified arguments.
+            if !function_call.args.is_empty() {
+                input = expect(input, ",")?;
+            }
+
+            input = skip_space(input);
 
             let opt_param = function
                 .opt_params
