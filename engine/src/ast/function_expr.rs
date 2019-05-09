@@ -2,7 +2,7 @@ use crate::{
     ast::index_expr::IndexExpr,
     execution_context::ExecutionContext,
     functions::{FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionParam},
-    lex::{expect, skip_space, span, take, take_while, LexError, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{GetType, LhsValue, RhsValue, Type, TypeMismatchError},
 };
@@ -145,65 +145,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             .get_function(name)
             .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
 
+        let min_arg_count = function.min_arg_count();
+        let max_arg_count = function.max_arg_count();
+
         let mut function_call = FunctionCallExpr::new(name, function);
-
-        for i in 0..function.min_arg_count() {
-            if i == 0 {
-                if take(input, 1)?.0 == ")" {
-                    break;
-                }
-            } else {
-                input =
-                    expect(input, ",").map_err(|(_, input)| invalid_args_count(function, input))?;
-            }
-
-            input = skip_space(input);
-
-            let arg = FunctionCallArgExpr::lex_with(input, scheme)?;
-
-            let next_param = FunctionParam {
-                arg_kind: arg.0.get_kind(),
-                val_type: arg.0.get_type(),
-            };
-
-            let param = function
-                .check_param(i, &next_param)
-                .ok_or_else(|| invalid_args_count(function, input))?;
-
-            if next_param.arg_kind != param.arg_kind {
-                return Err((
-                    LexErrorKind::InvalidArgumentKind {
-                        index: i,
-                        mismatch: FunctionArgKindMismatchError {
-                            actual: next_param.arg_kind,
-                            expected: param.arg_kind,
-                        },
-                    },
-                    span(input, arg.1),
-                ));
-            }
-
-            if next_param.val_type != param.val_type {
-                return Err((
-                    LexErrorKind::InvalidArgumentType {
-                        index: i,
-                        mismatch: TypeMismatchError {
-                            actual: next_param.val_type,
-                            expected: param.val_type.into(),
-                        },
-                    },
-                    span(input, arg.1),
-                ));
-            }
-
-            function_call.args.push(arg.0);
-
-            input = skip_space(arg.1);
-        }
-
-        if function_call.args.len() != function.min_arg_count() {
-            return Err(invalid_args_count(&function, input));
-        }
 
         let mut index = 0;
 
@@ -211,9 +156,9 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             if c == ')' {
                 break;
             }
-            // ',' is expected only if the current optional argument
+            // ',' is expected only if the current argument
             // is not the first one in the list of specified arguments.
-            if !function_call.args.is_empty() {
+            if index != 0 {
                 input = expect(input, ",")?;
             }
 
@@ -226,30 +171,30 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 val_type: arg.get_type(),
             };
 
-            let opt_param = function
-                .check_param(function.min_arg_count() + index, &next_param)
+            let param = function
+                .check_param(index, &next_param)
                 .ok_or_else(|| invalid_args_count(function, input))?;
 
-            if next_param.arg_kind != opt_param.arg_kind {
+            if next_param.arg_kind != param.arg_kind {
                 return Err((
                     LexErrorKind::InvalidArgumentKind {
-                        index: function.min_arg_count() + index,
+                        index,
                         mismatch: FunctionArgKindMismatchError {
                             actual: next_param.arg_kind,
-                            expected: opt_param.arg_kind,
+                            expected: param.arg_kind,
                         },
                     },
                     span(input, rest),
                 ));
             }
 
-            if next_param.val_type != opt_param.val_type {
+            if next_param.val_type != param.val_type {
                 return Err((
                     LexErrorKind::InvalidArgumentType {
-                        index: function.min_arg_count() + index,
+                        index,
                         mismatch: TypeMismatchError {
                             actual: next_param.val_type,
-                            expected: opt_param.val_type.into(),
+                            expected: param.val_type.into(),
                         },
                     },
                     span(input, rest),
@@ -261,6 +206,14 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             input = skip_space(rest);
 
             index += 1;
+        }
+
+        if function_call.args.len() < min_arg_count {
+            return Err(invalid_args_count(&function, input));
+        }
+
+        if max_arg_count.is_some() && function_call.args.len() > max_arg_count.unwrap() {
+            return Err(invalid_args_count(&function, input));
         }
 
         input = expect(input, ")")?;
