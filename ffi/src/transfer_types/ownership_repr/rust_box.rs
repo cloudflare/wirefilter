@@ -5,6 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+#[derive(Debug)]
 #[repr(transparent)]
 pub struct RustBox<T: ?Sized + ExternPtrRepr> {
     ptr: T::Repr,

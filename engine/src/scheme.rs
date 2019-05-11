@@ -18,7 +18,9 @@ use std::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
+/// Enum that describes a kind of index access operation
 pub enum FieldIndex {
+    /// Access the value associated with the key `MapKey` from a Map
     MapKey(String),
 }
 
