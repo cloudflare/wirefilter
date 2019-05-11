@@ -40,5 +40,6 @@ mod ffi_ctest {
         create_execution_context,
         add_values_to_execution_context,
         match_filter,
+        match_map,
     );
 }

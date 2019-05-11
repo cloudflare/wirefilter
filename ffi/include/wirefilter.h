@@ -12,6 +12,7 @@ typedef struct wirefilter_scheme wirefilter_scheme_t;
 typedef struct wirefilter_execution_context wirefilter_execution_context_t;
 typedef struct wirefilter_filter_ast wirefilter_filter_ast_t;
 typedef struct wirefilter_filter wirefilter_filter_t;
+typedef struct wirefilter_map wirefilter_map_t;
 
 typedef struct {
     const char *data;
@@ -46,14 +47,27 @@ typedef union {
 } wirefilter_parsing_result_t;
 
 typedef enum {
-    WIREFILTER_TYPE_IP,
-    WIREFILTER_TYPE_BYTES,
-    WIREFILTER_TYPE_INT,
-    WIREFILTER_TYPE_BOOL,
+    WIREFILTER_TYPE_TAG_IP,
+    WIREFILTER_TYPE_TAG_BYTES,
+    WIREFILTER_TYPE_TAG_INT,
+    WIREFILTER_TYPE_TAG_BOOL,
+    WIREFILTER_TYPE_TAG_MAP,
+} wirefilter_type_tag_t;
+
+typedef struct {
+    wirefilter_type_tag_t tag;
+    void *data[2];
 } wirefilter_type_t;
+
+static const wirefilter_type_t WIREFILTER_TYPE_IP = {.tag = WIREFILTER_TYPE_TAG_IP, .data = {NULL, NULL}};
+static const wirefilter_type_t WIREFILTER_TYPE_BYTES = {.tag = WIREFILTER_TYPE_TAG_BYTES, .data = {NULL, NULL}};
+static const wirefilter_type_t WIREFILTER_TYPE_INT = {.tag = WIREFILTER_TYPE_TAG_INT, .data = {NULL, NULL}};
+static const wirefilter_type_t WIREFILTER_TYPE_BOOL = {.tag = WIREFILTER_TYPE_TAG_BOOL, .data = {NULL, NULL}};
 
 wirefilter_scheme_t *wirefilter_create_scheme();
 void wirefilter_free_scheme(wirefilter_scheme_t *scheme);
+
+wirefilter_type_t wirefilter_create_map_type(wirefilter_type_t type);
 
 void wirefilter_add_type_field_to_scheme(
     wirefilter_scheme_t *scheme,
@@ -107,6 +121,52 @@ void wirefilter_add_bool_value_to_execution_context(
     wirefilter_externally_allocated_str_t name,
     bool value
 );
+
+void wirefilter_add_map_value_to_execution_context(
+    wirefilter_execution_context_t *exec_ctx,
+    wirefilter_externally_allocated_str_t name,
+    wirefilter_map_t *map
+);
+
+wirefilter_map_t *wirefilter_create_map(wirefilter_type_t type);
+
+void wirefilter_add_int_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    int32_t value
+);
+
+void wirefilter_add_bytes_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    wirefilter_externally_allocated_byte_arr_t value
+);
+
+void wirefilter_add_ipv6_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    uint8_t value[16]
+);
+
+void wirefilter_add_ipv4_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    uint8_t value[4]
+);
+
+void wirefilter_add_bool_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    bool value
+);
+
+void wirefilter_add_map_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    wirefilter_map_t *value
+);
+
+void wirefilter_free_map(wirefilter_map_t *map);
 
 bool wirefilter_match(
     const wirefilter_filter_t *filter,
