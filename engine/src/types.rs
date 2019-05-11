@@ -51,7 +51,7 @@ macro_rules! replace_underscore {
 
 macro_rules! specialized_get_type {
     (Map, $value:ident) => {
-        Type::Map(Box::new($value.get_type()))
+        $value.get_type()
     };
     ($name:ident, $value:ident) => {
         Type::$name
@@ -205,6 +205,7 @@ pub struct Map<'a> {
 }
 
 impl<'a> Map<'a> {
+    /// Creates a new map
     pub fn new(val_type: Type) -> Self {
         Self {
             val_type,
@@ -212,10 +213,13 @@ impl<'a> Map<'a> {
         }
     }
 
+    /// Get a reference to an element if it exists
     pub fn get(&self, key: &str) -> Option<&LhsValue<'a>> {
         self.data.get(key)
     }
 
+    /// Inserts an element, returns the previously inserted
+    /// element if it exists.
     pub fn insert(
         &mut self,
         key: String,
@@ -231,7 +235,7 @@ impl<'a> Map<'a> {
         Ok(self.data.insert(key, value))
     }
 
-    pub fn to_owned<'b>(&self) -> Map<'b> {
+    pub(crate) fn to_owned<'b>(&self) -> Map<'b> {
         let mut map = Map {
             val_type: self.val_type.clone(),
             data: Default::default(),
@@ -245,7 +249,7 @@ impl<'a> Map<'a> {
 
 impl<'a> GetType for Map<'a> {
     fn get_type(&self) -> Type {
-        self.val_type.clone()
+        Type::Map(Box::new(self.val_type.clone()))
     }
 }
 
@@ -299,6 +303,28 @@ impl<'a> LhsValue<'a> {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
+        }
+    }
+
+    /// Set an element in an LhsValue given a path item and a specified value.
+    /// Returns a TypeMismatchError error if current type does not support
+    /// nested element or if value type is invalid.
+    /// Only LhsValyue::Map supports nested elements for now.
+    pub fn set<V: Into<LhsValue<'a>>>(
+        &mut self,
+        item: FieldIndex,
+        value: V,
+    ) -> Result<Option<LhsValue<'a>>, TypeMismatchError> {
+        let value = value.into();
+        let value_type = value.get_type();
+        match item {
+            FieldIndex::MapKey(name) => match self {
+                LhsValue::Map(ref mut map) => map.insert(name, value),
+                _ => Err(TypeMismatchError {
+                    expected: Type::Map(Box::new(value_type)),
+                    actual: self.get_type(),
+                }),
+            },
         }
     }
 
