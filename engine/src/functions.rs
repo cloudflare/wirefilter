@@ -81,9 +81,13 @@ pub struct FunctionOptParam {
 
 /// Trait to implement function
 pub trait FunctionDefinition: GetType + Debug + Sync + Send {
-    /// Check if the parameter specified at index `index` is correct.
-    /// Return the expected the parameter definition.
-    fn check_param(&self, index: usize, param: &FunctionParam) -> Option<FunctionParam>;
+    /// Given a slice of already checked parameters, checks that next_param is
+    /// correct. Return the expected the parameter definition.
+    fn check_param(
+        &self,
+        params: &mut ExactSizeIterator<Item = FunctionParam>,
+        next_param: &FunctionParam,
+    ) -> Option<FunctionParam>;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -114,7 +118,12 @@ impl GetType for Function {
 }
 
 impl FunctionDefinition for Function {
-    fn check_param(&self, index: usize, _: &FunctionParam) -> Option<FunctionParam> {
+    fn check_param(
+        &self,
+        params: &mut ExactSizeIterator<Item = FunctionParam>,
+        _: &FunctionParam,
+    ) -> Option<FunctionParam> {
+        let index = params.len();
         if index < self.params.len() {
             return self.params.get(index).cloned();
         } else if index < self.params.len() + self.opt_params.len() {
