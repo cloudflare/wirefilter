@@ -150,6 +150,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
+        let mut params = Vec::new();
+
         let mut index = 0;
 
         while let Some(c) = input.chars().next() {
@@ -172,7 +174,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             };
 
             let param = function
-                .check_param(index, &next_param)
+                .check_param(
+                    &mut (&function_call.args).iter().map(|arg| FunctionParam {
+                        arg_kind: arg.get_kind(),
+                        val_type: arg.get_type(),
+                    }),
+                    &next_param,
+                )
                 .ok_or_else(|| invalid_args_count(function, input))?;
 
             if next_param.arg_kind != param.arg_kind {
@@ -200,6 +208,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                     span(input, rest),
                 ));
             }
+
+            params.push(param);
 
             function_call.args.push(arg);
 
