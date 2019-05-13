@@ -103,25 +103,26 @@ impl<'s> FunctionCallExpr<'s> {
     }
 
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        self.function.execute(
-            &mut self.args.iter().map(|arg| arg.execute(ctx)).chain(
-                (self.args.len()
-                    ..self
-                        .function
-                        .max_arg_count()
-                        .unwrap_or_else(|| self.args.len()))
-                    .map(|index| self.function.default_value(index).unwrap()),
-            ),
-        )
+        let (mandatory_arg_count, optional_arg_count) = self.function.arg_count();
+        let max_args =
+            optional_arg_count.map_or_else(|| self.args.len(), |v| mandatory_arg_count + v);
+        self.function
+            .execute(
+                &mut self.args.iter().map(|arg| arg.execute(ctx)).chain(
+                    (self.args.len()..max_args)
+                        .map(|index| self.function.default_value(index).unwrap()),
+                ),
+            )
     }
 }
 
 #[allow(clippy::borrowed_box)]
 fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str) -> LexError<'i> {
+    let (mandatory, optional) = function.arg_count();
     (
         LexErrorKind::InvalidArgumentsCount {
-            expected_min: function.min_arg_count(),
-            expected_max: function.max_arg_count(),
+            expected_min: mandatory,
+            expected_max: optional.map(|v| mandatory + v),
         },
         input,
     )
@@ -145,8 +146,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             .get_function(name)
             .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
 
-        let min_arg_count = function.min_arg_count();
-        let max_arg_count = function.max_arg_count();
+        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
@@ -208,11 +208,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             index += 1;
         }
 
-        if function_call.args.len() < min_arg_count {
+        if function_call.args.len() < mandatory_arg_count {
             return Err(invalid_args_count(&function, input));
         }
 
-        if max_arg_count.is_some() && function_call.args.len() > max_arg_count.unwrap() {
+        if optional_arg_count.is_some()
+            && function_call.args.len() > (mandatory_arg_count + optional_arg_count.unwrap())
+        {
             return Err(invalid_args_count(&function, input));
         }
 
