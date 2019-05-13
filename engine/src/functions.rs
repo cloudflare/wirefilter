@@ -80,7 +80,7 @@ pub struct FunctionOptParam {
 }
 
 /// Trait to implement function
-pub trait FunctionDefinition: GetType + Debug + Sync + Send {
+pub trait FunctionDefinition: Debug + Sync + Send {
     /// Given a slice of already checked parameters, checks that next_param is
     /// correct. Return the expected the parameter definition.
     fn check_param(
@@ -88,6 +88,8 @@ pub trait FunctionDefinition: GetType + Debug + Sync + Send {
         params: &mut ExactSizeIterator<Item = FunctionParam>,
         next_param: &FunctionParam,
     ) -> Option<FunctionParam>;
+    /// Function return type.
+    fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -111,12 +113,6 @@ pub struct Function {
     pub implementation: FunctionImpl,
 }
 
-impl GetType for Function {
-    fn get_type(&self) -> Type {
-        self.return_type.clone()
-    }
-}
-
 impl FunctionDefinition for Function {
     fn check_param(
         &self,
@@ -136,6 +132,10 @@ impl FunctionDefinition for Function {
                 });
         }
         None
+    }
+
+    fn return_type(&self, _: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
+        self.return_type.clone()
     }
 
     fn arg_count(&self) -> (usize, Option<usize>) {

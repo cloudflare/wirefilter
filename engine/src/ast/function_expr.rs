@@ -128,6 +128,16 @@ fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str
     )
 }
 
+impl<'s> GetType for FunctionCallExpr<'s> {
+    fn get_type(&self) -> Type {
+        self.function
+            .return_type(&mut (&self.args).iter().map(|arg| FunctionParam {
+                arg_kind: arg.get_kind(),
+                val_type: arg.get_type(),
+            }))
+    }
+}
+
 impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
