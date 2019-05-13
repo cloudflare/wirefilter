@@ -84,10 +84,10 @@ pub trait FunctionDefinition: GetType + Debug + Sync + Send {
     /// Check if the parameter specified at index `index` is correct.
     /// Return the expected the parameter definition.
     fn check_param(&self, index: usize, param: &FunctionParam) -> Option<FunctionParam>;
-    /// Minimum number of arguments needed by the function.
-    fn min_arg_count(&self) -> usize;
-    /// Maximum number of arguments needed by the function.
-    fn max_arg_count(&self) -> Option<usize>;
+    /// Number of mandatory arguments and number of optional arguments
+    /// (N, Some(0)) means N mandatory arguments and no optional arguments
+    /// (N, None) means N mandatory arguments and unlimited optional arguments
+    fn arg_count(&self) -> (usize, Option<usize>);
     /// Get default value for optional arguments.
     fn default_value(&self, index: usize) -> Option<LhsValue>;
     /// Execute the real implementation.
@@ -129,12 +129,8 @@ impl FunctionDefinition for Function {
         None
     }
 
-    fn min_arg_count(&self) -> usize {
-        self.params.len()
-    }
-
-    fn max_arg_count(&self) -> Option<usize> {
-        Some(self.params.len() + self.opt_params.len())
+    fn arg_count(&self) -> (usize, Option<usize>) {
+        (self.params.len(), Some(self.opt_params.len()))
     }
 
     fn default_value(&self, index: usize) -> Option<LhsValue> {
