@@ -27,19 +27,14 @@ impl<'s> IndexExpr<'s> {
 
     pub fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
     where
-        F: Fn(LhsValue<'_>) -> bool,
+        F: Fn(&LhsValue<'_>) -> bool,
     {
         let Self { lhs, indexes } = self;
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => CompiledExpr::new(move |ctx| {
-                func(
-                    indexes
-                        .iter()
-                        .fold(&call.execute(ctx), |value, idx| {
-                            value.get(idx).unwrap().unwrap()
-                        })
-                        .as_ref(),
-                )
+                func(indexes.iter().fold(&call.execute(ctx), |value, idx| {
+                    value.get(idx).unwrap().unwrap()
+                }))
             }),
             LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
                 func(
@@ -47,8 +42,7 @@ impl<'s> IndexExpr<'s> {
                         .iter()
                         .fold(ctx.get_field_value_unchecked(f), |value, idx| {
                             value.get(idx).unwrap().unwrap()
-                        })
-                        .as_ref(),
+                        }),
                 )
             }),
         }
