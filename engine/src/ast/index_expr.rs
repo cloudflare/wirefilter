@@ -55,14 +55,25 @@ impl<'s> IndexExpr<'s> {
     }
 
     pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        let value = self.lhs.execute(ctx);
         if self.indexes.is_empty() {
-            value
+            self.lhs.execute(ctx)
         } else {
-            self.indexes
-                .iter()
-                .fold(&value, |value, index| value.get(index).unwrap().unwrap())
-                .to_owned()
+            match &self.lhs {
+                LhsFieldExpr::Field(f) => self
+                    .indexes
+                    .iter()
+                    .fold(ctx.get_field_value_unchecked(*f), |value, index| {
+                        value.get(index).unwrap().unwrap()
+                    })
+                    .as_ref(),
+                LhsFieldExpr::FunctionCallExpr(call) => self
+                    .indexes
+                    .iter()
+                    .fold(&call.execute(ctx), |value, index| {
+                        value.get(index).unwrap().unwrap()
+                    })
+                    .to_owned(),
+            }
         }
     }
 }
