@@ -253,7 +253,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => lhs.compile_with(move |x| cast_value!(x, Bool)),
+            FieldOp::IsTrue => lhs.compile_with(move |x| *cast_value!(x, Bool)),
             FieldOp::Ordering { op, rhs } => {
                 lhs.compile_with(move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
             }
@@ -264,10 +264,10 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::new(bytes);
 
-                lhs.compile_with(move |x| searcher.search_in(&cast_value!(x, Bytes)).is_some())
+                lhs.compile_with(move |x| searcher.search_in(cast_value!(x, Bytes)).is_some())
             }
             FieldOp::Matches(regex) => {
-                lhs.compile_with(move |x| regex.is_match(&cast_value!(x, Bytes)))
+                lhs.compile_with(move |x| regex.is_match(cast_value!(x, Bytes)))
             }
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
@@ -283,20 +283,20 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v6 = RangeSet::from(v6);
 
                     lhs.compile_with(move |x| match cast_value!(x, Ip) {
-                        IpAddr::V4(addr) => v4.contains(&addr),
-                        IpAddr::V6(addr) => v6.contains(&addr),
+                        IpAddr::V4(addr) => v4.contains(addr),
+                        IpAddr::V6(addr) => v6.contains(addr),
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Int)))
+                    lhs.compile_with(move |x| values.contains(cast_value!(x, Int)))
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(move |x| values.contains(&cast_value!(x, Bytes) as &[u8]))
+                    lhs.compile_with(move |x| values.contains(cast_value!(x, Bytes) as &[u8]))
                 }
                 RhsValues::Bool(_) => unreachable!(),
                 RhsValues::Map(_) => unreachable!(),
