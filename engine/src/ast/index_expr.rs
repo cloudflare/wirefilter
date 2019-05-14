@@ -45,7 +45,7 @@ impl<'s> IndexExpr<'s> {
                 func(
                     indexes
                         .iter()
-                        .fold(&ctx.get_field_value_unchecked(f), |value, idx| {
+                        .fold(ctx.get_field_value_unchecked(f), |value, idx| {
                             value.get(idx).unwrap().unwrap()
                         })
                         .as_ref(),
