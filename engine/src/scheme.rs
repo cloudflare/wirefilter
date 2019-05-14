@@ -1,8 +1,8 @@
 use crate::{
     ast::FilterAst,
     functions::Function,
-    lex::{complete, expect, span, take_while, LexErrorKind, LexResult, LexWith},
-    types::{GetType, Type},
+    lex::{complete, expect, span, take_while, Lex, LexErrorKind, LexResult, LexWith},
+    types::{GetType, RhsValue, Type},
 };
 use failure::Fail;
 use fnv::FnvBuildHasher;
@@ -10,6 +10,7 @@ use indexmap::map::{Entry, IndexMap};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
     cmp::{max, min},
+    convert::TryFrom,
     error::Error,
     fmt::{self, Debug, Display, Formatter},
     iter::Iterator,
@@ -18,10 +19,48 @@ use std::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-/// Enum that describes a kind of index access operation
+/// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
+/// representing an index into an Array, or `[MapKey(String)`],
+/// representing a key into a Map.
+///
+/// ```
+/// #[allow(dead_code)]
+/// enum FieldIndex {
+///     ArrayIndex(u32),
+///     MapKey(String),
+/// }
+/// ```
 pub enum FieldIndex {
-    /// Access the value associated with the key `MapKey` from a Map
+    /// Index into an Array
+    ArrayIndex(u32),
+
+    /// Key into a Map
     MapKey(String),
+}
+
+impl<'i> Lex<'i> for FieldIndex {
+    fn lex(input: &'i str) -> LexResult<'i, Self> {
+        // The token inside an [] can be either an integer index into an Array
+        // or a string key into a Map. The token is a key into a Map if it
+        // starts and ends with "\"", otherwise an integer index or an error.
+        let (rhs, rest) = RhsValue::lex_with(input, Type::Bytes)
+            .or_else(|_| RhsValue::lex_with(input, Type::Int))?;
+
+        match rhs {
+            RhsValue::Int(i) => match u32::try_from(i) {
+                Ok(u) => Ok((FieldIndex::ArrayIndex(u), rest)),
+                Err(_) => Err((
+                    LexErrorKind::ExpectedLiteral("expected positive integer as index"),
+                    input,
+                )),
+            },
+            RhsValue::Bytes(b) => match String::from_utf8(b.to_vec()) {
+                Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
+                Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
+            },
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Fail)]
@@ -512,4 +551,19 @@ fn test_field_type_override() {
         scheme.add_field("foo".into(), Type::Bytes).unwrap_err(),
         ItemRedefinitionError::Field(FieldRedefinitionError("foo".into()))
     )
+}
+
+#[test]
+fn test_field_lex_indexes() {
+    assert_ok!(FieldIndex::lex("0"), FieldIndex::ArrayIndex(0));
+    assert_err!(
+        FieldIndex::lex("-1"),
+        LexErrorKind::ExpectedLiteral("expected positive integer as index"),
+        "-1"
+    );
+
+    assert_ok!(
+        FieldIndex::lex("\"cookies\""),
+        FieldIndex::MapKey("cookies".into())
+    );
 }

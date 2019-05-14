@@ -1,6 +1,6 @@
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
-    rhs_types::{Bytes, IpRange, UninhabitedBool, UninhabitedMap},
+    rhs_types::{Bytes, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
@@ -50,6 +50,9 @@ macro_rules! replace_underscore {
 }
 
 macro_rules! specialized_get_type {
+    (Array, $value:ident) => {
+        $value.get_type()
+    };
     (Map, $value:ident) => {
         $value.get_type()
     };
@@ -196,6 +199,60 @@ macro_rules! declare_types {
     };
 }
 
+/// An array of [`Type`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Array<'a> {
+    val_type: Type,
+    #[serde(borrow)]
+    data: Vec<LhsValue<'a>>,
+}
+
+impl<'a> Array<'a> {
+    pub fn new(val_type: Type) -> Self {
+        Self {
+            val_type,
+            data: Vec::new(),
+        }
+    }
+
+    pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
+        self.data.get(idx)
+    }
+
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
+        self.data.get_mut(idx)
+    }
+
+    pub fn insert(&mut self, idx: usize, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
+        let value_type = value.get_type();
+        if self.val_type != value_type {
+            return Err(TypeMismatchError {
+                expected: self.val_type.clone(),
+                actual: value_type,
+            });
+        }
+        self.data.insert(idx, value);
+        Ok(())
+    }
+
+    pub fn to_owned<'b>(&self) -> Array<'b> {
+        let mut arr = Array {
+            val_type: self.val_type.clone(),
+            data: Default::default(),
+        };
+        for v in self.data.iter() {
+            arr.data.push(v.to_owned());
+        }
+        arr
+    }
+}
+
+impl<'a> GetType for Array<'a> {
+    fn get_type(&self) -> Type {
+        Type::Array(Box::new(self.val_type.clone()))
+    }
+}
+
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
@@ -220,11 +277,7 @@ impl<'a> Map<'a> {
 
     /// Inserts an element, returns the previously inserted
     /// element if it exists.
-    pub fn insert(
-        &mut self,
-        key: String,
-        value: LhsValue<'a>,
-    ) -> Result<Option<LhsValue<'a>>, TypeMismatchError> {
+    pub fn insert(&mut self, key: String, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
         if self.val_type != value_type {
             return Err(TypeMismatchError {
@@ -232,7 +285,8 @@ impl<'a> Map<'a> {
                 actual: value_type,
             });
         }
-        Ok(self.data.insert(key, value))
+        self.data.insert(key, value);
+        Ok(())
     }
 
     pub(crate) fn to_owned<'b>(&self) -> Map<'b> {
@@ -274,6 +328,7 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
             RhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             RhsValue::Int(integer) => LhsValue::Int(*integer),
             RhsValue::Bool(b) => match *b {},
+            RhsValue::Array(a) => match *a {},
             RhsValue::Map(m) => match *m {},
         }
     }
@@ -288,6 +343,7 @@ impl<'a> LhsValue<'a> {
             LhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             LhsValue::Int(integer) => LhsValue::Int(*integer),
             LhsValue::Bool(b) => LhsValue::Bool(*b),
+            LhsValue::Array(a) => LhsValue::Array(a.clone()),
             LhsValue::Map(m) => LhsValue::Map(m.clone()),
         }
     }
@@ -295,11 +351,18 @@ impl<'a> LhsValue<'a> {
     /// Retrieve an element from an LhsValue given a path item and a specified
     /// type.
     /// Returns a TypeMismatchError error if current type does not support it
-    /// nested element. Only LhsValue::Map supports nested elements for now.
+    /// nested element.
+    ///
+    /// Both LhsValue::Array and LhsValue::Map support nested elements.
     pub fn get(&'a self, item: &FieldIndex) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
         match (self, item) {
-            (LhsValue::Map(map), FieldIndex::MapKey(ref name)) => Ok(map.data.get(name)),
-            (_, FieldIndex::MapKey(_name)) => Err(IndexAccessError {
+            (LhsValue::Array(arr), FieldIndex::ArrayIndex(ref idx)) => Ok(arr.get(*idx as usize)),
+            (_, FieldIndex::ArrayIndex(_)) => Err(IndexAccessError {
+                index: item.clone(),
+                actual: self.get_type(),
+            }),
+            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.data.get(key)),
+            (_, FieldIndex::MapKey(_)) => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
@@ -314,10 +377,17 @@ impl<'a> LhsValue<'a> {
         &mut self,
         item: FieldIndex,
         value: V,
-    ) -> Result<Option<LhsValue<'a>>, TypeMismatchError> {
+    ) -> Result<(), TypeMismatchError> {
         let value = value.into();
         let value_type = value.get_type();
         match item {
+            FieldIndex::ArrayIndex(idx) => match self {
+                LhsValue::Array(ref mut arr) => arr.insert(idx as usize, value),
+                _ => Err(TypeMismatchError {
+                    expected: Type::Array(Box::new(value_type)),
+                    actual: self.get_type(),
+                }),
+            },
             FieldIndex::MapKey(name) => match self {
                 LhsValue::Map(ref mut map) => map.insert(name, value),
                 _ => Err(TypeMismatchError {
@@ -340,13 +410,14 @@ impl<'a> LhsValue<'a> {
             },
             LhsValue::Int(integer) => LhsValue::Int(*integer),
             LhsValue::Bool(b) => LhsValue::Bool(*b),
+            LhsValue::Array(a) => LhsValue::Array(a.to_owned()),
             LhsValue::Map(m) => LhsValue::Map(m.to_owned()),
         }
     }
 }
 
 declare_types!(
-    /// An IPv4 or IPv6 field.
+    /// An IPv4 or IPv6 address.
     ///
     /// These are represented as a single type to allow interop comparisons.
     Ip(IpAddr | IpAddr | IpRange),
@@ -363,7 +434,10 @@ declare_types!(
     /// A boolean.
     Bool(bool | UninhabitedBool | UninhabitedBool),
 
-    /// A map of string to [`Type`].
+    /// An Array of [`Type`].
+    Array[Box<Type>](Array<'a> | UninhabitedArray | UninhabitedArray),
+
+    /// A Map of string to [`Type`].
     Map[Box<Type>](Map<'a> | UninhabitedMap | UninhabitedMap),
 );
 

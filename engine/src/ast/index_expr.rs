@@ -2,9 +2,9 @@ use super::field_expr::LhsFieldExpr;
 use crate::{
     execution_context::ExecutionContext,
     filter::CompiledExpr,
-    lex::{expect, skip_space, span, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, FieldIndex, IndexAccessError, Scheme},
-    types::{GetType, LhsValue, RhsValue, Type},
+    types::{GetType, LhsValue, Type},
 };
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
@@ -80,32 +80,43 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
         while let Ok(rest) = expect(input, "[") {
             let rest = skip_space(rest);
 
-            let (key, rest) = RhsValue::lex_with(rest, Type::Bytes)?;
+            let (idx, rest) = FieldIndex::lex(rest)?;
 
             let mut rest = skip_space(rest);
 
             rest = expect(rest, "]")?;
 
-            match key {
-                RhsValue::Bytes(bytes) => {
-                    let index = FieldIndex::MapKey(String::from_utf8(bytes.to_vec()).unwrap());
-                    match current_type {
-                        Type::Map(map_type) => {
-                            current_type = *map_type;
-                            indexes.push(index);
-                        }
-                        _ => {
-                            return Err((
-                                LexErrorKind::InvalidIndexAccess(IndexAccessError {
-                                    index,
-                                    actual: current_type,
-                                }),
-                                span(input, rest),
-                            ))
-                        }
+            match &idx {
+                FieldIndex::ArrayIndex(_) => match current_type {
+                    Type::Array(array_type) => {
+                        current_type = *array_type;
+                        indexes.push(idx);
                     }
-                }
-                _ => unreachable!(),
+                    _ => {
+                        return Err((
+                            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                                index: idx,
+                                actual: current_type,
+                            }),
+                            span(input, rest),
+                        ))
+                    }
+                },
+                FieldIndex::MapKey(_) => match current_type {
+                    Type::Map(map_type) => {
+                        current_type = *map_type;
+                        indexes.push(idx);
+                    }
+                    _ => {
+                        return Err((
+                            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                                index: idx,
+                                actual: current_type,
+                            }),
+                            span(input, rest),
+                        ))
+                    }
+                },
             };
 
             input = rest;
@@ -120,6 +131,7 @@ impl<'s> GetType for IndexExpr<'s> {
         let mut ty = self.lhs.get_type();
         for index in &self.indexes {
             ty = match (ty, index) {
+                (Type::Array(idx), FieldIndex::ArrayIndex(_)) => (*idx),
                 (Type::Map(child), FieldIndex::MapKey(_)) => (*child),
                 (_, _) => unreachable!(),
             }
