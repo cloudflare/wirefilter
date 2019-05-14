@@ -143,7 +143,7 @@ impl<'s> LhsFieldExpr<'s> {
 
     pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
         match self {
-            LhsFieldExpr::Field(f) => ctx.get_field_value_unchecked(*f),
+            LhsFieldExpr::Field(f) => ctx.get_field_value_unchecked(*f).as_ref(),
             LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
         }
     }
