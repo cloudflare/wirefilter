@@ -245,6 +245,11 @@ impl<'a> Array<'a> {
         }
         arr
     }
+
+    /// Returns the type of the contained values.
+    pub fn value_type(&self) -> &Type {
+        &self.val_type
+    }
 }
 
 impl<'a> GetType for Array<'a> {
@@ -298,6 +303,11 @@ impl<'a> Map<'a> {
             map.data.insert(k.clone(), v.to_owned());
         }
         map
+    }
+
+    /// Returns the type of the contained values.
+    pub fn value_type(&self) -> &Type {
+        &self.val_type
     }
 }
 
