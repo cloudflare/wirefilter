@@ -258,6 +258,14 @@ impl<'a> GetType for Array<'a> {
     }
 }
 
+impl<'a> IntoIterator for Array<'a> {
+    type Item = LhsValue<'a>;
+    type IntoIter = std::vec::IntoIter<LhsValue<'a>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
+    }
+}
+
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
