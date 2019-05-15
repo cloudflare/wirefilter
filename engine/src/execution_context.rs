@@ -64,7 +64,7 @@ impl<'e> ExecutionContext<'e> {
             Ok(())
         } else {
             Err(TypeMismatchError {
-                expected: field_type,
+                expected: field_type.into(),
                 actual: value_type,
             })
         }
@@ -82,7 +82,7 @@ fn test_field_value_type_mismatch() {
     assert_eq!(
         ctx.set_field_value("foo", LhsValue::Bool(false)),
         Err(TypeMismatchError {
-            expected: Type::Int,
+            expected: Type::Int.into(),
             actual: Type::Bool
         })
     );

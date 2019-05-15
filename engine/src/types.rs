@@ -10,6 +10,7 @@ use std::{
     borrow::Cow,
     cmp::Ordering,
     collections::HashMap,
+    convert::TryFrom,
     fmt::{self, Debug, Formatter},
     net::IpAddr,
     ops::RangeInclusive,
@@ -31,6 +32,28 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
     }
 }
 
+/// An enum describing the expected type when a
+/// TypeMismatchError occurs
+#[derive(Debug, PartialEq)]
+pub enum ExpectedTypeMismatch {
+    /// Fully identified expected type
+    Type(Type),
+    /// Loosely identified array type
+    /// Usefull when expecting an array without
+    /// knowing of which specific value type
+    Array,
+    /// Loosely identified map type
+    /// Usefull when expecting a map without
+    /// knowing of which specific value type
+    Map,
+}
+
+impl From<Type> for ExpectedTypeMismatch {
+    fn from(ty: Type) -> Self {
+        ExpectedTypeMismatch::Type(ty)
+    }
+}
+
 /// An error that occurs on a type mismatch.
 #[derive(Debug, PartialEq, Fail)]
 #[fail(
@@ -39,7 +62,7 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
 )]
 pub struct TypeMismatchError {
     /// Expected value type.
-    pub expected: Type,
+    pub expected: ExpectedTypeMismatch,
     /// Provided value type.
     pub actual: Type,
 }
@@ -58,6 +81,18 @@ macro_rules! specialized_get_type {
     };
     ($name:ident, $value:ident) => {
         Type::$name
+    };
+}
+
+macro_rules! specialized_try_from {
+    (Array) => {
+        ExpectedTypeMismatch::Array
+    };
+    (Map) => {
+        ExpectedTypeMismatch::Map
+    };
+    ($name:ident) => {
+        ExpectedTypeMismatch::Type(Type::$name)
     };
 }
 
@@ -132,6 +167,20 @@ macro_rules! declare_types {
         $(impl<'a> From<$lhs_ty> for LhsValue<'a> {
             fn from(value: $lhs_ty) -> Self {
                 LhsValue::$name(value)
+            }
+        })*
+
+        $(impl<'a> TryFrom<LhsValue<'a>> for $lhs_ty {
+            type Error = TypeMismatchError;
+
+            fn try_from(value: LhsValue<'a>) -> Result<$lhs_ty, TypeMismatchError> {
+                match value {
+                    LhsValue::$name(value) => Ok(value),
+                    _ => Err(TypeMismatchError {
+                        expected: specialized_try_from!($name),
+                        actual: value.get_type(),
+                    }),
+                }
             }
         })*
 
@@ -227,7 +276,7 @@ impl<'a> Array<'a> {
         let value_type = value.get_type();
         if self.val_type != value_type {
             return Err(TypeMismatchError {
-                expected: self.val_type.clone(),
+                expected: self.val_type.clone().into(),
                 actual: value_type,
             });
         }
@@ -294,7 +343,7 @@ impl<'a> Map<'a> {
         let value_type = value.get_type();
         if self.val_type != value_type {
             return Err(TypeMismatchError {
-                expected: self.val_type.clone(),
+                expected: self.val_type.clone().into(),
                 actual: value_type,
             });
         }
@@ -402,14 +451,14 @@ impl<'a> LhsValue<'a> {
             FieldIndex::ArrayIndex(idx) => match self {
                 LhsValue::Array(ref mut arr) => arr.insert(idx as usize, value),
                 _ => Err(TypeMismatchError {
-                    expected: Type::Array(Box::new(value_type)),
+                    expected: Type::Array(Box::new(value_type)).into(),
                     actual: self.get_type(),
                 }),
             },
             FieldIndex::MapKey(name) => match self {
                 LhsValue::Map(ref mut map) => map.insert(name, value),
                 _ => Err(TypeMismatchError {
-                    expected: Type::Map(Box::new(value_type)),
+                    expected: Type::Map(Box::new(value_type)).into(),
                     actual: self.get_type(),
                 }),
             },
