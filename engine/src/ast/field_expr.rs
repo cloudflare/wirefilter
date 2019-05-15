@@ -313,7 +313,8 @@ mod tests {
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
         functions::{
-            Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
+            Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
+            FunctionOptParam, FunctionParam,
         },
         rhs_types::IpRange,
         scheme::FieldIndex,
@@ -321,7 +322,7 @@ mod tests {
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
-    use std::net::IpAddr;
+    use std::{convert::TryFrom, net::IpAddr};
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
         args.next().unwrap()
@@ -351,6 +352,69 @@ mod tests {
         LhsValue::Bytes(output.into())
     }
 
+    #[derive(Debug)]
+    struct FilterFunction {}
+
+    impl FilterFunction {
+        fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl FunctionDefinition for FilterFunction {
+        fn check_param(
+            &self,
+            params: &mut ExactSizeIterator<Item = FunctionParam>,
+            param: &FunctionParam,
+        ) -> Option<FunctionParam> {
+            if params.len() >= 2 {
+                return None;
+            }
+            match params.next() {
+                Some(_) => Some(FunctionParam {
+                    val_type: Type::Array(Box::new(Type::Bool)),
+                    arg_kind: FunctionArgKind::Field,
+                }),
+                None => match param.val_type {
+                    Type::Array(_) => Some(param.clone()),
+                    _ => Some(FunctionParam {
+                        val_type: Type::Array(Box::new(param.val_type.clone())),
+                        arg_kind: FunctionArgKind::Field,
+                    }),
+                },
+            }
+        }
+
+        fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
+            params.next().unwrap().val_type.clone()
+        }
+
+        /// Number of arguments needed by the function.
+        fn arg_count(&self) -> (usize, Option<usize>) {
+            (2, Some(0))
+        }
+
+        /// Get default value for optional arguments.
+        fn default_value(&self, _: usize) -> Option<LhsValue> {
+            None
+        }
+
+        /// Execute the real implementation.
+        fn execute<'a>(&self, args: &mut Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
+            let value_array = Array::try_from(args.next().unwrap()).unwrap();
+            let keep_array = Array::try_from(args.next().unwrap()).unwrap();
+            let mut output = Array::new(value_array.value_type().clone());
+            let mut i = 0;
+            for (value, keep) in value_array.into_iter().zip(keep_array) {
+                if bool::try_from(keep).unwrap() {
+                    output.insert(i, value).unwrap();
+                    i += 1;
+                }
+            }
+            LhsValue::Array(output)
+        }
+    }
+
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme: Scheme = Scheme! {
@@ -360,6 +424,7 @@ mod tests {
                 ip.addr: Ip,
                 ssl: Bool,
                 tcp.port: Int,
+                array.of.bool: Array(Bool),
             };
             scheme
                 .add_function(
@@ -408,6 +473,9 @@ mod tests {
                         implementation: FunctionImpl::new(concat_function),
                     },
                 )
+                .unwrap();
+            scheme
+                .add_function("filter".into(), FilterFunction::new())
                 .unwrap();
             scheme
         };
@@ -1161,5 +1229,85 @@ mod tests {
 
         ctx.set_field_value("http.host", "cloudflare").unwrap();
         assert_eq!(expr.execute(ctx), false);
+    }
+
+    #[test]
+    fn test_filter_function() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(
+                r#"filter(http.cookies, array.of.bool)[0] == "three""#,
+                &SCHEME
+            ),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("filter"),
+                        function: SCHEME.get_function("filter").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("http.cookies")),
+                                indexes: vec![],
+                            }),
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("array.of.bool")),
+                                indexes: vec![],
+                            }),
+                        ],
+                    }),
+                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("three".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    {
+                        "name": "filter",
+                        "args": [
+                            {
+                                "kind": "IndexExpr",
+                                "value": "http.cookies"
+                            },
+                            {
+                                "kind": "IndexExpr",
+                                "value": "array.of.bool"
+                            }
+                        ]
+                    },
+                    0,
+                ],
+                "op": "Equal",
+                "rhs": "three"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "one".into()).unwrap();
+            arr.insert(1, "two".into()).unwrap();
+            arr.insert(2, "three".into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+
+        let booleans = LhsValue::Array({
+            let mut arr = Array::new(Type::Bool);
+            arr.insert(0, false.into()).unwrap();
+            arr.insert(1, false.into()).unwrap();
+            arr.insert(2, true.into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("array.of.bool", booleans).unwrap();
+
+        assert_eq!(expr.execute(ctx), true);
     }
 }
