@@ -297,6 +297,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 }
                 RhsValues::Bool(_) => unreachable!(),
                 RhsValues::Map(_) => unreachable!(),
+                RhsValues::Array(_) => unreachable!(),
             },
         }
     }
@@ -313,7 +314,7 @@ mod tests {
         },
         rhs_types::IpRange,
         scheme::FieldIndex,
-        types::Map,
+        types::{Array, Map},
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
@@ -350,11 +351,12 @@ mod tests {
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme: Scheme = Scheme! {
+                http.cookies: Array(Bytes),
+                http.headers: Map(Bytes),
                 http.host: Bytes,
                 ip.addr: Ip,
                 ssl: Bool,
                 tcp.port: Int,
-                http.headers: Map(Bytes),
             };
             scheme
                 .add_function(
@@ -869,6 +871,41 @@ mod tests {
         assert_eq!(expr.execute(ctx), true);
 
         ctx.set_field_value("tcp.port", 8080).unwrap();
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    #[test]
+    fn test_array_contains_str() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.cookies[0] contains "abc""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.cookies")),
+                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                },
+                op: FieldOp::Contains("abc".to_owned().into()),
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "abc".into()).unwrap();
+            arr
+        });
+
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+        assert_eq!(expr.execute(ctx), true);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "def".into()).unwrap();
+            arr
+        });
+
+        ctx.set_field_value("http.cookies", cookies).unwrap();
         assert_eq!(expr.execute(ctx), false);
     }
 
