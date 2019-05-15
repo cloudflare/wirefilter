@@ -50,7 +50,7 @@ impl<'i, 's, 'a> LexWith<'i, SchemeFunctionParam<'s, 'a>> for FunctionCallArgExp
                             index: ctx.index,
                             mismatch: TypeMismatchError {
                                 actual: lhs.get_type(),
-                                expected: ctx.param.val_type.clone(),
+                                expected: ctx.param.val_type.clone().into(),
                             },
                         },
                         span(initial_input, input),
@@ -349,7 +349,7 @@ fn test_function() {
             index: 0,
             mismatch: TypeMismatchError {
                 actual: Type::Ip,
-                expected: Type::Bytes,
+                expected: Type::Bytes.into(),
             }
         },
         "ip.addr"
