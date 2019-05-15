@@ -79,5 +79,5 @@ pub use self::{
         Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
     },
     scheme::{FieldIndex, FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
-    types::{GetType, LhsValue, Map, Type, TypeMismatchError},
+    types::{ExpectedTypeMismatch, GetType, LhsValue, Map, Type, TypeMismatchError},
 };
