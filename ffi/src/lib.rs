@@ -11,7 +11,7 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, Map, ParseError, Scheme, Type,
+    Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, Map, ParseError, Scheme, Type,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -56,6 +56,11 @@ pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_create_map_type(ty: Type) -> Type {
     Type::Map(Box::new(ty))
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_create_array_type(ty: Type) -> Type {
+    Type::Array(Box::new(ty))
 }
 
 #[no_mangle]
@@ -218,6 +223,17 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
+    exec_context: &mut ExecutionContext<'a>,
+    name: ExternallyAllocatedStr<'_>,
+    value: RustBox<LhsValue<'a>>,
+) {
+    exec_context
+        .set_field_value(name.into_ref(), *value.into_real_box())
+        .unwrap();
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_create_map<'a>(ty: Type) -> RustBox<LhsValue<'a>> {
     let map = Box::new(LhsValue::Map(Map::new(ty)));
     map.into()
@@ -294,8 +310,104 @@ pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
+    map: &mut LhsValue<'a>,
+    name: ExternallyAllocatedStr<'_>,
+    value: RustBox<LhsValue<'a>>,
+) {
+    map.set(
+        FieldIndex::MapKey(name.into_ref().to_string()),
+        *value.into_real_box(),
+    )
+    .unwrap();
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_free_map(map: RustBox<LhsValue<'_>>) {
     drop(map)
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_create_array<'a>(ty: Type) -> RustBox<LhsValue<'a>> {
+    let arr = Box::new(LhsValue::Array(Array::new(ty)));
+    arr.into()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_int_value_to_array(
+    array: &mut LhsValue<'_>,
+    index: u32,
+    value: i32,
+) {
+    array.set(FieldIndex::ArrayIndex(index), value).unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_bytes_value_to_array<'a>(
+    array: &mut LhsValue<'a>,
+    index: u32,
+    value: ExternallyAllocatedByteArr<'a>,
+) {
+    let slice: &[u8] = value.into_ref();
+    array.set(FieldIndex::ArrayIndex(index), slice).unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_ipv6_value_to_array(
+    array: &mut LhsValue<'_>,
+    index: u32,
+    value: &[u8; 16],
+) {
+    array
+        .set(FieldIndex::ArrayIndex(index), IpAddr::from(*value))
+        .unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_ipv4_value_to_array(
+    array: &mut LhsValue<'_>,
+    index: u32,
+    value: &[u8; 4],
+) {
+    array
+        .set(FieldIndex::ArrayIndex(index), IpAddr::from(*value))
+        .unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_bool_value_to_array(
+    array: &mut LhsValue<'_>,
+    index: u32,
+    value: bool,
+) {
+    array.set(FieldIndex::ArrayIndex(index), value).unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_map_value_to_array<'a>(
+    array: &mut LhsValue<'a>,
+    index: u32,
+    value: RustBox<LhsValue<'a>>,
+) {
+    array
+        .set(FieldIndex::ArrayIndex(index), *value.into_real_box())
+        .unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_array_value_to_array<'a>(
+    array: &mut LhsValue<'a>,
+    index: u32,
+    value: RustBox<LhsValue<'a>>,
+) {
+    array
+        .set(FieldIndex::ArrayIndex(index), *value.into_real_box())
+        .unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_array(array: RustBox<LhsValue<'_>>) {
+    drop(array)
 }
 
 #[no_mangle]
