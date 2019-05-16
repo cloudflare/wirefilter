@@ -13,6 +13,7 @@ typedef struct wirefilter_execution_context wirefilter_execution_context_t;
 typedef struct wirefilter_filter_ast wirefilter_filter_ast_t;
 typedef struct wirefilter_filter wirefilter_filter_t;
 typedef struct wirefilter_map wirefilter_map_t;
+typedef struct wirefilter_array wirefilter_array_t;
 
 typedef struct {
     const char *data;
@@ -68,6 +69,8 @@ wirefilter_scheme_t *wirefilter_create_scheme();
 void wirefilter_free_scheme(wirefilter_scheme_t *scheme);
 
 wirefilter_type_t wirefilter_create_map_type(wirefilter_type_t type);
+
+wirefilter_type_t wirefilter_create_array_type(wirefilter_type_t type);
 
 void wirefilter_add_type_field_to_scheme(
     wirefilter_scheme_t *scheme,
@@ -128,6 +131,12 @@ void wirefilter_add_map_value_to_execution_context(
     wirefilter_map_t *map
 );
 
+void wirefilter_add_array_value_to_execution_context(
+    wirefilter_execution_context_t *exec_ctx,
+    wirefilter_externally_allocated_str_t name,
+    wirefilter_array_t *array
+);
+
 wirefilter_map_t *wirefilter_create_map(wirefilter_type_t type);
 
 void wirefilter_add_int_value_to_map(
@@ -166,7 +175,59 @@ void wirefilter_add_map_value_to_map(
     wirefilter_map_t *value
 );
 
+void wirefilter_add_array_value_to_map(
+    wirefilter_map_t *map,
+    wirefilter_externally_allocated_str_t name,
+    wirefilter_array_t *value
+);
+
 void wirefilter_free_map(wirefilter_map_t *map);
+
+wirefilter_array_t *wirefilter_create_array(wirefilter_type_t type);
+
+void wirefilter_add_int_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    int32_t value
+);
+
+void wirefilter_add_bytes_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    wirefilter_externally_allocated_byte_arr_t value
+);
+
+void wirefilter_add_ipv6_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    uint8_t value[16]
+);
+
+void wirefilter_add_ipv4_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    uint8_t value[4]
+);
+
+void wirefilter_add_bool_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    bool value
+);
+
+void wirefilter_add_map_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    wirefilter_map_t *value
+);
+
+void wirefilter_add_array_value_to_array(
+    wirefilter_array_t *array,
+    uint32_t index,
+    wirefilter_array_t *value
+);
+
+void wirefilter_free_array(wirefilter_array_t *array);
 
 bool wirefilter_match(
     const wirefilter_filter_t *filter,

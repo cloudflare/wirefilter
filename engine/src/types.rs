@@ -257,6 +257,7 @@ pub struct Array<'a> {
 }
 
 impl<'a> Array<'a> {
+    /// Creates a new array
     pub fn new(val_type: Type) -> Self {
         Self {
             val_type,
@@ -264,14 +265,17 @@ impl<'a> Array<'a> {
         }
     }
 
+    /// Get a reference to an element if it exists
     pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
         self.data.get(idx)
     }
 
+    /// Get a mutable reference to an element if it exists
     pub fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
         self.data.get_mut(idx)
     }
 
+    /// Inserts an element at index `idx`
     pub fn insert(&mut self, idx: usize, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
         if self.val_type != value_type {
@@ -284,7 +288,7 @@ impl<'a> Array<'a> {
         Ok(())
     }
 
-    pub fn to_owned<'b>(&self) -> Array<'b> {
+    pub(crate) fn to_owned<'b>(&self) -> Array<'b> {
         let mut arr = Array {
             val_type: self.val_type.clone(),
             data: Default::default(),
