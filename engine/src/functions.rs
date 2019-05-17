@@ -95,7 +95,7 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// (N, None) means N mandatory arguments and unlimited optional arguments
     fn arg_count(&self) -> (usize, Option<usize>);
     /// Get default value for optional arguments.
-    fn default_value(&self, index: usize) -> Option<LhsValue>;
+    fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>>;
     /// Execute the real implementation.
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> LhsValue<'a>;
 }
@@ -142,10 +142,10 @@ impl FunctionDefinition for Function {
         (self.params.len(), Some(self.opt_params.len()))
     }
 
-    fn default_value(&self, index: usize) -> Option<LhsValue> {
+    fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>> {
         self.opt_params
             .get(index - self.params.len())
-            .map(|opt_param| opt_param.default_value.as_ref())
+            .map(|opt_param| opt_param.default_value.to_owned())
     }
 
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
