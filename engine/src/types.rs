@@ -444,6 +444,7 @@ impl<'a> From<&'a str> for LhsValue<'a> {
 }
 
 impl<'a> From<&'a RhsValue> for LhsValue<'a> {
+    #[allow(clippy::cyclomatic_complexity)]
     fn from(rhs_value: &'a RhsValue) -> Self {
         match rhs_value {
             RhsValue::Ip(ip) => LhsValue::Ip(*ip),

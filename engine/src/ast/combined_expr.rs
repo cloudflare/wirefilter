@@ -1,8 +1,9 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
     filter::CompiledExpr,
-    lex::{skip_space, Lex, LexResult, LexWith},
+    lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
+    types::{ExpectedTypeMismatch, GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 
@@ -14,6 +15,26 @@ lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
+/// CombinedExpr is an enum with variants [`Simple`], representing
+/// either a field, field with an unary operator or a parenthesized
+/// expression; and [`Combining`], representing two or more
+/// [`CombinedExpr<'s>`] and a logical operator [`CombiningOp`].
+///
+/// CombinedExpr is used as the root node in the AST, even if the
+/// expression does not contain a logical operator.
+///
+/// However, since the root node of the AST has additional constraints
+/// than just CombinedExpr (i.e. comparison of two Array(Bool) is not
+/// a valid expression in itself), we enforce these constraints in
+/// FilterAst::lex_with.
+///
+/// ```
+/// #[allow(dead_code)]
+/// enum FieldIndex {
+///     ArrayIndex(u32),
+///     MapKey(String),
+/// }
+/// ```
 pub enum CombinedExpr<'s> {
     Simple(SimpleExpr<'s>),
     Combining {
@@ -22,7 +43,18 @@ pub enum CombinedExpr<'s> {
     },
 }
 
+impl<'s> GetType for CombinedExpr<'s> {
+    fn get_type(&self) -> Type {
+        match &self {
+            CombinedExpr::Simple(lhs) => lhs.get_type(),
+            CombinedExpr::Combining { ref items, .. } => items[0].get_type(),
+        }
+    }
+}
+
 impl<'s> CombinedExpr<'s> {
+    /// lex_combining_op returns the CombiningOp at the start of input,
+    /// or None, and the remainder of the input.
     fn lex_combining_op(input: &str) -> (Option<CombiningOp>, &str) {
         match CombiningOp::lex(skip_space(input)) {
             Ok((op, input)) => (Some(op), skip_space(input)),
@@ -30,6 +62,18 @@ impl<'s> CombinedExpr<'s> {
         }
     }
 
+    /// lex_more_with_precedence lexes the expression on the right hand side of
+    /// the operator and returns a complete CombinedExpr or an error with the
+    /// input that could not be parsed.
+    ///
+    /// Since the expression on the right hand side can itself contain further
+    /// CombinedExprs lex_more_with_precedence lexes the entire right hand side,
+    /// following operator precedence, before checking whether the each side of
+    /// the ComparisonExpr is comparable.
+    ///
+    /// lex_more_with_precedence can be be recursive when we have nested
+    /// parenthesized expressions and these are lexed as CombinedExpr
+    /// themselves.
     fn lex_more_with_precedence<'i>(
         self,
         scheme: &'s Scheme,
@@ -39,17 +83,42 @@ impl<'s> CombinedExpr<'s> {
         let mut lhs = self;
 
         while let Some(op) = lookahead.0 {
+            // while the next token is a logical operator (CombiningOp) lex the
+            // expression on the right hand side of the operator
             let mut rhs = SimpleExpr::lex_with(lookahead.1, scheme)
                 .map(|(op, input)| (CombinedExpr::Simple(op), input))?;
 
             loop {
+                // scan until the next token is not a logical operator
+                // (CombiningOp) or the operator has a lower precedence.
                 lookahead = Self::lex_combining_op(rhs.1);
+
                 if lookahead.0 <= Some(op) {
                     break;
                 }
+
                 rhs = rhs
                     .0
                     .lex_more_with_precedence(scheme, lookahead.0, lookahead)?;
+            }
+
+            // check that the CombinedExpr is valid by ensuring both the left
+            // hand side and right hand side of the operator are comparable.
+            // For example, it doesn't make sense to do a logical operator on
+            // a Bool and Bytes, or an Array(Bool) with Bool.
+            let (lhsty, rhsty) = (lhs.get_type(), rhs.0.get_type());
+            match (&lhsty, &rhsty) {
+                (Type::Bool, Type::Bool) => {}
+                (Type::Array(_), Type::Array(_)) => {}
+                _ => {
+                    return Err((
+                        LexErrorKind::TypeMismatch(TypeMismatchError {
+                            expected: ExpectedTypeMismatch::Type(lhsty),
+                            actual: rhsty,
+                        }),
+                        lookahead.1,
+                    ))
+                }
             }
 
             match lhs {

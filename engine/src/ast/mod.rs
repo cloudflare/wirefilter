@@ -7,8 +7,9 @@ mod simple_expr;
 use self::combined_expr::CombinedExpr;
 use crate::{
     filter::{CompiledExpr, Filter},
-    lex::{LexResult, LexWith},
+    lex::{LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme, UnknownFieldError},
+    types::{ExpectedTypeMismatch, GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
@@ -41,7 +42,27 @@ impl<'s> Debug for FilterAst<'s> {
 impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let (op, input) = CombinedExpr::lex_with(input, scheme)?;
-        Ok((FilterAst { scheme, op }, input))
+        // CombinedExpr::lex_with can return an AST where the root is an
+        // CombinedExpr::Combining of [`Type::Array(Box::New(Type::Bool))`].
+        //
+        // It must do this because we need to be able to use
+        // CombinedExpr::Combining of [`Type::Array(Box::New(Type::Bool))`]
+        // as arguments to functions, however it should not be valid as a
+        // filter expression itself.
+        //
+        // Here we enforce the constraint that the root of the AST, a
+        // CombinedExpr, must evaluate to [`Type::Bool`].
+        let ty = op.get_type();
+        match ty {
+            Type::Bool => Ok((FilterAst { scheme, op }, input)),
+            _ => Err((
+                LexErrorKind::TypeMismatch(TypeMismatchError {
+                    expected: ExpectedTypeMismatch::Type(Type::Bool),
+                    actual: ty,
+                }),
+                input,
+            )),
+        }
     }
 }
 
@@ -58,5 +79,64 @@ impl<'s> FilterAst<'s> {
     /// Compiles a [`FilterAst`] into a [`Filter`].
     pub fn compile(self) -> Filter<'s> {
         Filter::new(self.op.compile(), self.scheme)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref SCHEME: Scheme = {
+            let scheme: Scheme = Scheme! {
+                foo: Array(Bool),
+                bar: Bool,
+            };
+            scheme
+        };
+    }
+
+    #[test]
+    fn test_filter_ast_lex_with_bad_expr() {
+        // assert that Array(Bool) is not a valid expr
+        assert_err!(
+            FilterAst::lex_with(r#"foo"#, &SCHEME),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: ExpectedTypeMismatch::Type(Type::Bool),
+                actual: Type::Array(Box::new(Type::Bool)),
+            }),
+            r#""#
+        );
+
+        // assert that Array(Bool) and Array(Bool) is not a valid expr
+        assert_err!(
+            FilterAst::lex_with(r#"foo and foo"#, &SCHEME),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: ExpectedTypeMismatch::Type(Type::Bool),
+                actual: Type::Array(Box::new(Type::Bool)),
+            }),
+            r#""#
+        );
+
+        // assert that Array(Bool) and (Array(Bool) and Bool) is not a valid expr
+        assert_err!(
+            FilterAst::lex_with(r#"foo and (foo and bar)"#, &SCHEME),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: ExpectedTypeMismatch::Type(Type::Array(Box::new(Type::Bool))),
+                actual: Type::Bool,
+            }),
+            r#")"#
+        );
+
+        // assert that Array(Bool) and Bool is not a valid expr
+        assert_err!(
+            FilterAst::lex_with(r#"foo and bar"#, &SCHEME),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: ExpectedTypeMismatch::Type(Type::Array(Box::new(Type::Bool))),
+                actual: Type::Bool,
+            }),
+            r#""#
+        );
     }
 }

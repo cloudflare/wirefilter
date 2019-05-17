@@ -2,6 +2,7 @@ use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Ex
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
+    types::{GetType, Type},
 };
 use serde::Serialize;
 
@@ -18,6 +19,16 @@ pub enum SimpleExpr<'s> {
         op: UnaryOp,
         arg: Box<SimpleExpr<'s>>,
     },
+}
+
+impl<'s> GetType for SimpleExpr<'s> {
+    fn get_type(&self) -> Type {
+        match &self {
+            SimpleExpr::Field(op) => op.get_type(),
+            SimpleExpr::Parenthesized(op) => op.get_type(),
+            SimpleExpr::Unary { arg, .. } => arg.get_type(),
+        }
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {

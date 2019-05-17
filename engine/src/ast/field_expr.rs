@@ -183,6 +183,15 @@ pub struct FieldExpr<'s> {
     op: FieldOp,
 }
 
+impl<'s> GetType for FieldExpr<'s> {
+    fn get_type(&self) -> Type {
+        match self.lhs.get_type() {
+            Type::Array(_) => Type::Array(Box::new(Type::Bool)),
+            _ => Type::Bool,
+        }
+    }
+}
+
 impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
@@ -191,7 +200,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 
         let lhs_type = lhs.get_type();
 
-        let (op, input) = if lhs_type == Type::Bool {
+        let (op, input) = if lhs_type == Type::Bool || lhs_type == Type::Array(Box::new(Type::Bool))
+        {
             (FieldOp::IsTrue, input)
         } else {
             let (op, input) = ComparisonOp::lex(skip_space(input))?;
