@@ -299,6 +299,17 @@ impl<'a> Array<'a> {
         arr
     }
 
+    pub(crate) fn as_ref(&'a self) -> Array<'a> {
+        let mut arr = Array {
+            val_type: self.val_type.clone(),
+            data: Default::default(),
+        };
+        for v in self.data.iter() {
+            arr.data.push(v.as_ref());
+        }
+        arr
+    }
+
     /// Returns the type of the contained values.
     pub fn value_type(&self) -> &Type {
         &self.val_type
@@ -362,6 +373,17 @@ impl<'a> Map<'a> {
         };
         for (k, v) in self.data.iter() {
             map.data.insert(k.clone(), v.to_owned());
+        }
+        map
+    }
+
+    pub(crate) fn as_ref(&'a self) -> Map<'a> {
+        let mut map = Map {
+            val_type: self.val_type.clone(),
+            data: Default::default(),
+        };
+        for (k, v) in self.data.iter() {
+            map.data.insert(k.clone(), v.as_ref());
         }
         map
     }
@@ -430,8 +452,8 @@ impl<'a> LhsValue<'a> {
             LhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Borrowed(bytes)),
             LhsValue::Int(integer) => LhsValue::Int(*integer),
             LhsValue::Bool(b) => LhsValue::Bool(*b),
-            LhsValue::Array(a) => LhsValue::Array(a.clone()),
-            LhsValue::Map(m) => LhsValue::Map(m.clone()),
+            LhsValue::Array(a) => LhsValue::Array(a.as_ref()),
+            LhsValue::Map(m) => LhsValue::Map(m.as_ref()),
         }
     }
 

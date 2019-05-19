@@ -1,6 +1,6 @@
 use crate::{
     ast::index_expr::IndexExpr,
-    execution_context::ExecutionContext,
+    filter::CompiledValueExpr,
     functions::{FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionParam},
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
@@ -24,17 +24,19 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
-        match self {
-            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.execute(ctx),
-            FunctionCallArgExpr::Literal(literal) => literal.into(),
-        }
-    }
-
     pub fn get_kind(&self) -> FunctionArgKind {
         match self {
             FunctionCallArgExpr::IndexExpr(_) => FunctionArgKind::Field,
             FunctionCallArgExpr::Literal(_) => FunctionArgKind::Literal,
+        }
+    }
+
+    pub fn compile(self) -> CompiledValueExpr<'s> {
+        match self {
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
+            FunctionCallArgExpr::Literal(literal) => {
+                CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned())
+            }
         }
     }
 }
@@ -102,17 +104,22 @@ impl<'s> FunctionCallExpr<'s> {
         self.args.iter().any(|arg| arg.uses(field))
     }
 
-    pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
-        let (mandatory_arg_count, optional_arg_count) = self.function.arg_count();
-        let max_args =
-            optional_arg_count.map_or_else(|| self.args.len(), |v| mandatory_arg_count + v);
-        self.function
-            .execute(
-                &mut self.args.iter().map(|arg| arg.execute(ctx)).chain(
-                    (self.args.len()..max_args)
-                        .map(|index| self.function.default_value(index).unwrap()),
+    pub fn compile(self) -> CompiledValueExpr<'s> {
+        let Self { function, args, .. } = self;
+        let args = args
+            .into_iter()
+            .map(FunctionCallArgExpr::compile)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
+        let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
+        CompiledValueExpr::new(move |ctx| {
+            function.execute(
+                &mut args.iter().map(|arg| arg.execute(ctx)).chain(
+                    (args.len()..max_args).map(|index| function.default_value(index).unwrap()),
                 ),
             )
+        })
     }
 }
 
