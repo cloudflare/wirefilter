@@ -2,8 +2,7 @@
 use super::{function_expr::FunctionCallExpr, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
-    execution_context::ExecutionContext,
-    filter::CompiledExpr,
+    filter::{CompiledExpr, CompiledValueExpr},
     heap_searcher::HeapSearcher,
     lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     range_set::RangeSet,
@@ -141,10 +140,12 @@ impl<'s> LhsFieldExpr<'s> {
         }
     }
 
-    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
+    pub fn compile(self) -> CompiledValueExpr<'s> {
         match self {
-            LhsFieldExpr::Field(f) => ctx.get_field_value_unchecked(*f).as_ref(),
-            LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
+            LhsFieldExpr::Field(f) => {
+                CompiledValueExpr::new(move |ctx| ctx.get_field_value_unchecked(f).as_ref())
+            }
+            LhsFieldExpr::FunctionCallExpr(call) => call.compile(),
         }
     }
 }
@@ -395,7 +396,7 @@ mod tests {
         }
 
         /// Get default value for optional arguments.
-        fn default_value(&self, _: usize) -> Option<LhsValue> {
+        fn default_value<'e>(&self, _: usize) -> Option<LhsValue<'e>> {
             None
         }
 

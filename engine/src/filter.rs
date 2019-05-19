@@ -1,4 +1,4 @@
-use crate::{execution_context::ExecutionContext, scheme::Scheme};
+use crate::{execution_context::ExecutionContext, scheme::Scheme, types::LhsValue};
 use failure::Fail;
 
 /// An error that occurs if filter and provided [`ExecutionContext`] have
@@ -13,16 +13,34 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
+pub(crate) struct CompiledExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
 
 impl<'s> CompiledExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext<'s>) -> bool) -> Self {
+    pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
         CompiledExpr(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
+        self.0(ctx)
+    }
+}
+
+pub(crate) struct CompiledValueExpr<'s>(
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> LhsValue<'e> + 's>,
+);
+
+impl<'s> CompiledValueExpr<'s> {
+    /// Creates a compiled expression IR from a generic closure.
+    pub(crate) fn new(
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> LhsValue<'e> + 's,
+    ) -> Self {
+        CompiledValueExpr(Box::new(closure))
+    }
+
+    /// Executes a filter against a provided context with values.
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> LhsValue<'e> {
         self.0(ctx)
     }
 }
@@ -54,7 +72,7 @@ impl<'s> Filter<'s> {
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> Result<bool, SchemeMismatchError> {
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> Result<bool, SchemeMismatchError> {
         if self.scheme == ctx.scheme() {
             Ok(self.root_expr.execute(ctx))
         } else {
