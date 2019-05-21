@@ -24,7 +24,7 @@ impl<'s> IndexExpr<'s> {
         self.lhs.uses(field)
     }
 
-    pub fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
+    pub fn compile_with<F: 's>(self, default: bool, func: F) -> CompiledExpr<'s>
     where
         F: Fn(&LhsValue<'_>) -> bool,
     {
@@ -33,24 +33,27 @@ impl<'s> IndexExpr<'s> {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = call.compile();
                 CompiledExpr::new(move |ctx| {
-                    func(indexes.iter().fold(&call.execute(ctx), |value, idx| {
-                        value.get(idx).unwrap().unwrap()
-                    }))
+                    indexes
+                        .iter()
+                        .fold((&call.execute(ctx)).as_ref().ok(), |value, idx| {
+                            value.and_then(|val| val.get(idx).unwrap())
+                        })
+                        .map_or(default, |val| func(val))
                 })
             }
             LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
-                func(
-                    indexes
-                        .iter()
-                        .fold(ctx.get_field_value_unchecked(f), |value, idx| {
-                            value.get(idx).unwrap().unwrap()
-                        }),
-                )
+                indexes
+                    .iter()
+                    .fold(Some(ctx.get_field_value_unchecked(f)), |value, idx| {
+                        value.and_then(|val| val.get(idx).unwrap())
+                    })
+                    .map_or(default, |val| func(val))
             }),
         }
     }
 
     pub fn compile(self) -> CompiledValueExpr<'s> {
+        let ty = self.get_type();
         let Self { lhs, indexes } = self;
 
         if indexes.is_empty() {
@@ -60,20 +63,22 @@ impl<'s> IndexExpr<'s> {
                 LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     indexes
                         .iter()
-                        .fold(ctx.get_field_value_unchecked(f), |value, index| {
-                            value.get(index).unwrap().unwrap()
+                        .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
+                            value.and_then(|val| val.get(index).unwrap())
                         })
-                        .as_ref()
+                        .map(LhsValue::as_ref)
+                        .ok_or_else(|| ty.clone())
                 }),
                 LhsFieldExpr::FunctionCallExpr(call) => {
                     let call = call.compile();
                     CompiledValueExpr::new(move |ctx| {
                         indexes
                             .iter()
-                            .fold(&call.execute(ctx), |value, index| {
-                                value.get(index).unwrap().unwrap()
+                            .fold((&call.execute(ctx)).as_ref().ok(), |value, index| {
+                                value.and_then(|val| val.get(index).unwrap())
                             })
-                            .to_owned()
+                            .map(LhsValue::to_owned)
+                            .ok_or_else(|| ty.clone())
                     })
                 }
             }

@@ -143,7 +143,7 @@ impl<'s> LhsFieldExpr<'s> {
     pub fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             LhsFieldExpr::Field(f) => {
-                CompiledValueExpr::new(move |ctx| ctx.get_field_value_unchecked(f).as_ref())
+                CompiledValueExpr::new(move |ctx| ctx.get_field_value_unchecked(f).as_ref().into())
             }
             LhsFieldExpr::FunctionCallExpr(call) => call.compile(),
         }
@@ -254,21 +254,26 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => lhs.compile_with(move |x| *cast_value!(x, Bool)),
-            FieldOp::Ordering { op, rhs } => {
-                lhs.compile_with(move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
-            }
+            FieldOp::IsTrue => lhs.compile_with(false, move |x| *cast_value!(x, Bool)),
+            FieldOp::Ordering { op, rhs } => match op {
+                OrderingOp::NotEqual => {
+                    lhs.compile_with(true, move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
+                }
+                _ => lhs.compile_with(false, move |x| op.matches_opt(x.strict_partial_cmp(&rhs))),
+            },
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(move |x| cast_value!(x, Int) & rhs != 0),
+            } => lhs.compile_with(false, move |x| cast_value!(x, Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                lhs.compile_with(move |x| searcher.search_in(cast_value!(x, Bytes)).is_some())
+                lhs.compile_with(false, move |x| {
+                    searcher.search_in(cast_value!(x, Bytes)).is_some()
+                })
             }
             FieldOp::Matches(regex) => {
-                lhs.compile_with(move |x| regex.is_match(cast_value!(x, Bytes)))
+                lhs.compile_with(false, move |x| regex.is_match(cast_value!(x, Bytes)))
             }
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
@@ -283,7 +288,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(move |x| match cast_value!(x, Ip) {
+                    lhs.compile_with(false, move |x| match cast_value!(x, Ip) {
                         IpAddr::V4(addr) => v4.contains(addr),
                         IpAddr::V6(addr) => v6.contains(addr),
                     })
@@ -291,13 +296,15 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(move |x| values.contains(cast_value!(x, Int)))
+                    lhs.compile_with(false, move |x| values.contains(cast_value!(x, Int)))
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(move |x| values.contains(cast_value!(x, Bytes) as &[u8]))
+                    lhs.compile_with(false, move |x| {
+                        values.contains(cast_value!(x, Bytes) as &[u8])
+                    })
                 }
                 RhsValues::Bool(_) => unreachable!(),
                 RhsValues::Map(_) => unreachable!(),
@@ -313,6 +320,7 @@ mod tests {
     use crate::{
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
+        filter::CompiledValueResult,
         functions::{
             Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
             FunctionOptParam, FunctionParam,
@@ -325,22 +333,22 @@ mod tests {
     use lazy_static::lazy_static;
     use std::{convert::TryFrom, net::IpAddr};
 
-    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        args.next().unwrap()
+    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        Some(args.next()?.ok()?)
     }
 
-    fn lowercase_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        let input = args.next().unwrap();
+    fn lowercase_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        let input = args.next()?.ok()?;
         match input {
-            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.to_ascii_lowercase().into()),
+            LhsValue::Bytes(bytes) => Some(LhsValue::Bytes(bytes.to_ascii_lowercase().into())),
             _ => panic!("Invalid type: expected Bytes, got {:?}", input),
         }
     }
 
-    fn concat_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+    fn concat_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         let mut output = Vec::new();
         for (index, arg) in args.enumerate() {
-            match arg {
+            match arg.unwrap() {
                 LhsValue::Bytes(bytes) => {
                     output.extend_from_slice(&bytes);
                 }
@@ -350,7 +358,7 @@ mod tests {
                 ),
             }
         }
-        LhsValue::Bytes(output.into())
+        Some(LhsValue::Bytes(output.into()))
     }
 
     #[derive(Debug)]
@@ -401,9 +409,12 @@ mod tests {
         }
 
         /// Execute the real implementation.
-        fn execute<'a>(&self, args: &mut Iterator<Item = LhsValue<'a>>) -> LhsValue<'a> {
-            let value_array = Array::try_from(args.next().unwrap()).unwrap();
-            let keep_array = Array::try_from(args.next().unwrap()).unwrap();
+        fn execute<'a>(
+            &self,
+            args: &mut Iterator<Item = CompiledValueResult<'a>>,
+        ) -> Option<LhsValue<'a>> {
+            let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
+            let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
             let mut output = Array::new(value_array.value_type().clone());
             let mut i = 0;
             for (value, keep) in value_array.into_iter().zip(keep_array) {
@@ -412,7 +423,7 @@ mod tests {
                     i += 1;
                 }
             }
-            LhsValue::Array(output)
+            Some(LhsValue::Array(output))
         }
     }
 
@@ -1123,6 +1134,150 @@ mod tests {
         assert_eq!(expr.execute(ctx), false);
 
         ctx.set_field_value("http.host", "EXAMPLE.ORG").unwrap();
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_missing_array_value_equal() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.cookies[0] == "example.org""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.cookies")),
+                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    "http.cookies",
+                    0
+                ],
+                "op": "Equal",
+                "rhs": "example.org"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
+            .unwrap();
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    #[test]
+    fn test_missing_array_value_not_equal() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.cookies[0] != "example.org""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.cookies")),
+                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::NotEqual,
+                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    "http.cookies",
+                    0
+                ],
+                "op": "NotEqual",
+                "rhs": "example.org"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
+            .unwrap();
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_missing_map_value_equal() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.headers["missing"] == "example.org""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.headers")),
+                    indexes: vec![FieldIndex::MapKey("missing".into())],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    "http.headers",
+                    "missing"
+                ],
+                "op": "Equal",
+                "rhs": "example.org"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.headers", Map::new(Type::Bytes))
+            .unwrap();
+        assert_eq!(expr.execute(ctx), false);
+    }
+
+    #[test]
+    fn test_missing_map_value_not_equal() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.headers["missing"] != "example.org""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.headers")),
+                    indexes: vec![FieldIndex::MapKey("missing".into())],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::NotEqual,
+                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    "http.headers",
+                    "missing"
+                ],
+                "op": "NotEqual",
+                "rhs": "example.org"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.headers", Map::new(Type::Bytes))
+            .unwrap();
         assert_eq!(expr.execute(ctx), true);
     }
 
