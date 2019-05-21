@@ -288,6 +288,19 @@ impl<'a> Array<'a> {
         Ok(())
     }
 
+    /// Push an element to the back of the array
+    pub fn push(&mut self, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
+        let value_type = value.get_type();
+        if self.val_type != value_type {
+            return Err(TypeMismatchError {
+                expected: self.val_type.clone().into(),
+                actual: value_type,
+            });
+        }
+        self.data.push(value);
+        Ok(())
+    }
+
     pub(crate) fn to_owned<'b>(&self) -> Array<'b> {
         let mut arr = Array {
             val_type: self.val_type.clone(),
