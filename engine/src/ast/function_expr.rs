@@ -35,7 +35,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
             FunctionCallArgExpr::Literal(literal) => {
-                CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned())
+                CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned().into())
             }
         }
     }
@@ -105,6 +105,7 @@ impl<'s> FunctionCallExpr<'s> {
     }
 
     pub fn compile(self) -> CompiledValueExpr<'s> {
+        let ty = self.get_type();
         let Self { function, args, .. } = self;
         let args = args
             .into_iter()
@@ -114,11 +115,15 @@ impl<'s> FunctionCallExpr<'s> {
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
         let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
         CompiledValueExpr::new(move |ctx| {
-            function.execute(
-                &mut args.iter().map(|arg| arg.execute(ctx)).chain(
-                    (args.len()..max_args).map(|index| function.default_value(index).unwrap()),
-                ),
-            )
+            match function.execute(&mut args.iter().map(|arg| arg.execute(ctx)).chain(
+                (args.len()..max_args).map(|index| Ok(function.default_value(index).unwrap())),
+            )) {
+                Some(value) => {
+                    debug_assert!(value.get_type() == ty);
+                    Ok(value)
+                }
+                None => Err(ty.clone()),
+            }
         })
     }
 }
@@ -260,8 +265,8 @@ fn test_function() {
     };
     use lazy_static::lazy_static;
 
-    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-        args.next().unwrap()
+    fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        args.next()?.ok()
     }
 
     lazy_static! {

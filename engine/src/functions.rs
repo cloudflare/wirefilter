@@ -1,11 +1,14 @@
-use crate::types::{GetType, LhsValue, Type};
+use crate::{
+    filter::CompiledValueResult,
+    types::{GetType, LhsValue, Type},
+};
 use failure::Fail;
 use std::fmt::{self, Debug};
 
 /// An iterator over function arguments as [`LhsValue`]s.
-pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = LhsValue<'a>>;
+pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = CompiledValueResult<'a>>;
 
-type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> LhsValue<'a>;
+type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 
 /// Wrapper around a function pointer providing the runtime implementation.
 #[derive(Clone)]
@@ -18,7 +21,7 @@ impl FunctionImpl {
     }
 
     /// Calls the wrapped function pointer.
-    pub fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+    pub fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         (self.0)(args)
     }
 }
@@ -97,7 +100,7 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// Get default value for optional arguments.
     fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>>;
     /// Execute the real implementation.
-    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> LhsValue<'a>;
+    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 }
 
 /// Defines a function.
@@ -148,7 +151,7 @@ impl FunctionDefinition for Function {
             .map(|opt_param| opt_param.default_value.to_owned())
     }
 
-    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         self.implementation.execute(args)
     }
 }
