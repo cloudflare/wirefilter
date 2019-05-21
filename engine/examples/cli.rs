@@ -4,7 +4,7 @@ use wirefilter::{
     LhsValue, Scheme, Type,
 };
 
-fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     panic!();
 }
 

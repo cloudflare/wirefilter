@@ -1,4 +1,8 @@
-use crate::{execution_context::ExecutionContext, scheme::Scheme, types::LhsValue};
+use crate::{
+    execution_context::ExecutionContext,
+    scheme::Scheme,
+    types::{LhsValue, Type},
+};
 use failure::Fail;
 
 /// An error that occurs if filter and provided [`ExecutionContext`] have
@@ -27,20 +31,34 @@ impl<'s> CompiledExpr<'s> {
     }
 }
 
+pub(crate) type CompiledValueResult<'a> = Result<LhsValue<'a>, Type>;
+
+impl<'a> From<LhsValue<'a>> for CompiledValueResult<'a> {
+    fn from(value: LhsValue<'a>) -> Self {
+        Ok(value)
+    }
+}
+
+impl<'a> From<Type> for CompiledValueResult<'a> {
+    fn from(ty: Type) -> Self {
+        Err(ty)
+    }
+}
+
 pub(crate) struct CompiledValueExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> LhsValue<'e> + 's>,
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + 's>,
 );
 
 impl<'s> CompiledValueExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> LhsValue<'e> + 's,
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + 's,
     ) -> Self {
         CompiledValueExpr(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> LhsValue<'e> {
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledValueResult<'e> {
         self.0(ctx)
     }
 }
