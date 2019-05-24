@@ -1,10 +1,10 @@
 use crate::{
     ast::index_expr::IndexExpr,
     filter::CompiledValueExpr,
-    functions::{FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionParam},
+    functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{GetType, LhsValue, RhsValue, Type, TypeMismatchError},
+    types::{GetType, LhsValue, RhsValue, Type},
 };
 use derivative::Derivative;
 use serde::Serialize;
@@ -195,7 +195,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 val_type: arg.get_type(),
             };
 
-            let param = function
+            if optional_arg_count.is_some()
+                && index >= (mandatory_arg_count + optional_arg_count.unwrap())
+            {
+                return Err(invalid_args_count(&function, input));
+            }
+
+            function
                 .check_param(
                     &mut (&function_call.args).iter().map(|arg| FunctionParam {
                         arg_kind: arg.get_kind(),
@@ -203,35 +209,24 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                     }),
                     &next_param,
                 )
-                .ok_or_else(|| invalid_args_count(function, input))?;
-
-            if next_param.arg_kind != param.arg_kind {
-                return Err((
-                    LexErrorKind::InvalidArgumentKind {
-                        index,
-                        mismatch: FunctionArgKindMismatchError {
-                            actual: next_param.arg_kind,
-                            expected: param.arg_kind,
+                .map_err(|err| match err {
+                    FunctionParamError::FunctionArgKindMismatch(err) => (
+                        LexErrorKind::InvalidArgumentKind {
+                            index,
+                            mismatch: err,
                         },
-                    },
-                    span(input, rest),
-                ));
-            }
-
-            if next_param.val_type != param.val_type {
-                return Err((
-                    LexErrorKind::InvalidArgumentType {
-                        index,
-                        mismatch: TypeMismatchError {
-                            actual: next_param.val_type,
-                            expected: param.val_type.into(),
+                        span(input, rest),
+                    ),
+                    FunctionParamError::TypeMismatch(err) => (
+                        LexErrorKind::InvalidArgumentType {
+                            index,
+                            mismatch: err,
                         },
-                    },
-                    span(input, rest),
-                ));
-            }
+                        span(input, rest),
+                    ),
+                })?;
 
-            params.push(param);
+            params.push(next_param);
 
             function_call.args.push(arg);
 
@@ -241,12 +236,6 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         }
 
         if function_call.args.len() < mandatory_arg_count {
-            return Err(invalid_args_count(&function, input));
-        }
-
-        if optional_arg_count.is_some()
-            && function_call.args.len() > (mandatory_arg_count + optional_arg_count.unwrap())
-        {
             return Err(invalid_args_count(&function, input));
         }
 
@@ -260,8 +249,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 fn test_function() {
     use super::field_expr::LhsFieldExpr;
     use crate::{
-        functions::{Function, FunctionArgs, FunctionImpl, FunctionOptParam},
-        types::Type,
+        functions::{
+            Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
+        },
+        types::{Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
 

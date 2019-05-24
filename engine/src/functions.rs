@@ -1,6 +1,6 @@
 use crate::{
     filter::CompiledValueResult,
-    types::{GetType, LhsValue, Type},
+    types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
 use failure::Fail;
 use std::fmt::{self, Debug};
@@ -64,6 +64,17 @@ pub struct FunctionArgKindMismatchError {
     pub actual: FunctionArgKind,
 }
 
+/// An error that occurs for a bad function parameter
+#[derive(Debug, PartialEq, Fail)]
+pub enum FunctionParamError {
+    /// Function paramater value type has a different type than expected
+    #[fail(display = "expected {}", _0)]
+    TypeMismatch(#[cause] TypeMismatchError),
+    /// Function parameter argument kind has a different kind than expected
+    #[fail(display = "expected {}", _0)]
+    FunctionArgKindMismatch(#[cause] FunctionArgKindMismatchError),
+}
+
 /// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionParam {
@@ -71,6 +82,44 @@ pub struct FunctionParam {
     pub arg_kind: FunctionArgKind,
     /// The type of its associated value.
     pub val_type: Type,
+}
+
+impl FunctionParam {
+    /// Check if the arg_kind of current paramater matches the expected_arg_kind
+    pub fn expect_arg_kind(
+        &self,
+        expected_arg_kind: FunctionArgKind,
+    ) -> Result<(), FunctionParamError> {
+        if self.arg_kind == expected_arg_kind {
+            Ok(())
+        } else {
+            Err(FunctionParamError::FunctionArgKindMismatch(
+                FunctionArgKindMismatchError {
+                    expected: expected_arg_kind,
+                    actual: self.arg_kind,
+                },
+            ))
+        }
+    }
+
+    /// Checks if the val_type of current parameter matches the expected_type
+    pub fn expect_val_type(&self, expected_type: ExpectedType) -> Result<(), FunctionParamError> {
+        match (&expected_type, &self.val_type) {
+            (ExpectedType::Array, Type::Array(_)) => return Ok(()),
+            (ExpectedType::Array, _) => {}
+            (ExpectedType::Map, Type::Map(_)) => return Ok(()),
+            (ExpectedType::Map, _) => {}
+            (ExpectedType::Type(val_type), _) => {
+                if self.val_type == *val_type {
+                    return Ok(());
+                }
+            }
+        }
+        Err(FunctionParamError::TypeMismatch(TypeMismatchError {
+            expected: expected_type.clone(),
+            actual: self.val_type.clone(),
+        }))
+    }
 }
 
 /// Defines an optional function argument.
@@ -90,7 +139,7 @@ pub trait FunctionDefinition: Debug + Sync + Send {
         &self,
         params: &mut ExactSizeIterator<Item = FunctionParam>,
         next_param: &FunctionParam,
-    ) -> Option<FunctionParam>;
+    ) -> Result<(), FunctionParamError>;
     /// Function return type.
     fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type;
     /// Number of mandatory arguments and number of optional arguments
@@ -120,21 +169,21 @@ impl FunctionDefinition for Function {
     fn check_param(
         &self,
         params: &mut ExactSizeIterator<Item = FunctionParam>,
-        _: &FunctionParam,
-    ) -> Option<FunctionParam> {
+        next_param: &FunctionParam,
+    ) -> Result<(), FunctionParamError> {
         let index = params.len();
         if index < self.params.len() {
-            return self.params.get(index).cloned();
+            let param = &self.params[index];
+            next_param.expect_arg_kind(param.arg_kind)?;
+            next_param.expect_val_type(ExpectedType::Type(param.val_type.clone()))?;
         } else if index < self.params.len() + self.opt_params.len() {
-            return self
-                .opt_params
-                .get(index - self.params.len())
-                .map(|opt_param| FunctionParam {
-                    arg_kind: opt_param.arg_kind,
-                    val_type: opt_param.default_value.get_type(),
-                });
+            let opt_param = &self.opt_params[index - self.params.len()];
+            next_param.expect_arg_kind(opt_param.arg_kind)?;
+            next_param.expect_val_type(ExpectedType::Type(opt_param.default_value.get_type()))?;
+        } else {
+            unreachable!();
         }
-        None
+        Ok(())
     }
 
     fn return_type(&self, _: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {

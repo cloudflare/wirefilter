@@ -34,8 +34,8 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
 
 /// An enum describing the expected type when a
 /// TypeMismatchError occurs
-#[derive(Debug, PartialEq)]
-pub enum ExpectedTypeMismatch {
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExpectedType {
     /// Fully identified expected type
     Type(Type),
     /// Loosely identified array type
@@ -48,9 +48,9 @@ pub enum ExpectedTypeMismatch {
     Map,
 }
 
-impl From<Type> for ExpectedTypeMismatch {
+impl From<Type> for ExpectedType {
     fn from(ty: Type) -> Self {
-        ExpectedTypeMismatch::Type(ty)
+        ExpectedType::Type(ty)
     }
 }
 
@@ -62,7 +62,7 @@ impl From<Type> for ExpectedTypeMismatch {
 )]
 pub struct TypeMismatchError {
     /// Expected value type.
-    pub expected: ExpectedTypeMismatch,
+    pub expected: ExpectedType,
     /// Provided value type.
     pub actual: Type,
 }
@@ -86,13 +86,13 @@ macro_rules! specialized_get_type {
 
 macro_rules! specialized_try_from {
     (Array) => {
-        ExpectedTypeMismatch::Array
+        ExpectedType::Array
     };
     (Map) => {
-        ExpectedTypeMismatch::Map
+        ExpectedType::Map
     };
     ($name:ident) => {
-        ExpectedTypeMismatch::Type(Type::$name)
+        ExpectedType::Type(Type::$name)
     };
 }
 
@@ -133,6 +133,7 @@ macro_rules! declare_types {
             /// Returns the inner type when available (e.g: for a Map)
             pub fn next(&self) -> Option<Type> {
                 match self {
+                    Type::Array(ty) => Some(*ty.clone()),
                     Type::Map(ty) => Some(*ty.clone()),
                     _ => None,
                 }
