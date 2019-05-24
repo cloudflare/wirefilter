@@ -1502,4 +1502,145 @@ mod tests {
 
         assert_eq!(expr.execute_one(ctx), true);
     }
+
+    #[test]
+    fn test_map_each_on_array_with_function() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(
+                r#"concat(http.cookies[*], "-cf")[2] == "three-cf""#,
+                &SCHEME
+            ),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("concat"),
+                        function: SCHEME.get_function("concat").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("http.cookies")),
+                                indexes: vec![FieldIndex::MapEach],
+                            }),
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                                "-cf".to_owned()
+                            ))),
+                        ],
+                    }),
+                    indexes: vec![FieldIndex::ArrayIndex(2)],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("three-cf".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    {
+                        "name": "concat",
+                        "args": [
+                            {
+                                "kind": "IndexExpr",
+                                "value": ["http.cookies", "*"],
+                            },
+                            {
+                                "kind": "Literal",
+                                "value": "-cf"
+                            }
+                        ]
+                    },
+                    2,
+                ],
+                "op": "Equal",
+                "rhs": "three-cf"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "one".into()).unwrap();
+            arr.insert(1, "two".into()).unwrap();
+            arr.insert(2, "three".into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_map_each_on_map_with_function() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(
+                r#"concat(http.headers[*], "-cf")[2] in {"one-cf" "two-cf" "three-cf"}"#,
+                &SCHEME
+            ),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("concat"),
+                        function: SCHEME.get_function("concat").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("http.headers")),
+                                indexes: vec![FieldIndex::MapEach],
+                            }),
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                                "-cf".to_owned()
+                            ))),
+                        ],
+                    }),
+                    indexes: vec![FieldIndex::ArrayIndex(2)],
+                },
+                op: FieldOp::OneOf(RhsValues::Bytes(vec![
+                    "one-cf".to_owned().into(),
+                    "two-cf".to_owned().into(),
+                    "three-cf".to_owned().into()
+                ]))
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    {
+                        "name": "concat",
+                        "args": [
+                            {
+                                "kind": "IndexExpr",
+                                "value": ["http.headers", "*"],
+                            },
+                            {
+                                "kind": "Literal",
+                                "value": "-cf"
+                            }
+                        ]
+                    },
+                    2,
+                ],
+                "op": "OneOf",
+                "rhs": ["one-cf", "two-cf", "three-cf"],
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let headers = LhsValue::Map({
+            let mut map = Map::new(Type::Bytes);
+            map.insert("0".to_string(), "one".into()).unwrap();
+            map.insert("1".to_string(), "two".into()).unwrap();
+            map.insert("2".to_string(), "three".into()).unwrap();
+            map
+        });
+        ctx.set_field_value("http.headers", headers).unwrap();
+
+        assert_eq!(expr.execute_one(ctx), true);
+    }
 }

@@ -8,6 +8,7 @@ use crate::{
 };
 use derivative::Derivative;
 use serde::Serialize;
+use std::iter::once;
 
 /// FunctionCallArgExpr is a function argument. It can be a sub-expression with
 /// [`SimpleExpr`], a field with [`IndexExpr`] or a literal with [`Literal`].
@@ -70,6 +71,14 @@ impl<'s> FunctionCallArgExpr<'s> {
                     }),
                 }
             }
+        }
+    }
+
+    pub fn map_each_to(&self) -> Option<Type> {
+        match self {
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_to(),
+            FunctionCallArgExpr::Literal(_) => None,
+            FunctionCallArgExpr::SimpleExpr(_) => None,
         }
     }
 }
@@ -170,6 +179,7 @@ impl<'s> FunctionCallExpr<'s> {
     pub fn compile(self) -> CompiledValueExpr<'s> {
         let ty = self.get_type();
         let Self { function, args, .. } = self;
+        let map_each = args.get(0).and_then(|arg| arg.map_each_to());
         let args = args
             .into_iter()
             .map(FunctionCallArgExpr::compile)
@@ -177,17 +187,42 @@ impl<'s> FunctionCallExpr<'s> {
             .into_boxed_slice();
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
         let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
-        CompiledValueExpr::new(move |ctx| {
-            match function.execute(&mut args.iter().map(|arg| arg.execute(ctx)).chain(
-                (args.len()..max_args).map(|index| Ok(function.default_value(index).unwrap())),
-            )) {
-                Some(value) => {
+        if let Some(map_each_type) = map_each {
+            CompiledValueExpr::new(move |ctx| {
+                // Create the output array
+                let mut output = Array::new(map_each_type.clone());
+                // Compute value of first argument
+                if let Ok(first) = args[0].execute(ctx) {
+                    // Apply the function for each element contained
+                    // in the first argument and extend output array
+                    output.extend(first.into_iter().filter_map(|elem| {
+                        function.execute(
+                            &mut once(Ok(elem)).chain(
+                                args[1..].iter().map(|arg| arg.execute(ctx)).chain(
+                                    (args.len()..max_args)
+                                        .map(|index| Ok(function.default_value(index).unwrap())),
+                                ),
+                            ),
+                        )
+                    }));
+                }
+                Ok(LhsValue::Array(output))
+            })
+        } else {
+            CompiledValueExpr::new(move |ctx| {
+                if let Some(value) = function.execute(
+                    &mut args.iter().map(|arg| arg.execute(ctx)).chain(
+                        (args.len()..max_args)
+                            .map(|index| Ok(function.default_value(index).unwrap())),
+                    ),
+                ) {
                     debug_assert!(value.get_type() == ty);
                     Ok(value)
+                } else {
+                    Err(ty.clone())
                 }
-                None => Err(ty.clone()),
-            }
-        })
+            })
+        }
     }
 }
 
@@ -205,11 +240,17 @@ fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str
 
 impl<'s> GetType for FunctionCallExpr<'s> {
     fn get_type(&self) -> Type {
-        self.function
+        let ty = self
+            .function
             .return_type(&mut (&self.args).iter().map(|arg| FunctionParam {
                 arg_kind: arg.get_kind(),
                 val_type: arg.get_type(),
-            }))
+            }));
+        if !self.args.is_empty() && self.args[0].map_each_to().is_some() {
+            Type::Array(Box::new(ty))
+        } else {
+            ty
+        }
     }
 }
 
@@ -252,6 +293,12 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             input = skip_space(input);
 
             let (arg, rest) = FunctionCallArgExpr::lex_with(input, scheme)?;
+
+            // Mapping is only accepted for the first argument
+            // of a function call for code simplicity
+            if arg.map_each_to().is_some() && index != 0 {
+                return Err((LexErrorKind::InvalidMapEachAccess, span(input, rest)));
+            }
 
             let next_param = FunctionParam {
                 arg_kind: arg.get_kind(),
@@ -319,7 +366,7 @@ mod tests {
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
         },
-        scheme::UnknownFieldError,
+        scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
         types::{Array, Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
@@ -350,6 +397,7 @@ mod tests {
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme = Scheme! {
+                http.headers: Map(Bytes),
                 http.host: Bytes,
                 http.request.headers.keys: Array(Bytes),
                 http.request.headers.values: Array(Bytes),
@@ -605,6 +653,102 @@ mod tests {
                     }
                 ]
             }
+        );
+
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[*] );", &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    lhs: LhsFieldExpr::Field(
+                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
+                    ),
+                    indexes: vec![FieldIndex::MapEach],
+                })],
+            },
+            ";"
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": ["http.request.headers.keys", "*"],
+                    }
+                ]
+            }
+        );
+
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with("echo ( http.headers[*] );", &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.headers").unwrap()),
+                    indexes: vec![FieldIndex::MapEach],
+                })],
+            },
+            ";"
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": ["http.headers", "*"],
+                    }
+                ]
+            }
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.host[*] );", &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Bytes,
+            }),
+            "[*]"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[0][*] );", &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Bytes,
+            }),
+            "[*]"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[*][0] );", &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::ArrayIndex(0),
+                actual: Type::Bytes,
+            }),
+            "[0]"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.headers[*][\"host\"] );", &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapKey("host".to_string()),
+                actual: Type::Bytes,
+            }),
+            "[\"host\"]"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.host, http.headers[*] );", &SCHEME),
+            LexErrorKind::InvalidMapEachAccess,
+            "http.headers[*]"
         );
     }
 }

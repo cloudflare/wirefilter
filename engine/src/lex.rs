@@ -118,6 +118,10 @@ pub enum LexErrorKind {
     /// Invalid type
     #[fail(display = "{}", _0)]
     TypeMismatch(#[cause] TypeMismatchError),
+
+    /// Invalid usage of map each access operator
+    #[fail(display = "invalid use of map each access operator")]
+    InvalidMapEachAccess,
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);
