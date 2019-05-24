@@ -82,6 +82,15 @@ pub struct TypeMismatchError {
     pub actual: Type,
 }
 
+/// An error that occurs on a type mismatch.
+#[derive(Debug, PartialEq, Fail)]
+pub enum SetValueError {
+    #[fail(display = "{}", _0)]
+    TypeMismatch(#[cause] TypeMismatchError),
+    #[fail(display = "{}", _0)]
+    IndexAccess(#[cause] IndexAccessError),
+}
+
 macro_rules! replace_underscore {
     ($name:ident ($val_ty:ty)) => {Type::$name(_)};
     ($name:ident) => {Type::$name};
@@ -381,6 +390,19 @@ impl<'a> IntoIterator for &'a Array<'a> {
     }
 }
 
+impl<'a> Extend<LhsValue<'a>> for Array<'a> {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = LhsValue<'a>>,
+    {
+        let value_type = self.value_type().clone();
+        self.data.extend(
+            iter.into_iter()
+                .inspect(|elem| assert!(elem.get_type() == value_type)),
+        )
+    }
+}
+
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
@@ -451,6 +473,14 @@ impl<'a> GetType for Map<'a> {
     }
 }
 
+impl<'a> IntoIterator for Map<'a> {
+    type Item = (String, LhsValue<'a>);
+    type IntoIter = std::collections::hash_map::IntoIter<String, LhsValue<'a>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
+    }
+}
+
 // special case for simply passing bytes
 impl<'a> From<&'a [u8]> for LhsValue<'a> {
     fn from(b: &'a [u8]) -> Self {
@@ -510,6 +540,10 @@ impl<'a> LhsValue<'a> {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
+            (_, FieldIndex::MapEach) => Err(IndexAccessError {
+                index: item.clone(),
+                actual: self.get_type(),
+            }),
         }
     }
 
@@ -521,24 +555,31 @@ impl<'a> LhsValue<'a> {
         &mut self,
         item: FieldIndex,
         value: V,
-    ) -> Result<(), TypeMismatchError> {
+    ) -> Result<(), SetValueError> {
         let value = value.into();
-        let value_type = value.get_type();
         match item {
             FieldIndex::ArrayIndex(idx) => match self {
-                LhsValue::Array(ref mut arr) => arr.insert(idx as usize, value),
-                _ => Err(TypeMismatchError {
-                    expected: Type::Array(Box::new(value_type)).into(),
+                LhsValue::Array(ref mut arr) => arr
+                    .insert(idx as usize, value)
+                    .map_err(SetValueError::TypeMismatch),
+                _ => Err(SetValueError::IndexAccess(IndexAccessError {
+                    index: item,
                     actual: self.get_type(),
-                }),
+                })),
             },
             FieldIndex::MapKey(name) => match self {
-                LhsValue::Map(ref mut map) => map.insert(name, value),
-                _ => Err(TypeMismatchError {
-                    expected: Type::Map(Box::new(value_type)).into(),
+                LhsValue::Map(ref mut map) => {
+                    map.insert(name, value).map_err(SetValueError::TypeMismatch)
+                }
+                _ => Err(SetValueError::IndexAccess(IndexAccessError {
+                    index: FieldIndex::MapKey(name),
                     actual: self.get_type(),
-                }),
+                })),
             },
+            FieldIndex::MapEach => Err(SetValueError::IndexAccess(IndexAccessError {
+                index: item,
+                actual: self.get_type(),
+            })),
         }
     }
 
@@ -556,6 +597,34 @@ impl<'a> LhsValue<'a> {
             LhsValue::Bool(b) => LhsValue::Bool(*b),
             LhsValue::Array(a) => LhsValue::Array(a.to_owned()),
             LhsValue::Map(m) => LhsValue::Map(m.to_owned()),
+        }
+    }
+}
+
+pub enum IntoIter<'a> {
+    IntoArray(std::vec::IntoIter<LhsValue<'a>>),
+    IntoMap(std::collections::hash_map::IntoIter<String, LhsValue<'a>>),
+}
+
+impl<'a> Iterator for IntoIter<'a> {
+    type Item = LhsValue<'a>;
+
+    fn next(&mut self) -> Option<LhsValue<'a>> {
+        match self {
+            IntoIter::IntoArray(array) => array.next(),
+            IntoIter::IntoMap(map) => map.next().map(|(_, v)| v),
+        }
+    }
+}
+
+impl<'a> IntoIterator for LhsValue<'a> {
+    type Item = LhsValue<'a>;
+    type IntoIter = IntoIter<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            LhsValue::Array(array) => IntoIter::IntoArray(array.into_iter()),
+            LhsValue::Map(map) => IntoIter::IntoMap(map.into_iter()),
+            _ => unreachable!(),
         }
     }
 }
