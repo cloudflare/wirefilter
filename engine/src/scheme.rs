@@ -17,8 +17,7 @@ use std::{
     ptr,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 /// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
 /// representing an index into an Array, or `[MapKey(String)`],
 /// representing a key into a Map.
@@ -36,10 +35,17 @@ pub enum FieldIndex {
 
     /// Key into a Map
     MapKey(String),
+
+    /// Map each element by applying a function or a comparison
+    MapEach,
 }
 
 impl<'i> Lex<'i> for FieldIndex {
     fn lex(input: &'i str) -> LexResult<'i, Self> {
+        if let Ok(input) = expect(input, "*") {
+            return Ok((FieldIndex::MapEach, input));
+        }
+
         // The token inside an [] can be either an integer index into an Array
         // or a string key into a Map. The token is a key into a Map if it
         // starts and ends with "\"", otherwise an integer index or an error.
@@ -59,6 +65,19 @@ impl<'i> Lex<'i> for FieldIndex {
                 Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
             },
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Serialize for FieldIndex {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            FieldIndex::ArrayIndex(idx) => serializer.serialize_u32(*idx),
+            FieldIndex::MapKey(key) => serializer.serialize_str(key),
+            FieldIndex::MapEach => serializer.serialize_str("*"),
         }
     }
 }

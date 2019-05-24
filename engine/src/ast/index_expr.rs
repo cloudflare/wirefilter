@@ -90,9 +90,14 @@ impl<'s> IndexExpr<'s> {
         if indexes.is_empty() {
             lhs.compile()
         } else {
+            let last = if let Some(&FieldIndex::MapEach) = indexes.last() {
+                indexes.len() - 1
+            } else {
+                indexes.len()
+            };
             match lhs {
                 LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    indexes
+                    indexes[..last]
                         .iter()
                         .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
                             value.and_then(|val| val.get(index).unwrap())
@@ -103,7 +108,7 @@ impl<'s> IndexExpr<'s> {
                 LhsFieldExpr::FunctionCallExpr(call) => {
                     let call = call.compile();
                     CompiledValueExpr::new(move |ctx| {
-                        indexes
+                        indexes[..last]
                             .iter()
                             .fold((&call.execute(ctx)).as_ref().ok(), |value, index| {
                                 value.and_then(|val| val.get(index).unwrap())
@@ -113,6 +118,24 @@ impl<'s> IndexExpr<'s> {
                     })
                 }
             }
+        }
+    }
+
+    pub fn map_each_to(&self) -> Option<Type> {
+        let (ty, map_each) = self.indexes.iter().fold(
+            (self.lhs.get_type(), false),
+            |(ty, map_each), index| match (ty, index) {
+                (Type::Array(idx), FieldIndex::ArrayIndex(_)) => (*idx, map_each),
+                (Type::Array(idx), FieldIndex::MapEach) => (*idx, true),
+                (Type::Map(child), FieldIndex::MapKey(_)) => (*child, map_each),
+                (Type::Map(child), FieldIndex::MapEach) => (*child, true),
+                (_, _) => unreachable!(),
+            },
+        );
+        if map_each {
+            Some(ty.clone())
+        } else {
+            None
         }
     }
 }
@@ -140,7 +163,6 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
                 FieldIndex::ArrayIndex(_) => match current_type {
                     Type::Array(array_type) => {
                         current_type = *array_type;
-                        indexes.push(idx);
                     }
                     _ => {
                         return Err((
@@ -155,7 +177,23 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
                 FieldIndex::MapKey(_) => match current_type {
                     Type::Map(map_type) => {
                         current_type = *map_type;
-                        indexes.push(idx);
+                    }
+                    _ => {
+                        return Err((
+                            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                                index: idx,
+                                actual: current_type,
+                            }),
+                            span(input, rest),
+                        ))
+                    }
+                },
+                FieldIndex::MapEach => match current_type {
+                    Type::Array(array_type) => {
+                        current_type = *array_type;
+                    }
+                    Type::Map(map_type) => {
+                        current_type = *map_type;
                     }
                     _ => {
                         return Err((
@@ -170,6 +208,12 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
             };
 
             input = rest;
+
+            if Some(&FieldIndex::MapEach) == indexes.last() {
+                return Err((LexErrorKind::InvalidMapEachAccess, input));
+            }
+
+            indexes.push(idx);
         }
 
         Ok((IndexExpr { lhs, indexes }, input))
@@ -182,7 +226,9 @@ impl<'s> GetType for IndexExpr<'s> {
         for index in &self.indexes {
             ty = match (ty, index) {
                 (Type::Array(idx), FieldIndex::ArrayIndex(_)) => (*idx),
+                (Type::Array(idx), FieldIndex::MapEach) => (*idx),
                 (Type::Map(child), FieldIndex::MapKey(_)) => (*child),
+                (Type::Map(child), FieldIndex::MapEach) => (*child),
                 (_, _) => unreachable!(),
             }
         }
