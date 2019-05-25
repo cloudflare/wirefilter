@@ -1,6 +1,6 @@
 use crate::{
     filter::CompiledValueResult,
-    types::{GetType, LhsValue, Type},
+    types::{GetType, LhsValue, Type, TypeMismatchError},
 };
 use failure::Fail;
 use std::fmt::{self, Debug};
@@ -42,65 +42,153 @@ impl PartialEq for FunctionImpl {
 
 impl Eq for FunctionImpl {}
 
-/// Defines what kind of argument a function expects.
+/// FunctionArgKind is the kind of argument that can be passed to a function.
+/// A function argument can be either a Literal or a Field.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum FunctionArgKind {
-    /// Allow only literal as argument.
-    Literal,
-    /// Allow only field as argument.
+    /// The function argument is a Field
     Field,
+    /// The function argument is a Literal
+    Literal,
 }
 
-/// An error that occurs on a kind mismatch.
+/// FunctionArgCount is the number of required and optional arguments
+/// for a function.
+pub struct FunctionArgCount {
+    /// The number of required arguments
+    pub required: usize,
+    /// The number if optional arguments
+    pub optional: FunctionOptArgCount,
+}
+
+impl FunctionArgCount {
+    /// The total number of arguments that can be passed to the function,
+    /// including optional arguments.
+    pub fn count(&self) -> usize {
+        self.required
+            + match self.optional {
+                FunctionOptArgCount::Fixed(n) => n,
+                FunctionOptArgCount::Unlimited => 0,
+            }
+    }
+}
+
+/// FunctionOptArgCount is the number of optional arguments for a function.
+/// A function can have a fixed number or unlimited optional arguments.
+pub enum FunctionOptArgCount {
+    Fixed(usize),
+    Unlimited,
+}
+
+impl FunctionOptArgCount {
+    pub fn is_fixed(&self) -> bool {
+        match self {
+            FunctionOptArgCount::Fixed(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unlimited(&self) -> bool {
+        match self {
+            FunctionOptArgCount::Unlimited => true,
+            _ => false,
+        }
+    }
+}
+
+/// FunctionArgCountMismatchError occurs when a function expects N arguments
+/// but receives a number of arguments other than N.
+///
+/// For example, a len function might return a FunctionArgCountMismatchError
+/// when it expects a single argument but instead received no or more than
+/// one argument.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "expected {:?} arguments, but got {:?}", expected, actual)]
+pub struct FunctionArgCountMismatchError {
+    /// The expected number of arguments
+    pub expected: usize,
+    /// The provided number of arguments
+    pub actual: usize,
+}
+
+/// FunctionArgKindMismatchError occurs when a function expects one variant
+/// of FunctionArgKind but the argument is of another.
+///
+/// For example, a function would return a FunctionArgKindMismatchError when
+/// a parameter expects a Field as its argument but instead received an argument
+/// that is a Literal.
 #[derive(Debug, PartialEq, Fail)]
 #[fail(
     display = "expected argument of kind {:?}, but got {:?}",
     expected, actual
 )]
 pub struct FunctionArgKindMismatchError {
-    /// Expected value type.
+    /// The expected FunctionArgKind
     pub expected: FunctionArgKind,
-    /// Provided value type.
+    /// The provided FunctionArgKind
     pub actual: FunctionArgKind,
 }
 
-/// Defines a mandatory function argument.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionParam {
-    /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
-    /// The type of its associated value.
-    pub val_type: Type,
+/// InvalidFunctionArgsError occurs when one or more arguments for a function's
+/// parameters do not match the function's signature.
+pub enum InvalidFunctionArgError {
+    /// An incorrect number of arguments have been passed to the function
+    CountMismatch(FunctionArgCountMismatchError),
+    /// The argument does not match the FunctionArgKind of the parameter
+    KindMismatch(FunctionArgKindMismatchError),
+    /// The argument does not match the type of the parameter
+    TypeMismatch(TypeMismatchError),
 }
 
-/// Defines an optional function argument.
+/// FunctionParam represents a required function argument.
+///
+/// It annotates the kind of argument (i.e. whether the argument is a Field
+/// or a Literal) and one or more types that may be passed as arguments for
+/// this parameter.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionParam {
+    /// the kind of argument
+    pub arg_kind: FunctionArgKind,
+    /// one or more types that may be passed as arguments for this parameter
+    pub arg_type: Type,
+}
+
+/// FunctionOptParam is an optional function argument. An optional argument
+/// can be either a Field or a Literal and has a default value if no
+/// argument is specified.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionOptParam {
-    /// How the argument can be specified when calling a function.
+    /// The FunctionArgKind
     pub arg_kind: FunctionArgKind,
-    /// The default value if the argument is missing.
+    /// The default value if no argument is specified
     pub default_value: LhsValue<'static>,
 }
 
-/// Trait to implement function
+/// FunctionDefinition is the interface for a function.
 pub trait FunctionDefinition: Debug + Sync + Send {
-    /// Given a slice of already checked parameters, checks that next_param is
-    /// correct. Return the expected the parameter definition.
-    fn check_param(
-        &self,
-        params: &mut ExactSizeIterator<Item = FunctionParam>,
-        next_param: &FunctionParam,
-    ) -> Option<FunctionParam>;
-    /// Function return type.
-    fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type;
-    /// Number of mandatory arguments and number of optional arguments
-    /// (N, Some(0)) means N mandatory arguments and no optional arguments
-    /// (N, None) means N mandatory arguments and unlimited optional arguments
-    fn arg_count(&self) -> (usize, Option<usize>);
-    /// Get default value for optional arguments.
+    /// Returns the number of required and optional arguments for the function.
+    fn arg_count(&self) -> FunctionArgCount;
+
+    /// Gets the default value for the optional argument.
     fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>>;
-    /// Execute the real implementation.
+
+    /// Execute the function.
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
+
+    /// Gets the return type of the function.
+    fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type;
+
+    /// Given an iterator of checked parameters, checks that the next parameter
+    /// is correct or returns an error.
+    ///
+    /// The iterator is empty when the parameter being checked is the first
+    /// parameter in the function definition, or equally when a function only
+    /// accepts a single argument.
+    fn validate(
+        &self,
+        checked_params: &mut ExactSizeIterator<Item = FunctionParam>,
+        next: &FunctionParam,
+    ) -> Result<FunctionParam, InvalidFunctionArgError>;
 }
 
 /// Defines a function.
@@ -108,41 +196,20 @@ pub trait FunctionDefinition: Debug + Sync + Send {
 pub struct Function {
     /// List of mandatory arguments.
     pub params: Vec<FunctionParam>,
-    /// List of optional arguments that can be specified after manatory ones.
+    /// List of optional arguments.
     pub opt_params: Vec<FunctionOptParam>,
-    /// Function return type.
+    /// The return type of the function.
     pub return_type: Type,
-    /// Actual implementation that will be called at runtime.
+    /// The function implementation called at runtime.
     pub implementation: FunctionImpl,
 }
 
 impl FunctionDefinition for Function {
-    fn check_param(
-        &self,
-        params: &mut ExactSizeIterator<Item = FunctionParam>,
-        _: &FunctionParam,
-    ) -> Option<FunctionParam> {
-        let index = params.len();
-        if index < self.params.len() {
-            return self.params.get(index).cloned();
-        } else if index < self.params.len() + self.opt_params.len() {
-            return self
-                .opt_params
-                .get(index - self.params.len())
-                .map(|opt_param| FunctionParam {
-                    arg_kind: opt_param.arg_kind,
-                    val_type: opt_param.default_value.get_type(),
-                });
+    fn arg_count(&self) -> FunctionArgCount {
+        FunctionArgCount {
+            required: self.params.len(),
+            optional: FunctionOptArgCount::Fixed(self.opt_params.len()),
         }
-        None
-    }
-
-    fn return_type(&self, _: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
-        self.return_type.clone()
-    }
-
-    fn arg_count(&self) -> (usize, Option<usize>) {
-        (self.params.len(), Some(self.opt_params.len()))
     }
 
     fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>> {
@@ -151,7 +218,39 @@ impl FunctionDefinition for Function {
             .map(|opt_param| opt_param.default_value.to_owned())
     }
 
+    fn validate(
+        &self,
+        checked_params: &mut ExactSizeIterator<Item = FunctionParam>,
+        _: &FunctionParam,
+    ) -> Result<FunctionParam, InvalidFunctionArgError> {
+        let index = checked_params.len();
+        if index < self.params.len() {
+            // TODO: change unwrap to err
+            return Ok(self.params.get(index).cloned().unwrap());
+        } else if index < self.params.len() + self.opt_params.len() {
+            // TODO: change unwrap to err
+            return Ok(self
+                .opt_params
+                .get(index - self.params.len())
+                .map(|opt_param| FunctionParam {
+                    arg_kind: opt_param.arg_kind,
+                    arg_type: opt_param.default_value.get_type(),
+                })
+                .unwrap());
+        }
+        Err(InvalidFunctionArgError::CountMismatch(
+            FunctionArgCountMismatchError {
+                expected: index + 1,
+                actual: checked_params.len(),
+            },
+        ))
+    }
+
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         self.implementation.execute(args)
+    }
+
+    fn return_type(&self, _: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
+        self.return_type.clone()
     }
 }

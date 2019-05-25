@@ -26,7 +26,7 @@ fn main() {
             Function {
                 params: vec![FunctionParam {
                     arg_kind: FunctionArgKind::Field,
-                    val_type: Type::Bytes,
+                    arg_type: Type::Bytes,
                 }],
                 opt_params: vec![FunctionOptParam {
                     arg_kind: FunctionArgKind::Literal,

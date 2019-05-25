@@ -213,7 +213,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                 Function {
                     params: vec![FunctionParam {
                         arg_kind: FunctionArgKind::Field,
-                        val_type: Type::Bytes,
+                        arg_type: Type::Bytes,
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
@@ -225,7 +225,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                 Function {
                     params: vec![FunctionParam {
                         arg_kind: FunctionArgKind::Field,
-                        val_type: Type::Bytes,
+                        arg_type: Type::Bytes,
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,

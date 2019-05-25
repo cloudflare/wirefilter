@@ -322,12 +322,13 @@ mod tests {
         execution_context::ExecutionContext,
         filter::CompiledValueResult,
         functions::{
-            Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
-            FunctionOptParam, FunctionParam,
+            Function, FunctionArgCount, FunctionArgCountMismatchError, FunctionArgKind,
+            FunctionArgs, FunctionDefinition, FunctionImpl, FunctionOptArgCount, FunctionOptParam,
+            FunctionParam, InvalidFunctionArgError,
         },
         rhs_types::IpRange,
         scheme::FieldIndex,
-        types::{Array, Map},
+        types::{Array, ExpectedTypeMismatch, Map, TypeMismatchError},
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
@@ -371,23 +372,28 @@ mod tests {
     }
 
     impl FunctionDefinition for FilterFunction {
-        fn check_param(
+        fn validate(
             &self,
             params: &mut ExactSizeIterator<Item = FunctionParam>,
             param: &FunctionParam,
-        ) -> Option<FunctionParam> {
+        ) -> Result<FunctionParam, InvalidFunctionArgError> {
             if params.len() >= 2 {
-                return None;
+                return Err(InvalidFunctionArgError::CountMismatch(
+                    FunctionArgCountMismatchError {
+                        expected: 2,
+                        actual: params.len(),
+                    },
+                ));
             }
             match params.next() {
-                Some(_) => Some(FunctionParam {
-                    val_type: Type::Array(Box::new(Type::Bool)),
+                Some(_) => Ok(FunctionParam {
+                    arg_type: Type::Array(Box::new(Type::Bool)),
                     arg_kind: FunctionArgKind::Field,
                 }),
-                None => match param.val_type {
-                    Type::Array(_) => Some(param.clone()),
-                    _ => Some(FunctionParam {
-                        val_type: Type::Array(Box::new(param.val_type.clone())),
+                None => match &param.arg_type {
+                    Type::Array(_) => Ok(param.clone()),
+                    asd => Ok(FunctionParam {
+                        arg_type: Type::Array(Box::new(asd.clone())),
                         arg_kind: FunctionArgKind::Field,
                     }),
                 },
@@ -395,12 +401,15 @@ mod tests {
         }
 
         fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
-            params.next().unwrap().val_type.clone()
+            params.next().unwrap().arg_type.clone()
         }
 
         /// Number of arguments needed by the function.
-        fn arg_count(&self) -> (usize, Option<usize>) {
-            (2, Some(0))
+        fn arg_count(&self) -> FunctionArgCount {
+            FunctionArgCount {
+                required: 2,
+                optional: FunctionOptArgCount::Fixed(0),
+            }
         }
 
         /// Get default value for optional arguments.
@@ -427,6 +436,76 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    pub struct LenFunction {}
+
+    impl LenFunction {
+        pub fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl FunctionDefinition for LenFunction {
+        fn validate(
+            &self,
+            params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
+            param: &FunctionParam,
+        ) -> Result<FunctionParam, InvalidFunctionArgError> {
+            match params.next() {
+                // len doesn't accept multiple arguments
+                Some(_) => Err(InvalidFunctionArgError::CountMismatch(
+                    FunctionArgCountMismatchError {
+                        expected: 1,
+                        actual: 0,
+                    },
+                )),
+                None => match &param.arg_type {
+                    Type::Array(_) => Ok(param.clone()),
+                    Type::Bytes => Ok(param.clone()),
+                    _ => Err(InvalidFunctionArgError::TypeMismatch(TypeMismatchError {
+                        expected: ExpectedTypeMismatch::Array,
+                        actual: param.arg_type.clone(),
+                    })),
+                },
+            }
+        }
+
+        fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
+            Type::Int
+        }
+
+        fn arg_count(&self) -> FunctionArgCount {
+            FunctionArgCount {
+                required: 1,
+                optional: FunctionOptArgCount::Fixed(0),
+            }
+        }
+
+        fn default_value<'e>(&self, _: usize) -> Option<LhsValue<'e>> {
+            None
+        }
+
+        fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            // check the number of arguments
+            let arg = match args.next() {
+                Some(arg) => {
+                    if args.next().is_some() {
+                        panic!(format!("expected 1 argument, got {}", 2 + args.count()));
+                    }
+                    arg
+                }
+                None => panic!("expected 1 argument, got none"),
+            };
+            // it's not possible to take the len of all LhsValues
+            let len = match arg {
+                Ok(LhsValue::Array(arr)) => arr.into_iter().count(),
+                Ok(LhsValue::Bytes(b)) => b.iter().count(),
+                _ => panic!("cannot take the len for this LhsValue"),
+            };
+            Some(LhsValue::Int(len as i32))
+        }
+    }
+
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme: Scheme = Scheme! {
@@ -444,7 +523,7 @@ mod tests {
                     Function {
                         params: vec![FunctionParam {
                             arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
+                            arg_type: Type::Bytes,
                         }],
                         opt_params: vec![],
                         return_type: Type::Bytes,
@@ -453,12 +532,15 @@ mod tests {
                 )
                 .unwrap();
             scheme
+                .add_function("len".into(), LenFunction::new())
+                .unwrap();
+            scheme
                 .add_function(
                     "lowercase".into(),
                     Function {
                         params: vec![FunctionParam {
                             arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
+                            arg_type: Type::Bytes,
                         }],
                         opt_params: vec![],
                         return_type: Type::Bytes,
@@ -1035,6 +1117,127 @@ mod tests {
 
         ctx.set_field_value("http.headers", headers).unwrap();
         assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_array_len() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"len(http.cookies) > 0"#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("len"),
+                        function: SCHEME.get_function("len").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.cookies")),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![]
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::GreaterThan,
+                    rhs: RhsValue::Int(0)
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": {
+                    "name": "len",
+                    "args": [
+                        {
+                            "kind": "IndexExpr",
+                            "value": "http.cookies"
+                        }
+                    ]
+                },
+                "op": "GreaterThan",
+                "rhs": 0
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
+            .unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("http.cookies", {
+            let mut arr = Array::new(Type::Bytes);
+            arr.push("__utm=baz".into()).unwrap();
+            arr
+        })
+        .unwrap();
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_array_bytes() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"len(http.host) > 0"#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("len"),
+                        function: SCHEME.get_function("len").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.host")),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![]
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::GreaterThan,
+                    rhs: RhsValue::Int(0)
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": {
+                    "name": "len",
+                    "args": [
+                        {
+                            "kind": "IndexExpr",
+                            "value": "http.host"
+                        }
+                    ]
+                },
+                "op": "GreaterThan",
+                "rhs": 0
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value("http.host", "").unwrap();
+        assert_eq!(expr.execute(ctx), false);
+
+        ctx.set_field_value("http.host", "example.com").unwrap();
+        assert_eq!(expr.execute(ctx), true);
+    }
+
+    #[test]
+    fn test_int_len() {
+        assert_err!(
+            FieldExpr::lex_with(r#"len(tcp.port) > 0"#, &SCHEME),
+            LexErrorKind::InvalidArgumentType {
+                index: 0,
+                mismatch: TypeMismatchError {
+                    expected: ExpectedTypeMismatch::Array,
+                    actual: Type::Int,
+                },
+            },
+            "tcp.port) > 0"
+        );
     }
 
     #[test]

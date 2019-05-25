@@ -1,7 +1,10 @@
 use crate::{
     ast::index_expr::IndexExpr,
     filter::CompiledValueExpr,
-    functions::{FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionParam},
+    functions::{
+        FunctionArgKind, FunctionArgKindMismatchError, FunctionDefinition, FunctionOptArgCount,
+        FunctionParam, InvalidFunctionArgError,
+    },
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{GetType, LhsValue, RhsValue, Type, TypeMismatchError},
@@ -112,8 +115,13 @@ impl<'s> FunctionCallExpr<'s> {
             .map(FunctionCallArgExpr::compile)
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
-        let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
+
+        let arg_counter = function.arg_count();
+        let max_args = match arg_counter.optional {
+            FunctionOptArgCount::Fixed(_) => arg_counter.count(),
+            _ => args.len(),
+        };
+
         CompiledValueExpr::new(move |ctx| {
             match function.execute(&mut args.iter().map(|arg| arg.execute(ctx)).chain(
                 (args.len()..max_args).map(|index| Ok(function.default_value(index).unwrap())),
@@ -130,11 +138,14 @@ impl<'s> FunctionCallExpr<'s> {
 
 #[allow(clippy::borrowed_box)]
 fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str) -> LexError<'i> {
-    let (mandatory, optional) = function.arg_count();
+    let arg_counter = function.arg_count();
     (
         LexErrorKind::InvalidArgumentsCount {
-            expected_min: mandatory,
-            expected_max: optional.map(|v| mandatory + v),
+            expected_min: arg_counter.required,
+            expected_max: match arg_counter.optional {
+                FunctionOptArgCount::Fixed(n) => Some(arg_counter.required + n),
+                _ => None,
+            },
         },
         input,
     )
@@ -145,7 +156,7 @@ impl<'s> GetType for FunctionCallExpr<'s> {
         self.function
             .return_type(&mut (&self.args).iter().map(|arg| FunctionParam {
                 arg_kind: arg.get_kind(),
-                val_type: arg.get_type(),
+                arg_type: arg.get_type(),
             }))
     }
 }
@@ -168,7 +179,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             .get_function(name)
             .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
 
-        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
+        let arg_counter = function.arg_count();
 
         let mut function_call = FunctionCallExpr::new(name, function);
 
@@ -192,18 +203,36 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             let next_param = FunctionParam {
                 arg_kind: arg.get_kind(),
-                val_type: arg.get_type(),
+                arg_type: arg.get_type(),
             };
 
             let param = function
-                .check_param(
+                .validate(
                     &mut (&function_call.args).iter().map(|arg| FunctionParam {
                         arg_kind: arg.get_kind(),
-                        val_type: arg.get_type(),
+                        arg_type: arg.get_type(),
                     }),
                     &next_param,
                 )
-                .ok_or_else(|| invalid_args_count(function, input))?;
+                .or_else(|err| match err {
+                    InvalidFunctionArgError::CountMismatch(_) => {
+                        Err(invalid_args_count(function, input))
+                    }
+                    InvalidFunctionArgError::KindMismatch(err) => Err((
+                        LexErrorKind::InvalidArgumentKind {
+                            index: 0,
+                            mismatch: err,
+                        },
+                        input,
+                    )),
+                    InvalidFunctionArgError::TypeMismatch(err) => Err((
+                        LexErrorKind::InvalidArgumentType {
+                            index: 0,
+                            mismatch: err,
+                        },
+                        input,
+                    )),
+                })?;
 
             if next_param.arg_kind != param.arg_kind {
                 return Err((
@@ -218,13 +247,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 ));
             }
 
-            if next_param.val_type != param.val_type {
+            if next_param.arg_type != param.arg_type {
                 return Err((
                     LexErrorKind::InvalidArgumentType {
                         index,
                         mismatch: TypeMismatchError {
-                            actual: next_param.val_type,
-                            expected: param.val_type.into(),
+                            actual: next_param.arg_type,
+                            expected: param.arg_type.into(),
                         },
                     },
                     span(input, rest),
@@ -240,14 +269,17 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             index += 1;
         }
 
-        if function_call.args.len() < mandatory_arg_count {
+        if function_call.args.len() < arg_counter.required {
             return Err(invalid_args_count(&function, input));
         }
 
-        if optional_arg_count.is_some()
-            && function_call.args.len() > (mandatory_arg_count + optional_arg_count.unwrap())
-        {
-            return Err(invalid_args_count(&function, input));
+        match arg_counter.optional {
+            FunctionOptArgCount::Fixed(n)
+                if function_call.args.len() > (arg_counter.required + n) =>
+            {
+                return Err(invalid_args_count(&function, input));
+            }
+            _ => {}
         }
 
         input = expect(input, ")")?;
@@ -283,7 +315,7 @@ fn test_function() {
                     Function {
                         params: vec![FunctionParam {
                             arg_kind: FunctionArgKind::Field,
-                            val_type: Type::Bytes,
+                            arg_type: Type::Bytes,
                         }],
                         opt_params: vec![FunctionOptParam {
                             arg_kind: FunctionArgKind::Literal,
