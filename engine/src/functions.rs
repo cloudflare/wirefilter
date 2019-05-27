@@ -3,7 +3,11 @@ use crate::{
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
 use failure::Fail;
-use std::fmt::{self, Debug};
+use std::{
+    collections::HashSet,
+    fmt::{self, Debug},
+    iter::once,
+};
 
 /// An iterator over function arguments as [`LhsValue`]s.
 pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = CompiledValueResult<'a>>;
@@ -103,20 +107,27 @@ impl FunctionParam {
     }
 
     /// Checks if the val_type of current parameter matches the expected_type
-    pub fn expect_val_type(&self, expected_type: ExpectedType) -> Result<(), FunctionParamError> {
-        match (&expected_type, &self.val_type) {
-            (ExpectedType::Array, Type::Array(_)) => return Ok(()),
-            (ExpectedType::Array, _) => {}
-            (ExpectedType::Map, Type::Map(_)) => return Ok(()),
-            (ExpectedType::Map, _) => {}
-            (ExpectedType::Type(val_type), _) => {
-                if self.val_type == *val_type {
-                    return Ok(());
+    pub fn expect_val_type(
+        &self,
+        expected_types: impl Iterator<Item = ExpectedType>,
+    ) -> Result<(), FunctionParamError> {
+        let mut types = HashSet::new();
+        for expected_type in expected_types {
+            match (&expected_type, &self.val_type) {
+                (ExpectedType::Array, Type::Array(_)) => return Ok(()),
+                (ExpectedType::Array, _) => {}
+                (ExpectedType::Map, Type::Map(_)) => return Ok(()),
+                (ExpectedType::Map, _) => {}
+                (ExpectedType::Type(val_type), _) => {
+                    if self.val_type == *val_type {
+                        return Ok(());
+                    }
                 }
             }
+            types.insert(expected_type);
         }
         Err(FunctionParamError::TypeMismatch(TypeMismatchError {
-            expected: expected_type.clone(),
+            expected: types,
             actual: self.val_type.clone(),
         }))
     }
@@ -175,11 +186,12 @@ impl FunctionDefinition for Function {
         if index < self.params.len() {
             let param = &self.params[index];
             next_param.expect_arg_kind(param.arg_kind)?;
-            next_param.expect_val_type(ExpectedType::Type(param.val_type.clone()))?;
+            next_param.expect_val_type(once(ExpectedType::Type(param.val_type.clone())))?;
         } else if index < self.params.len() + self.opt_params.len() {
             let opt_param = &self.opt_params[index - self.params.len()];
             next_param.expect_arg_kind(opt_param.arg_kind)?;
-            next_param.expect_val_type(ExpectedType::Type(opt_param.default_value.get_type()))?;
+            next_param
+                .expect_val_type(once(ExpectedType::Type(opt_param.default_value.get_type())))?;
         } else {
             unreachable!();
         }

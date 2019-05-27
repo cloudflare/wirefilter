@@ -322,16 +322,16 @@ mod tests {
         execution_context::ExecutionContext,
         filter::CompiledValueResult,
         functions::{
-            Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs,
-            FunctionDefinition, FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
+            Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
+            FunctionOptParam, FunctionParam, FunctionParamError,
         },
         rhs_types::IpRange,
         scheme::FieldIndex,
-        types::{Array, ExpectedType, Map, TypeMismatchError},
+        types::{Array, ExpectedType, Map},
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
-    use std::{convert::TryFrom, net::IpAddr};
+    use std::{convert::TryFrom, iter::once, net::IpAddr};
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         Some(args.next()?.ok()?)
@@ -377,42 +377,19 @@ mod tests {
             next_param: &FunctionParam,
         ) -> Result<(), FunctionParamError> {
             match params.len() {
-                0 => match (next_param.arg_kind, &next_param.val_type) {
-                    (FunctionArgKind::Literal, _) => Err(
-                        FunctionParamError::FunctionArgKindMismatch(FunctionArgKindMismatchError {
-                            expected: FunctionArgKind::Field,
-                            actual: FunctionArgKind::Literal,
-                        }),
-                    ),
-                    (FunctionArgKind::Field, Type::Array(_)) => Ok(()),
-                    (FunctionArgKind::Field, _) => {
-                        Err(FunctionParamError::TypeMismatch(TypeMismatchError {
-                            expected: ExpectedType::Array,
-                            actual: next_param.val_type.clone(),
-                        }))
-                    }
-                },
-                1 => match (
-                    next_param.arg_kind,
-                    &next_param.val_type,
-                    next_param.val_type.next(),
-                ) {
-                    (FunctionArgKind::Literal, _, _) => Err(
-                        FunctionParamError::FunctionArgKindMismatch(FunctionArgKindMismatchError {
-                            expected: FunctionArgKind::Field,
-                            actual: FunctionArgKind::Literal,
-                        }),
-                    ),
-                    (FunctionArgKind::Field, Type::Array(_), Some(Type::Bool)) => Ok(()),
-                    (FunctionArgKind::Field, _, _) => {
-                        Err(FunctionParamError::TypeMismatch(TypeMismatchError {
-                            expected: ExpectedType::Type(Type::Array(Box::new(Type::Bool))),
-                            actual: next_param.val_type.clone(),
-                        }))
-                    }
-                },
+                0 => {
+                    next_param.expect_arg_kind(FunctionArgKind::Field)?;
+                    next_param.expect_val_type(once(ExpectedType::Array))?;
+                }
+                1 => {
+                    next_param.expect_arg_kind(FunctionArgKind::Field)?;
+                    next_param.expect_val_type(once(ExpectedType::Type(Type::Array(Box::new(
+                        Type::Bool,
+                    )))))?;
+                }
                 _ => unreachable!(),
             }
+            Ok(())
         }
 
         fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {

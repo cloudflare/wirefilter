@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
+    iter::once,
     net::IpAddr,
     ops::RangeInclusive,
 };
@@ -34,7 +35,7 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
 
 /// An enum describing the expected type when a
 /// TypeMismatchError occurs
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExpectedType {
     /// Fully identified expected type
     Type(Type),
@@ -54,6 +55,20 @@ impl From<Type> for ExpectedType {
     }
 }
 
+type ExpectedTypeList = HashSet<ExpectedType>;
+
+impl From<Type> for ExpectedTypeList {
+    fn from(ty: Type) -> Self {
+        once(ExpectedType::Type(ty)).collect()
+    }
+}
+
+impl From<ExpectedType> for ExpectedTypeList {
+    fn from(ty: ExpectedType) -> Self {
+        once(ty).collect()
+    }
+}
+
 /// An error that occurs on a type mismatch.
 #[derive(Debug, PartialEq, Fail)]
 #[fail(
@@ -62,7 +77,7 @@ impl From<Type> for ExpectedType {
 )]
 pub struct TypeMismatchError {
     /// Expected value type.
-    pub expected: ExpectedType,
+    pub expected: ExpectedTypeList,
     /// Provided value type.
     pub actual: Type,
 }
@@ -123,7 +138,7 @@ macro_rules! declare_types {
 
     ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
-        #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Hash)]
         #[repr(C)]
         pub enum Type {
             $($(# $attrs)* $name$(($val_ty))?,)*
@@ -178,7 +193,7 @@ macro_rules! declare_types {
                 match value {
                     LhsValue::$name(value) => Ok(value),
                     _ => Err(TypeMismatchError {
-                        expected: specialized_try_from!($name),
+                        expected: specialized_try_from!($name).into(),
                         actual: value.get_type(),
                     }),
                 }
