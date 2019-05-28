@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
+    iter::once,
     net::IpAddr,
     ops::RangeInclusive,
 };
@@ -34,8 +35,8 @@ fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
 
 /// An enum describing the expected type when a
 /// TypeMismatchError occurs
-#[derive(Debug, PartialEq)]
-pub enum ExpectedTypeMismatch {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExpectedType {
     /// Fully identified expected type
     Type(Type),
     /// Loosely identified array type
@@ -48,9 +49,23 @@ pub enum ExpectedTypeMismatch {
     Map,
 }
 
-impl From<Type> for ExpectedTypeMismatch {
+impl From<Type> for ExpectedType {
     fn from(ty: Type) -> Self {
-        ExpectedTypeMismatch::Type(ty)
+        ExpectedType::Type(ty)
+    }
+}
+
+type ExpectedTypeList = HashSet<ExpectedType>;
+
+impl From<Type> for ExpectedTypeList {
+    fn from(ty: Type) -> Self {
+        once(ExpectedType::Type(ty)).collect()
+    }
+}
+
+impl From<ExpectedType> for ExpectedTypeList {
+    fn from(ty: ExpectedType) -> Self {
+        once(ty).collect()
     }
 }
 
@@ -62,7 +77,7 @@ impl From<Type> for ExpectedTypeMismatch {
 )]
 pub struct TypeMismatchError {
     /// Expected value type.
-    pub expected: ExpectedTypeMismatch,
+    pub expected: ExpectedTypeList,
     /// Provided value type.
     pub actual: Type,
 }
@@ -86,13 +101,13 @@ macro_rules! specialized_get_type {
 
 macro_rules! specialized_try_from {
     (Array) => {
-        ExpectedTypeMismatch::Array
+        ExpectedType::Array
     };
     (Map) => {
-        ExpectedTypeMismatch::Map
+        ExpectedType::Map
     };
     ($name:ident) => {
-        ExpectedTypeMismatch::Type(Type::$name)
+        ExpectedType::Type(Type::$name)
     };
 }
 
@@ -123,7 +138,7 @@ macro_rules! declare_types {
 
     ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
-        #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Hash)]
         #[repr(C)]
         pub enum Type {
             $($(# $attrs)* $name$(($val_ty))?,)*
@@ -133,6 +148,7 @@ macro_rules! declare_types {
             /// Returns the inner type when available (e.g: for a Map)
             pub fn next(&self) -> Option<Type> {
                 match self {
+                    Type::Array(ty) => Some(*ty.clone()),
                     Type::Map(ty) => Some(*ty.clone()),
                     _ => None,
                 }
@@ -177,7 +193,7 @@ macro_rules! declare_types {
                 match value {
                     LhsValue::$name(value) => Ok(value),
                     _ => Err(TypeMismatchError {
-                        expected: specialized_try_from!($name),
+                        expected: specialized_try_from!($name).into(),
                         actual: value.get_type(),
                     }),
                 }
