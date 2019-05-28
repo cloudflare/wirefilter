@@ -76,9 +76,9 @@ pub use self::{
     execution_context::ExecutionContext,
     filter::{Filter, SchemeMismatchError},
     functions::{
-        Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
-        FunctionOptParam, FunctionParam,
+        Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition,
+        FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
     },
     scheme::{FieldIndex, FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
-    types::{Array, ExpectedTypeMismatch, GetType, LhsValue, Map, Type, TypeMismatchError},
+    types::{Array, ExpectedType, GetType, LhsValue, Map, Type, TypeMismatchError},
 };
