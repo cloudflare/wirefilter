@@ -79,6 +79,7 @@ pub use self::{
         Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition,
         FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
     },
+    lex::LexErrorKind,
     scheme::{FieldIndex, FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
     types::{Array, ExpectedType, GetType, LhsValue, Map, Type, TypeMismatchError},
 };
