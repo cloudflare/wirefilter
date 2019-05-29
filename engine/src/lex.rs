@@ -9,74 +9,109 @@ use failure::Fail;
 use std::num::ParseIntError;
 
 #[derive(Debug, PartialEq, Fail)]
+/// LexErrorKind occurs when there is an invalid or unexpected token.
 pub enum LexErrorKind {
+    /// Expected the next token to be a Field
     #[fail(display = "expected {}", _0)]
     ExpectedName(&'static str),
 
+    /// Expected the next token to be a Literal
     #[fail(display = "expected literal {:?}", _0)]
     ExpectedLiteral(&'static str),
 
+    /// Expected the next token to be an int
     #[fail(display = "{} while parsing with radix {}", err, radix)]
     ParseInt {
+        /// The error that occurred parsing the token as an int
         #[cause]
         err: ParseIntError,
+        /// The base of the number
         radix: u32,
     },
 
+    /// Expected the next token to be a network address such a CIDR, IPv4 or
+    /// IPv6 address
     #[fail(display = "{}", _0)]
     ParseNetwork(#[cause] NetworkParseError),
 
+    /// Expected the next token to be a regular expression
     #[fail(display = "{}", _0)]
     ParseRegex(#[cause] RegexError),
 
+    /// Expected the next token to be an escape character
     #[fail(display = "expected \", xHH or OOO after \\")]
     InvalidCharacterEscape,
 
+    /// Expected the next token to be an ending quote
     #[fail(display = "could not find an ending quote")]
     MissingEndingQuote,
 
+    /// Expected to take some number of characters from the input but the
+    /// input was too short
     #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
     CountMismatch {
+        /// This is set to "character" for all occurences of this error
         name: &'static str,
+        /// The actual number of characters
         actual: usize,
+        /// The expected number of characters
         expected: usize,
     },
 
+    /// The next token refers to a Field that is not present in the Scheme
     #[fail(display = "{}", _0)]
     UnknownField(#[cause] UnknownFieldError),
 
+    /// The next token refers to a Function that is not present in the Scheme
     #[fail(display = "{}", _0)]
     UnknownFunction(#[cause] UnknownFunctionError),
 
+    /// The operation cannot be performed on this Field
     #[fail(display = "cannot use this operation type {:?}", lhs_type)]
-    UnsupportedOp { lhs_type: Type },
+    UnsupportedOp {
+        /// The type of the Field
+        lhs_type: Type,
+    },
 
+    /// This variant is not in use
     #[fail(display = "incompatible range bounds")]
     IncompatibleRangeBounds,
 
+    /// End Of File
     #[fail(display = "unrecognised input")]
     EOF,
 
+    /// Invalid number of arguments for the function
     #[fail(display = "invalid number of arguments")]
     InvalidArgumentsCount {
+        /// The minimum number of arguments for the function
         expected_min: usize,
+        /// The maximum number of arguments for the function or None if the
+        /// function takes an unlimited number of arguments
         expected_max: Option<usize>,
     },
 
+    /// Invalid argument kind for the function
     #[fail(display = "invalid kind of argument #{}: {}", index, mismatch)]
     InvalidArgumentKind {
+        /// The position of the argument in the function call
         index: usize,
+        /// The expected and the actual kind for the argument
         #[cause]
         mismatch: FunctionArgKindMismatchError,
     },
 
+    /// Invalid argument type for the function
     #[fail(display = "invalid type of argument #{}: {}", index, mismatch)]
     InvalidArgumentType {
+        /// The position of the argument in the function call
         index: usize,
+        /// The expected and actual type for the argument
         #[cause]
         mismatch: TypeMismatchError,
     },
 
+    /// The index is invalid
     #[fail(display = "{}", _0)]
     InvalidIndexAccess(#[cause] IndexAccessError),
 }
