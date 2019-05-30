@@ -148,11 +148,11 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// correct. Return the expected the parameter definition.
     fn check_param(
         &self,
-        params: &mut ExactSizeIterator<Item = FunctionParam>,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
         next_param: &FunctionParam,
     ) -> Result<(), FunctionParamError>;
     /// Function return type.
-    fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type;
+    fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -179,7 +179,7 @@ pub struct Function {
 impl FunctionDefinition for Function {
     fn check_param(
         &self,
-        params: &mut ExactSizeIterator<Item = FunctionParam>,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
         next_param: &FunctionParam,
     ) -> Result<(), FunctionParamError> {
         let index = params.len();
@@ -198,7 +198,7 @@ impl FunctionDefinition for Function {
         Ok(())
     }
 
-    fn return_type(&self, _: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
+    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
         self.return_type.clone()
     }
 
