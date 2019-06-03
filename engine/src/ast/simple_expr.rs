@@ -1,8 +1,8 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledValueExpr, Expr};
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{GetType, Type},
+    types::{GetType, LhsValue, Type},
 };
 use serde::Serialize;
 
@@ -65,7 +65,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             SimpleExpr::Field(op) => op.compile(),
             SimpleExpr::Parenthesized(op) => op.compile(),
@@ -74,7 +74,10 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+                CompiledValueExpr::new(move |ctx| match arg.execute(ctx) {
+                    Ok(LhsValue::Bool(b)) => Ok(LhsValue::Bool(!b)),
+                    _ => unreachable!(),
+                })
             }
         }
     }
@@ -105,7 +108,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
@@ -126,7 +129,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     let not_expr = |expr| SimpleExpr::Unary {
@@ -150,7 +153,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
@@ -177,7 +180,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     assert_ok!(

@@ -6,17 +6,17 @@ mod simple_expr;
 
 use self::combined_expr::CombinedExpr;
 use crate::{
-    filter::{CompiledExpr, Filter},
+    filter::{CompiledValueExpr, Filter},
     lex::{LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme, UnknownFieldError},
-    types::{ExpectedTypeMismatch, GetType, Type, TypeMismatchError},
+    types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
 
 trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
-    fn compile(self) -> CompiledExpr<'s>;
+    fn compile(self) -> CompiledValueExpr<'s>;
 }
 
 /// A parsed filter AST.
@@ -57,7 +57,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
             Type::Bool => Ok((FilterAst { scheme, op }, input)),
             _ => Err((
                 LexErrorKind::TypeMismatch(TypeMismatchError {
-                    expected: ExpectedTypeMismatch::Type(Type::Bool),
+                    expected: Type::Bool.into(),
                     actual: ty,
                 }),
                 input,
@@ -103,7 +103,7 @@ mod tests {
         assert_err!(
             FilterAst::lex_with(r#"foo"#, &SCHEME),
             LexErrorKind::TypeMismatch(TypeMismatchError {
-                expected: ExpectedTypeMismatch::Type(Type::Bool),
+                expected: Type::Bool.into(),
                 actual: Type::Array(Box::new(Type::Bool)),
             }),
             r#""#
@@ -113,7 +113,7 @@ mod tests {
         assert_err!(
             FilterAst::lex_with(r#"foo and foo"#, &SCHEME),
             LexErrorKind::TypeMismatch(TypeMismatchError {
-                expected: ExpectedTypeMismatch::Type(Type::Bool),
+                expected: Type::Bool.into(),
                 actual: Type::Array(Box::new(Type::Bool)),
             }),
             r#""#
@@ -123,7 +123,7 @@ mod tests {
         assert_err!(
             FilterAst::lex_with(r#"foo and (foo and bar)"#, &SCHEME),
             LexErrorKind::TypeMismatch(TypeMismatchError {
-                expected: ExpectedTypeMismatch::Type(Type::Array(Box::new(Type::Bool))),
+                expected: Type::Array(Box::new(Type::Bool)).into(),
                 actual: Type::Bool,
             }),
             r#")"#
@@ -133,7 +133,7 @@ mod tests {
         assert_err!(
             FilterAst::lex_with(r#"foo and bar"#, &SCHEME),
             LexErrorKind::TypeMismatch(TypeMismatchError {
-                expected: ExpectedTypeMismatch::Type(Type::Array(Box::new(Type::Bool))),
+                expected: Type::Array(Box::new(Type::Bool)).into(),
                 actual: Type::Bool,
             }),
             r#""#

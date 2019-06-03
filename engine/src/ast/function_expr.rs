@@ -1,5 +1,7 @@
 use crate::{
+    ast::combined_expr::CombinedExpr,
     ast::index_expr::IndexExpr,
+    ast::Expr,
     filter::CompiledValueExpr,
     functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
@@ -12,6 +14,7 @@ use serde::Serialize;
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub(crate) enum FunctionCallArgExpr<'s> {
+    CombinedExpr(CombinedExpr<'s>),
     IndexExpr(IndexExpr<'s>),
     Literal(RhsValue),
 }
@@ -19,6 +22,7 @@ pub(crate) enum FunctionCallArgExpr<'s> {
 impl<'s> FunctionCallArgExpr<'s> {
     pub fn uses(&self, field: Field<'s>) -> bool {
         match self {
+            FunctionCallArgExpr::CombinedExpr(combined_expr) => combined_expr.uses(field),
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
         }
@@ -26,6 +30,7 @@ impl<'s> FunctionCallArgExpr<'s> {
 
     pub fn get_kind(&self) -> FunctionArgKind {
         match self {
+            FunctionCallArgExpr::CombinedExpr(_) => FunctionArgKind::Field,
             FunctionCallArgExpr::IndexExpr(_) => FunctionArgKind::Field,
             FunctionCallArgExpr::Literal(_) => FunctionArgKind::Literal,
         }
@@ -33,6 +38,10 @@ impl<'s> FunctionCallArgExpr<'s> {
 
     pub fn compile(self) -> CompiledValueExpr<'s> {
         match self {
+            FunctionCallArgExpr::CombinedExpr(combined_expr) => {
+                let compiled_expr = combined_expr.compile();
+                CompiledValueExpr::new(move |ctx| compiled_expr.execute(ctx))
+            }
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
             FunctionCallArgExpr::Literal(literal) => {
                 CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned().into())
@@ -45,8 +54,12 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let _initial_input = input;
 
-        IndexExpr::lex_with(input, scheme)
-            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+        CombinedExpr::lex_with(input, scheme)
+            .map(|(lhs, input)| (FunctionCallArgExpr::CombinedExpr(lhs), input))
+            .or_else(|_| {
+                IndexExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+            })
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Ip)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
@@ -73,6 +86,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
 impl<'s> GetType for FunctionCallArgExpr<'s> {
     fn get_type(&self) -> Type {
         match self {
+            FunctionCallArgExpr::CombinedExpr(combined_expr) => combined_expr.get_type(),
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.get_type(),
             FunctionCallArgExpr::Literal(literal) => literal.get_type(),
         }

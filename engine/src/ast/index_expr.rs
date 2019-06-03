@@ -1,6 +1,6 @@
 use super::field_expr::LhsFieldExpr;
 use crate::{
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::CompiledValueExpr,
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, FieldIndex, IndexAccessError, Scheme},
     types::{GetType, LhsValue, Type},
@@ -23,31 +23,31 @@ impl<'s> IndexExpr<'s> {
     pub fn uses(&self, field: Field<'s>) -> bool {
         self.lhs.uses(field)
     }
-
-    pub fn compile_with<F: 's>(self, default: bool, func: F) -> CompiledExpr<'s>
+    
+    pub fn compile_with<F: 's>(self, default: LhsValue<'static>, func: F) -> CompiledValueExpr<'s>
     where
-        F: Fn(&LhsValue<'_>) -> bool,
+        F: for <'e> Fn(&'e LhsValue<'e>) -> LhsValue<'e>,
     {
         let Self { lhs, indexes } = self;
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = call.compile();
-                CompiledExpr::new(move |ctx| {
-                    indexes
+                CompiledValueExpr::new(move |ctx| {
+                    Ok(indexes
                         .iter()
                         .fold((&call.execute(ctx)).as_ref().ok(), |value, idx| {
                             value.and_then(|val| val.get(idx).unwrap())
                         })
-                        .map_or(default, |val| func(val))
+                        .map_or(default, |val| func(val)))
                 })
             }
-            LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
-                indexes
+            LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                Ok(indexes
                     .iter()
                     .fold(Some(ctx.get_field_value_unchecked(f)), |value, idx| {
                         value.and_then(|val| val.get(idx).unwrap())
                     })
-                    .map_or(default, |val| func(val))
+                    .map_or(default, |val| func(val)))
             }),
         }
     }
@@ -88,6 +88,7 @@ impl<'s> IndexExpr<'s> {
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
     fn lex_with(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+
         let (lhs, rest) = LhsFieldExpr::lex_with(input, scheme)?;
 
         let mut current_type = lhs.get_type();

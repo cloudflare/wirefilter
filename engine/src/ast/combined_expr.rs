@@ -1,9 +1,9 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
-    filter::CompiledExpr,
+    filter::CompiledValueExpr,
     lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{ExpectedTypeMismatch, GetType, Type, TypeMismatchError},
+    types::{GetType, LhsValue, Type, TypeMismatchError},
 };
 use serde::Serialize;
 
@@ -113,7 +113,7 @@ impl<'s> CombinedExpr<'s> {
                 _ => {
                     return Err((
                         LexErrorKind::TypeMismatch(TypeMismatchError {
-                            expected: ExpectedTypeMismatch::Type(lhsty),
+                            expected: lhsty.into(),
                             actual: rhsty,
                         }),
                         lookahead.1,
@@ -163,7 +163,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             CombinedExpr::Simple(op) => op.compile(),
             CombinedExpr::Combining { op, items } => {
@@ -173,17 +173,34 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                     .collect::<Vec<_>>()
                     .into_boxed_slice();
 
+                // need to match on the type and either compile or compile_with
                 match op {
-                    CombiningOp::And => {
-                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
-                    }
-                    CombiningOp::Or => {
-                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
-                    }
-                    CombiningOp::Xor => CompiledExpr::new(move |ctx| {
-                        items
+                    CombiningOp::And => CompiledValueExpr::new(move |ctx| {
+                        Ok(items
                             .iter()
-                            .fold(false, |acc, item| acc ^ item.execute(ctx))
+                            .all(|item| match item.execute(ctx) {
+                                Ok(LhsValue::Bool(b)) => b,
+                                _ => unreachable!(),
+                            })
+                            .into())
+                    }),
+                    CombiningOp::Or => CompiledValueExpr::new(move |ctx| {
+                        Ok(items
+                            .iter()
+                            .any(|item| match item.execute(ctx) {
+                                Ok(LhsValue::Bool(b)) => b,
+                                _ => unreachable!(),
+                            })
+                            .into())
+                    }),
+                    CombiningOp::Xor => CompiledValueExpr::new(move |ctx| {
+                        Ok(items
+                            .iter()
+                            .fold(false, |acc, item| match item.execute(ctx) {
+                                Ok(LhsValue::Bool(b)) => acc ^ b,
+                                _ => unreachable!(),
+                            })
+                            .into())
                     }),
                 }
             }
@@ -231,7 +248,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     {
@@ -262,7 +279,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     {
@@ -293,7 +310,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     {
@@ -307,7 +324,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     {
@@ -338,7 +355,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     {
@@ -352,7 +369,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     {
@@ -366,7 +383,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     assert_ok!(

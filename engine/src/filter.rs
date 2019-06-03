@@ -11,26 +11,6 @@ use failure::Fail;
 #[fail(display = "execution context doesn't match the scheme with which filter was parsed")]
 pub struct SchemeMismatchError;
 
-// Each AST expression node gets compiled into CompiledExpr. Therefore, Filter
-// essentialy is a public API facade for a tree of CompiledExprs. When filter
-// gets executed it calls `execute` method on its root expression which then
-// under the hood propagates field values to its leafs by recursively calling
-// their `execute` methods and aggregating results into a single boolean value
-// as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
-
-impl<'s> CompiledExpr<'s> {
-    /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
-        CompiledExpr(Box::new(closure))
-    }
-
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
-        self.0(ctx)
-    }
-}
-
 pub(crate) type CompiledValueResult<'a> = Result<LhsValue<'a>, Type>;
 
 impl<'a> From<LhsValue<'a>> for CompiledValueResult<'a> {
@@ -79,20 +59,24 @@ impl<'s> CompiledValueExpr<'s> {
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
 pub struct Filter<'s> {
-    root_expr: CompiledExpr<'s>,
+    root_expr: CompiledValueExpr<'s>,
     scheme: &'s Scheme,
 }
 
 impl<'s> Filter<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledExpr<'s>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledValueExpr<'s>, scheme: &'s Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 
     /// Executes a filter against a provided context with values.
     pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> Result<bool, SchemeMismatchError> {
         if self.scheme == ctx.scheme() {
-            Ok(self.root_expr.execute(ctx))
+            match self.root_expr.execute(ctx) {
+                Ok(LhsValue::Bool(b)) => Ok(b),
+                /// TODO: remove unwrap
+                _ => panic!(""),
+            }
         } else {
             Err(SchemeMismatchError)
         }

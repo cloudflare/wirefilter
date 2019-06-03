@@ -1,15 +1,14 @@
-// use crate::filter::CompiledExpr;
 use super::{function_expr::FunctionCallExpr, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::CompiledValueExpr,
     heap_searcher::HeapSearcher,
     lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     range_set::RangeSet,
     rhs_types::{Bytes, ExplicitIpRange, Regex},
     scheme::{Field, Scheme},
     strict_partial_ord::StrictPartialOrd,
-    types::{GetType, LhsValue, RhsValue, RhsValues, Type},
+    types::{Array, GetType, LhsValue, RhsValue, RhsValues, Type},
 };
 use fnv::FnvBuildHasher;
 use indexmap::IndexSet;
@@ -69,9 +68,6 @@ lex_enum!(ComparisonOp {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 enum FieldOp {
-    #[serde(serialize_with = "serialize_is_true")]
-    IsTrue,
-
     Ordering {
         op: OrderingOp,
         rhs: RhsValue,
@@ -90,6 +86,9 @@ enum FieldOp {
 
     #[serde(serialize_with = "serialize_one_of")]
     OneOf(RhsValues),
+
+    #[serde(serialize_with = "serialize_value")]
+    Value,
 }
 
 fn serialize_op_rhs<T: Serialize, S: Serializer>(
@@ -105,14 +104,6 @@ fn serialize_op_rhs<T: Serialize, S: Serializer>(
     out.end()
 }
 
-fn serialize_is_true<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
-    use serde::ser::SerializeStruct;
-
-    let mut out = ser.serialize_struct("FieldOp", 1)?;
-    out.serialize_field("op", "IsTrue")?;
-    out.end()
-}
-
 fn serialize_contains<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
 }
@@ -123,6 +114,14 @@ fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Err
 
 fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("OneOf", rhs, ser)
+}
+
+fn serialize_value<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+
+    let mut out = ser.serialize_struct("FieldOp", 1)?;
+    out.serialize_field("op", "Value")?;
+    out.end()
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -200,9 +199,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
 
         let lhs_type = lhs.get_type();
 
-        let (op, input) = if lhs_type == Type::Bool || lhs_type == Type::Array(Box::new(Type::Bool))
-        {
-            (FieldOp::IsTrue, input)
+        let (op, input) = if lhs_type == Type::Bool {
+            (FieldOp::Value, input)
+        } else if lhs_type == Type::Array(Box::new(Type::Bool)) {
+            (FieldOp::Value, input)
         } else {
             let (op, input) = ComparisonOp::lex(skip_space(input))?;
 
@@ -255,7 +255,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         self.lhs.uses(field)
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         let lhs = self.lhs;
 
         macro_rules! cast_value {
@@ -268,27 +268,56 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => lhs.compile_with(false, move |x| *cast_value!(x, Bool)),
-            FieldOp::Ordering { op, rhs } => match op {
-                OrderingOp::NotEqual => {
-                    lhs.compile_with(true, move |x| op.matches_opt(x.strict_partial_cmp(&rhs)))
+            FieldOp::Value => {
+                let ty = lhs.get_type();
+                match ty {
+                    Type::Bool => lhs.compile_with(false.into(), move |x| x.as_ref()),
+                    _ => unreachable!(),
                 }
-                _ => lhs.compile_with(false, move |x| op.matches_opt(x.strict_partial_cmp(&rhs))),
+
+                // Type::Bool => {
+                //     lhs.compile_with(false.into(), move |x| (*cast_value!(x, Bool)).into())
+                // },
+                // Type::Array(arr) => {
+                //     let ty = arr.get_type();
+                //     match ty {
+                //         Type::Bool => {
+                //             let default = LhsValue::Array(Array::new(Type::Bool));
+                //             lhs.compile_with(default, move |x| {
+                //                 match cast_value!(x, Array) {
+                //                     Array(arr) => {},
+                //                     _ => unreachable!(),
+                //                 }
+                //             ).into(),
+                //         },
+                //         _ => unreachable!(),
+                //     }
+                // },
+            }
+            FieldOp::Ordering { op, rhs } => match op {
+                OrderingOp::NotEqual => lhs.compile_with(true.into(), move |x| {
+                    op.matches_opt(x.strict_partial_cmp(&rhs)).into()
+                }),
+                _ => lhs.compile_with(false.into(), move |x| {
+                    op.matches_opt(x.strict_partial_cmp(&rhs)).into()
+                }),
             },
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(false, move |x| cast_value!(x, Int) & rhs != 0),
+            } => lhs.compile_with(false.into(), move |x| {
+                (cast_value!(x, Int) & rhs != 0).into()
+            }),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                lhs.compile_with(false, move |x| {
-                    searcher.search_in(cast_value!(x, Bytes)).is_some()
+                lhs.compile_with(false.into(), move |x| {
+                    searcher.search_in(cast_value!(x, Bytes)).is_some().into()
                 })
             }
-            FieldOp::Matches(regex) => {
-                lhs.compile_with(false, move |x| regex.is_match(cast_value!(x, Bytes)))
-            }
+            FieldOp::Matches(regex) => lhs.compile_with(false.into(), move |x| {
+                regex.is_match(cast_value!(x, Bytes)).into()
+            }),
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
@@ -302,22 +331,27 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(false, move |x| match cast_value!(x, Ip) {
-                        IpAddr::V4(addr) => v4.contains(addr),
-                        IpAddr::V6(addr) => v6.contains(addr),
+                    lhs.compile_with(false.into(), move |x| {
+                        match cast_value!(x, Ip) {
+                            IpAddr::V4(addr) => v4.contains(addr),
+                            IpAddr::V6(addr) => v6.contains(addr),
+                        }
+                        .into()
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(false, move |x| values.contains(cast_value!(x, Int)))
+                    lhs.compile_with(false.into(), move |x| {
+                        values.contains(cast_value!(x, Int)).into()
+                    })
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
-                        values.into_iter().map(Into::into).collect();
+                        values.into_iter().map(Into::into).collect().into();
 
-                    lhs.compile_with(false, move |x| {
-                        values.contains(cast_value!(x, Bytes) as &[u8])
+                    lhs.compile_with(false.into(), move |x| {
+                        values.contains(cast_value!(x, Bytes) as &[u8]).into()
                     })
                 }
                 RhsValues::Bool(_) => unreachable!(),
@@ -509,36 +543,36 @@ mod tests {
         SCHEME.get_field_index(name).unwrap()
     }
 
-    #[test]
-    fn test_is_true() {
-        let expr = assert_ok!(
-            FieldExpr::lex_with("ssl", &SCHEME),
-            FieldExpr {
-                lhs: IndexExpr {
-                    lhs: LhsFieldExpr::Field(field("ssl")),
-                    indexes: vec![],
-                },
-                op: FieldOp::IsTrue
-            }
-        );
+    // #[test]
+    // fn test_is_true() {
+    //     let expr = assert_ok!(
+    //         FieldExpr::lex_with("ssl", &SCHEME),
+    //         FieldExpr {
+    //             lhs: IndexExpr {
+    //                 lhs: LhsFieldExpr::Field(field("ssl")),
+    //                 indexes: vec![],
+    //             },
+    //             op: FieldOp::IsTrue
+    //         }
+    //     );
 
-        assert_json!(
-            expr,
-            {
-                "lhs": "ssl",
-                "op": "IsTrue"
-            }
-        );
+    //     assert_json!(
+    //         expr,
+    //         {
+    //             "lhs": "ssl",
+    //             "op": "IsTrue"
+    //         }
+    //     );
 
-        let expr = expr.compile();
-        let ctx = &mut ExecutionContext::new(&SCHEME);
+    //     let expr = expr.compile();
+    //     let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("ssl", true).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+    //     ctx.set_field_value("ssl", true).unwrap();
+    //     assert_eq!(expr.execute(ctx), Ok(true.into()));
 
-        ctx.set_field_value("ssl", false).unwrap();
-        assert_eq!(expr.execute(ctx), false);
-    }
+    //     ctx.set_field_value("ssl", false).unwrap();
+    //     assert_eq!(expr.execute(ctx), Ok(false.into()));
+    // }
 
     #[test]
     fn test_ip_compare() {
@@ -572,25 +606,25 @@ mod tests {
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value(
             "ip.addr",
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]),
         )
         .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value(
             "ip.addr",
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81]),
         )
         .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -676,10 +710,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -711,10 +745,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("tcp.port", 443).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -747,25 +781,25 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("tcp.port", 8080).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("tcp.port", 443).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("tcp.port", 2081).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("tcp.port", 2082).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("tcp.port", 2083).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("tcp.port", 2084).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -802,13 +836,13 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("http.host", "example.net").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -851,23 +885,23 @@ mod tests {
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 3]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("ip.addr", IpAddr::from([255, 255, 255, 255]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -896,10 +930,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("http.host", "abc.net.au").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -928,10 +962,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -963,10 +997,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("tcp.port", 8080).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -992,7 +1026,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.cookies", cookies).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         let cookies = LhsValue::Array({
             let mut arr = Array::new(Type::Bytes);
@@ -1001,7 +1035,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.cookies", cookies).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -1037,7 +1071,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.headers", headers).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
@@ -1046,7 +1080,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.headers", headers).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -1093,10 +1127,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -1143,10 +1177,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "EXAMPLE.COM").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         ctx.set_field_value("http.host", "EXAMPLE.ORG").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -1182,7 +1216,7 @@ mod tests {
 
         ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -1218,7 +1252,7 @@ mod tests {
 
         ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -1254,7 +1288,7 @@ mod tests {
 
         ctx.set_field_value("http.headers", Map::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -1290,7 +1324,7 @@ mod tests {
 
         ctx.set_field_value("http.headers", Map::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 
     #[test]
@@ -1337,10 +1371,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("http.host", "example.co.uk").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
 
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"concat(http.host, ".org") == "example.org""#, &SCHEME),
@@ -1393,10 +1427,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
 
         ctx.set_field_value("http.host", "cloudflare").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Ok(false.into()));
     }
 
     #[test]
@@ -1469,13 +1503,13 @@ mod tests {
 
         let booleans = LhsValue::Array({
             let mut arr = Array::new(Type::Bool);
-            arr.insert(0, false.into()).unwrap();
-            arr.insert(1, false.into()).unwrap();
-            arr.insert(2, true.into()).unwrap();
+            arr.push(false.into()).unwrap();
+            arr.push(false.into()).unwrap();
+            arr.push(true.into()).unwrap();
             arr
         });
         ctx.set_field_value("array.of.bool", booleans).unwrap();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Ok(true.into()));
     }
 }
