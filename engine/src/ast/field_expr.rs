@@ -201,11 +201,15 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
             let input = skip_space(input);
 
             match (&lhs_type, op) {
-                (_, ComparisonOp::In) => {
+                (Type::Ip, ComparisonOp::In)
+                | (Type::Bytes, ComparisonOp::In)
+                | (Type::Int, ComparisonOp::In) => {
                     let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
                     (FieldOp::OneOf(rhs), input)
                 }
-                (_, ComparisonOp::Ordering(op)) => {
+                (Type::Ip, ComparisonOp::Ordering(op))
+                | (Type::Bytes, ComparisonOp::Ordering(op))
+                | (Type::Int, ComparisonOp::Ordering(op)) => {
                     let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
                     (FieldOp::Ordering { op, rhs }, input)
                 }
