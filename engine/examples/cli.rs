@@ -18,6 +18,8 @@ fn main() {
         str: Bytes,
         int: Int,
         bool: Bool,
+        str_arr: Array(Bytes),
+        str_map: Map(Bytes)
     };
 
     scheme

@@ -511,6 +511,476 @@ fn test_parse_error() {
 }
 
 #[test]
+fn test_parse_error_in_op() {
+    use cidr::NetworkParseError;
+    use indoc::indoc;
+    use std::{net::IpAddr, str::FromStr};
+
+    let scheme = &Scheme! {
+        num: Int,
+        bool: Bool,
+        str: Bytes,
+        ip: Ip,
+        str_arr: Array(Bytes),
+        str_map: Map(Bytes),
+    };
+
+    {
+        let err = scheme.parse("bool in {0}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::EOF,
+                input: "bool in {0}",
+                line_number: 0,
+                span_start: 4,
+                span_len: 7
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:5):
+                bool in {0}
+                    ^^^^^^^ unrecognised input
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("bool in {127.0.0.1}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::EOF,
+                input: "bool in {127.0.0.1}",
+                line_number: 0,
+                span_start: 4,
+                span_len: 15
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:5):
+                bool in {127.0.0.1}
+                    ^^^^^^^^^^^^^^^ unrecognised input
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("bool in {\"test\"}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::EOF,
+                input: "bool in {\"test\"}",
+                line_number: 0,
+                span_start: 4,
+                span_len: 12
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:5):
+                bool in {"test"}
+                    ^^^^^^^^^^^^ unrecognised input
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("num in {127.0.0.1}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("digit"),
+                input: "num in {127.0.0.1}",
+                line_number: 0,
+                span_start: 11,
+                span_len: 7
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:12):
+                num in {127.0.0.1}
+                           ^^^^^^^ expected digit
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("num in {\"test\"}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("digit"),
+                input: "num in {\"test\"}",
+                line_number: 0,
+                span_start: 8,
+                span_len: 7
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:9):
+                num in {"test"}
+                        ^^^^^^^ expected digit
+                "#
+            )
+        );
+    }
+    {
+        let err = scheme.parse("ip in {666}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ParseNetwork(
+                    IpAddr::from_str("666")
+                        .map_err(NetworkParseError::AddrParseError)
+                        .unwrap_err()
+                ),
+                input: "ip in {666}",
+                line_number: 0,
+                span_start: 7,
+                span_len: 3
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:8):
+                ip in {666}
+                       ^^^ couldn't parse address in network: invalid IP address syntax
+                "#
+            )
+        );
+    }
+    {
+        let err = scheme.parse("ip in {\"test\"}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("IP address character"),
+                input: "ip in {\"test\"}",
+                line_number: 0,
+                span_start: 7,
+                span_len: 7
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:8):
+                ip in {"test"}
+                       ^^^^^^^ expected IP address character
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("str in {0}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ParseInt {
+                    err: u8::from_str_radix("0}", 16).unwrap_err(),
+                    radix: 16,
+                },
+                input: "str in {0}",
+                line_number: 0,
+                span_start: 8,
+                span_len: 2
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:9):
+                str in {0}
+                        ^^ invalid digit found in string while parsing with radix 16
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse("str in {127.0.0.1}").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ParseInt {
+                    err: u8::from_str_radix("7.}", 16).unwrap_err(),
+                    radix: 16,
+                },
+                input: "str in {127.0.0.1}",
+                line_number: 0,
+                span_start: 10,
+                span_len: 2
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:11):
+                str in {127.0.0.1}
+                          ^^ invalid digit found in string while parsing with radix 16
+                "#
+            )
+        );
+    }
+
+    for pattern in &["0", "127.0.0.1", "\"test\""] {
+        {
+            let filter = format!("str_arr in {{{}}}", pattern);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Array(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_map in {{{}}}", pattern);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Map(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn test_parse_error_ordering_op() {
+    let scheme = &Scheme! {
+        num: Int,
+        bool: Bool,
+        str: Bytes,
+        ip: Ip,
+        str_arr: Array(Bytes),
+        str_map: Map(Bytes),
+    };
+
+    for op in &["eq", "ne", "ge", "le", "gt", "lt"] {
+        {
+            let filter = format!("num {} 127.0.0.1", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::EOF,
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 10,
+                    span_len: 6
+                }
+            );
+        }
+
+        {
+            let filter = format!("num {} \"test\"", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::ExpectedName("digit"),
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 7,
+                    span_len: 6
+                }
+            );
+        }
+        {
+            let filter = format!("str {} 0", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::CountMismatch {
+                        name: "character",
+                        actual: 1,
+                        expected: 2,
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 7,
+                    span_len: 1
+                }
+            );
+        }
+
+        {
+            let filter = format!("str {} 256", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::EOF,
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 9,
+                    span_len: 1
+                }
+            );
+        }
+
+        {
+            let filter = format!("str {} 127.0.0.1", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::EOF,
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 9,
+                    span_len: 7
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_arr {} 0", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Array(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_arr {} \"test\"", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Array(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_arr {} 127.0.0.1", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Array(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_map {} 0", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Map(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_map {} \"test\"", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Map(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+
+        {
+            let filter = format!("str_map {} 127.0.0.1", op);
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Map(Box::new(Type::Bytes))
+                    },
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 0,
+                    span_len: 10
+                }
+            );
+        }
+    }
+}
+
+#[test]
 fn test_field() {
     let scheme = &Scheme! {
         x: Bytes,
