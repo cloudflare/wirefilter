@@ -67,7 +67,7 @@ pub enum LexErrorKind {
     UnknownFunction(#[cause] UnknownFunctionError),
 
     /// The operation cannot be performed on this Field
-    #[fail(display = "cannot use this operation type {:?}", lhs_type)]
+    #[fail(display = "cannot perform this operation on type {:?}", lhs_type)]
     UnsupportedOp {
         /// The type of the Field
         lhs_type: Type,
