@@ -57,6 +57,9 @@ impl<'s> FilterAst<'s> {
 
     /// Compiles a [`FilterAst`] into a [`Filter`].
     pub fn compile(self) -> Filter<'s> {
-        Filter::new(self.op.compile(), self.scheme)
+        match self.op.compile() {
+            CompiledExpr::One(one) => Filter::new(one, self.scheme),
+            CompiledExpr::Vec(_) => unreachable!(),
+        }
     }
 }

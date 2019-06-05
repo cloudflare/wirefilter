@@ -1,5 +1,6 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
 use crate::{
+    filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
 };
@@ -63,7 +64,14 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+                match arg {
+                    CompiledExpr::One(one) => {
+                        CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))
+                    }
+                    CompiledExpr::Vec(vec) => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                        vec.execute(ctx).iter().map(|item| !item).collect()
+                    })),
+                }
             }
         }
     }
@@ -94,7 +102,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
@@ -115,7 +123,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     let not_expr = |expr| SimpleExpr::Unary {
@@ -139,7 +147,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
@@ -166,7 +174,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     assert_ok!(

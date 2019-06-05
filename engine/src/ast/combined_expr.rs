@@ -1,6 +1,6 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
-    filter::CompiledExpr,
+    filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
 };
@@ -98,24 +98,99 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
         match self {
             CombinedExpr::Simple(op) => op.compile(),
             CombinedExpr::Combining { op, items } => {
-                let items = items
-                    .into_iter()
-                    .map(Expr::compile)
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice();
-
-                match op {
-                    CombiningOp::And => {
-                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
+                let mut items = items.into_iter();
+                let first = items.next().unwrap().compile();
+                match first {
+                    CompiledExpr::One(first) => {
+                        let items = items
+                            .map(|item| match item.compile() {
+                                CompiledExpr::One(one) => one,
+                                CompiledExpr::Vec(_) => unreachable!(),
+                            })
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice();
+                        match op {
+                            CombiningOp::And => {
+                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                    first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
+                                }))
+                            }
+                            CombiningOp::Or => {
+                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                    first.execute(ctx) || items.iter().any(|item| item.execute(ctx))
+                                }))
+                            }
+                            CombiningOp::Xor => {
+                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                    items.iter().fold(first.execute(ctx), |acc, item| {
+                                        acc ^ item.execute(ctx)
+                                    })
+                                }))
+                            }
+                        }
                     }
-                    CombiningOp::Or => {
-                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
+                    CompiledExpr::Vec(first) => {
+                        let items = items
+                            .map(|item| match item.compile() {
+                                CompiledExpr::One(_) => unreachable!(),
+                                CompiledExpr::Vec(vec) => vec,
+                            })
+                            .collect::<Vec<_>>()
+                            .into_boxed_slice();
+                        match op {
+                            CombiningOp::And => {
+                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                    let items = items.iter().map(|item| item.execute(ctx));
+                                    let mut output = first.execute(ctx).into_vec();
+                                    for values in items {
+                                        for (idx, val) in values.iter().enumerate() {
+                                            if idx < output.len() {
+                                                output[idx] = output[idx] && *val;
+                                            }
+                                        }
+                                        if values.len() < output.len() {
+                                            output.truncate(values.len());
+                                        }
+                                    }
+                                    output.into_boxed_slice()
+                                }))
+                            }
+                            CombiningOp::Or => {
+                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                    let items = items.iter().map(|item| item.execute(ctx));
+                                    let mut output = first.execute(ctx).into_vec();
+                                    for values in items {
+                                        for (idx, val) in values.iter().enumerate() {
+                                            if idx < output.len() {
+                                                output[idx] = output[idx] || *val;
+                                            }
+                                        }
+                                        if values.len() < output.len() {
+                                            output.truncate(values.len());
+                                        }
+                                    }
+                                    output.into_boxed_slice()
+                                }))
+                            }
+                            CombiningOp::Xor => {
+                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                    let items = items.iter().map(|item| item.execute(ctx));
+                                    let mut output = first.execute(ctx).into_vec();
+                                    for values in items {
+                                        for (idx, val) in values.iter().enumerate() {
+                                            if idx < output.len() {
+                                                output[idx] ^= *val;
+                                            }
+                                        }
+                                        if values.len() < output.len() {
+                                            output.truncate(values.len());
+                                        }
+                                    }
+                                    output.into_boxed_slice()
+                                }))
+                            }
+                        }
                     }
-                    CombiningOp::Xor => CompiledExpr::new(move |ctx| {
-                        items
-                            .iter()
-                            .fold(false, |acc, item| acc ^ item.execute(ctx))
-                    }),
                 }
             }
         }
@@ -162,7 +237,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     {
@@ -193,7 +268,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     {
@@ -224,7 +299,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     {
@@ -238,7 +313,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     {
@@ -269,7 +344,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     {
@@ -283,7 +358,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     {
@@ -297,7 +372,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     assert_ok!(

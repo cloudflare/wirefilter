@@ -524,10 +524,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("ssl", true).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("ssl", false).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -562,25 +562,25 @@ mod tests {
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value(
             "ip.addr",
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]),
         )
         .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value(
             "ip.addr",
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81]),
         )
         .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -666,10 +666,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -701,10 +701,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("tcp.port", 443).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -737,25 +737,25 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("tcp.port", 8080).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("tcp.port", 443).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("tcp.port", 2081).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("tcp.port", 2082).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("tcp.port", 2083).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("tcp.port", 2084).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -792,13 +792,13 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("http.host", "example.net").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -841,23 +841,23 @@ mod tests {
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 3]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("ip.addr", IpAddr::from([255, 255, 255, 255]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -886,10 +886,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("http.host", "abc.net.au").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -918,10 +918,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -953,10 +953,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("tcp.port", 80).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("tcp.port", 8080).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -982,7 +982,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.cookies", cookies).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         let cookies = LhsValue::Array({
             let mut arr = Array::new(Type::Bytes);
@@ -991,7 +991,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.cookies", cookies).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -1027,7 +1027,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.headers", headers).unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
@@ -1036,7 +1036,7 @@ mod tests {
         });
 
         ctx.set_field_value("http.headers", headers).unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -1083,10 +1083,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.com").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -1133,10 +1133,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "EXAMPLE.COM").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         ctx.set_field_value("http.host", "EXAMPLE.ORG").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -1172,7 +1172,7 @@ mod tests {
 
         ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -1208,7 +1208,7 @@ mod tests {
 
         ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -1244,7 +1244,7 @@ mod tests {
 
         ctx.set_field_value("http.headers", Map::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -1280,7 +1280,7 @@ mod tests {
 
         ctx.set_field_value("http.headers", Map::new(Type::Bytes))
             .unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     #[test]
@@ -1327,10 +1327,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example.org").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("http.host", "example.co.uk").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
 
         let expr = assert_ok!(
             FieldExpr::lex_with(r#"concat(http.host, ".org") == "example.org""#, &SCHEME),
@@ -1383,10 +1383,10 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         ctx.set_field_value("http.host", "example").unwrap();
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value("http.host", "cloudflare").unwrap();
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     #[test]
@@ -1466,6 +1466,6 @@ mod tests {
         });
         ctx.set_field_value("array.of.bool", booleans).unwrap();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 }

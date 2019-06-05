@@ -1,6 +1,6 @@
 use super::field_expr::LhsFieldExpr;
 use crate::{
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, FieldIndex, IndexAccessError, Scheme},
     types::{GetType, LhsValue, Type},
@@ -32,23 +32,23 @@ impl<'s> IndexExpr<'s> {
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = call.compile();
-                CompiledExpr::new(move |ctx| {
+                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
                     indexes
                         .iter()
                         .fold((&call.execute(ctx)).as_ref().ok(), |value, idx| {
                             value.and_then(|val| val.get(idx).unwrap())
                         })
                         .map_or(default, |val| func(val))
-                })
+                }))
             }
-            LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
+            LhsFieldExpr::Field(f) => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
                 indexes
                     .iter()
                     .fold(Some(ctx.get_field_value_unchecked(f)), |value, idx| {
                         value.and_then(|val| val.get(idx).unwrap())
                     })
                     .map_or(default, |val| func(val))
-            }),
+            })),
         }
     }
 

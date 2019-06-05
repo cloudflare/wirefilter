@@ -189,7 +189,8 @@ pub struct ParseError<'i> {
 impl<'i> Error for ParseError<'i> {}
 
 impl<'i> ParseError<'i> {
-    /// Create a new ParseError for the input, LexErrorKind and span in the input.
+    /// Create a new ParseError for the input, LexErrorKind and span in the
+    /// input.
     pub fn new(mut input: &'i str, (kind, span): (LexErrorKind, &'i str)) -> Self {
         let input_range = input.as_ptr() as usize..=input.as_ptr() as usize + input.len();
         assert!(
