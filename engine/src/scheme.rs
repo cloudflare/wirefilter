@@ -402,9 +402,13 @@ macro_rules! Scheme {
 
 #[test]
 fn test_parse_error() {
+    use crate::types::TypeMismatchError;
     use indoc::indoc;
 
-    let scheme = &Scheme! { num: Int };
+    let scheme = &Scheme! {
+        num: Int,
+        arr: Array(Bool),
+    };
 
     {
         let err = scheme.parse("xyz").unwrap_err();
@@ -505,6 +509,39 @@ fn test_parse_error() {
                 Filter parsing error (2:8):
                 num == true or
                        ^^^^^^^ expected digit
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme
+            .parse(indoc!(
+                r#"
+                arr and arr
+                "#
+            ))
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::TypeMismatch(TypeMismatchError {
+                    expected: Type::Bool.into(),
+                    actual: Type::Array(Box::new(Type::Bool)),
+                }),
+                input: "arr and arr",
+                line_number: 0,
+                span_start: 11,
+                span_len: 0,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:12):
+                arr and arr
+                           ^ expected value of type {Type(Bool)}, but got Array(Bool)
                 "#
             )
         );

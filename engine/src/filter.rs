@@ -57,6 +57,7 @@ pub(crate) enum CompiledExpr<'s> {
 }
 
 impl<'s> CompiledExpr<'s> {
+    #[cfg(test)]
     pub fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
         match self {
             CompiledExpr::One(one) => one.execute(ctx),
@@ -64,6 +65,7 @@ impl<'s> CompiledExpr<'s> {
         }
     }
 
+    #[cfg(test)]
     pub fn execute_vec<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
         match self {
             CompiledExpr::One(_) => unreachable!(),

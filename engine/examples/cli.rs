@@ -19,7 +19,8 @@ fn main() {
         int: Int,
         bool: Bool,
         str_arr: Array(Bytes),
-        str_map: Map(Bytes)
+        str_map: Map(Bytes),
+        bool_arr: Array(Bool),
     };
 
     scheme

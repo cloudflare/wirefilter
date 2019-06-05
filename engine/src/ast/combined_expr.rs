@@ -1,8 +1,9 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
-    lex::{skip_space, Lex, LexResult, LexWith},
+    lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
+    types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 
@@ -20,6 +21,15 @@ pub enum CombinedExpr<'s> {
         op: CombiningOp,
         items: Vec<CombinedExpr<'s>>,
     },
+}
+
+impl<'s> GetType for CombinedExpr<'s> {
+    fn get_type(&self) -> Type {
+        match &self {
+            CombinedExpr::Simple(lhs) => lhs.get_type(),
+            CombinedExpr::Combining { ref items, .. } => items[0].get_type(),
+        }
+    }
 }
 
 impl<'s> CombinedExpr<'s> {
@@ -50,6 +60,25 @@ impl<'s> CombinedExpr<'s> {
                 rhs = rhs
                     .0
                     .lex_more_with_precedence(scheme, lookahead.0, lookahead)?;
+            }
+
+            // check that the CombinedExpr is valid by ensuring both the left
+            // hand side and right hand side of the operator are comparable.
+            // For example, it doesn't make sense to do a logical operator on
+            // a Bool and Bytes, or an Array(Bool) with Bool.
+            let (lhsty, rhsty) = (lhs.get_type(), rhs.0.get_type());
+            match (&lhsty, &rhsty) {
+                (Type::Bool, Type::Bool) => {}
+                (Type::Array(_), Type::Array(_)) => {}
+                _ => {
+                    return Err((
+                        LexErrorKind::TypeMismatch(TypeMismatchError {
+                            expected: lhsty.into(),
+                            actual: rhsty,
+                        }),
+                        lookahead.1,
+                    ))
+                }
             }
 
             match lhs {
@@ -198,13 +227,20 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)]
 fn test() {
     use super::field_expr::FieldExpr;
-    use crate::{execution_context::ExecutionContext, lex::complete};
+    use crate::{
+        execution_context::ExecutionContext,
+        lex::complete,
+        types::{Array, Type},
+    };
 
     let scheme = &Scheme! {
         t: Bool,
         f: Bool,
+        at: Array(Bool),
+        af: Array(Bool),
     };
 
     let ctx = &mut ExecutionContext::new(scheme);
@@ -223,8 +259,38 @@ fn test() {
 
     assert_ok!(CombinedExpr::lex_with("t", scheme), t_expr());
 
+    let at_expr = CombinedExpr::Simple(SimpleExpr::Field(
+        complete(FieldExpr::lex_with("at", scheme)).unwrap(),
+    ));
+
+    let at_expr = || at_expr.clone();
+
+    let af_expr = CombinedExpr::Simple(SimpleExpr::Field(
+        complete(FieldExpr::lex_with("af", scheme)).unwrap(),
+    ));
+
+    let af_expr = || af_expr.clone();
+
+    assert_ok!(CombinedExpr::lex_with("at", scheme), at_expr());
+
     ctx.set_field_value("t", true).unwrap();
     ctx.set_field_value("f", false).unwrap();
+    ctx.set_field_value("at", {
+        let mut arr = Array::new(Type::Bool);
+        arr.push(true.into()).unwrap();
+        arr.push(false.into()).unwrap();
+        arr.push(true.into()).unwrap();
+        arr
+    })
+    .unwrap();
+    ctx.set_field_value("af", {
+        let mut arr = Array::new(Type::Bool);
+        arr.push(false.into()).unwrap();
+        arr.push(false.into()).unwrap();
+        arr.push(true.into()).unwrap();
+        arr
+    })
+    .unwrap();
 
     {
         let expr = assert_ok!(
@@ -399,4 +465,115 @@ fn test() {
             ],
         }
     );
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex_with("at and af", scheme),
+            CombinedExpr::Combining {
+                op: CombiningOp::And,
+                items: vec![at_expr(), af_expr()],
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![false, false, true].into_boxed_slice()
+        );
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex_with("at or af", scheme),
+            CombinedExpr::Combining {
+                op: CombiningOp::Or,
+                items: vec![at_expr(), af_expr()],
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, true].into_boxed_slice()
+        );
+    }
+
+    {
+        let expr = assert_ok!(
+            CombinedExpr::lex_with("at xor af", scheme),
+            CombinedExpr::Combining {
+                op: CombiningOp::Xor,
+                items: vec![at_expr(), af_expr()],
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, false].into_boxed_slice()
+        );
+    }
+
+    {
+        assert_err!(
+            CombinedExpr::lex_with("t and af", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bool.into(),
+                actual: Type::Array(Box::new(Type::Bool)),
+            }),
+            ""
+        );
+
+        assert_err!(
+            CombinedExpr::lex_with("at and f", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Array(Box::new(Type::Bool)).into(),
+                actual: Type::Bool,
+            }),
+            ""
+        );
+    }
+
+    {
+        assert_err!(
+            CombinedExpr::lex_with("t or af", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bool.into(),
+                actual: Type::Array(Box::new(Type::Bool)),
+            }),
+            ""
+        );
+
+        assert_err!(
+            CombinedExpr::lex_with("at or f", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Array(Box::new(Type::Bool)).into(),
+                actual: Type::Bool,
+            }),
+            ""
+        );
+    }
+
+    {
+        assert_err!(
+            CombinedExpr::lex_with("t xor af", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bool.into(),
+                actual: Type::Array(Box::new(Type::Bool)),
+            }),
+            ""
+        );
+
+        assert_err!(
+            CombinedExpr::lex_with("at xor f", scheme),
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Array(Box::new(Type::Bool)).into(),
+                actual: Type::Bool,
+            }),
+            ""
+        );
+    }
 }

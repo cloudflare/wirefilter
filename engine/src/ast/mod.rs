@@ -7,8 +7,9 @@ mod simple_expr;
 use self::combined_expr::CombinedExpr;
 use crate::{
     filter::{CompiledExpr, Filter},
-    lex::{LexResult, LexWith},
+    lex::{LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme, UnknownFieldError},
+    types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
@@ -41,7 +42,27 @@ impl<'s> Debug for FilterAst<'s> {
 impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let (op, input) = CombinedExpr::lex_with(input, scheme)?;
-        Ok((FilterAst { scheme, op }, input))
+        // CombinedExpr::lex_with can return an AST where the root is an
+        // CombinedExpr::Combining of type [`Array(Bool)`].
+        //
+        // It must do this because we need to be able to use
+        // CombinedExpr::Combining of type [`Array(Bool)`]
+        // as arguments to functions, however it should not be valid as a
+        // filter expression itself.
+        //
+        // Here we enforce the constraint that the root of the AST, a
+        // CombinedExpr, must evaluate to type [`Bool`].
+        let ty = op.get_type();
+        match ty {
+            Type::Bool => Ok((FilterAst { scheme, op }, input)),
+            _ => Err((
+                LexErrorKind::TypeMismatch(TypeMismatchError {
+                    expected: Type::Bool.into(),
+                    actual: ty,
+                }),
+                input,
+            )),
+        }
     }
 }
 
