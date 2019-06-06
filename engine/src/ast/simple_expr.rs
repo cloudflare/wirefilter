@@ -1,7 +1,9 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, CompiledExpr, Expr};
+use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
 use crate::{
+    filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
+    types::{GetType, Type},
 };
 use serde::Serialize;
 
@@ -18,6 +20,16 @@ pub enum SimpleExpr<'s> {
         op: UnaryOp,
         arg: Box<SimpleExpr<'s>>,
     },
+}
+
+impl<'s> GetType for SimpleExpr<'s> {
+    fn get_type(&self) -> Type {
+        match &self {
+            SimpleExpr::Field(op) => op.get_type(),
+            SimpleExpr::Parenthesized(op) => op.get_type(),
+            SimpleExpr::Unary { arg, .. } => arg.get_type(),
+        }
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
@@ -63,23 +75,45 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+                match arg {
+                    CompiledExpr::One(one) => {
+                        CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))
+                    }
+                    CompiledExpr::Vec(vec) => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                        vec.execute(ctx).iter().map(|item| !item).collect()
+                    })),
+                }
             }
         }
     }
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)]
 fn test() {
-    use crate::{execution_context::ExecutionContext, lex::complete};
+    use crate::{execution_context::ExecutionContext, lex::complete, types::Array};
 
-    let scheme = &Scheme! { t: Bool };
+    let scheme = &Scheme! {
+        t: Bool,
+        at: Array(Bool),
+    };
 
     let ctx = &mut ExecutionContext::new(scheme);
     ctx.set_field_value("t", true).unwrap();
+    ctx.set_field_value("at", {
+        let mut arr = Array::new(Type::Bool);
+        arr.push(true.into()).unwrap();
+        arr.push(false.into()).unwrap();
+        arr.push(true.into()).unwrap();
+        arr
+    })
+    .unwrap();
 
     let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
+
+    let at_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("at", scheme)).unwrap());
+    let at_expr = || at_expr.clone();
 
     {
         let expr = assert_ok!(SimpleExpr::lex_with("t", scheme), t_expr());
@@ -94,7 +128,26 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(SimpleExpr::lex_with("at", scheme), at_expr());
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "at",
+                "op": "IsTrue"
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, true].into_boxed_slice()
+        );
     }
 
     let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
@@ -115,7 +168,29 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    {
+        let expr = assert_ok!(
+            SimpleExpr::lex_with("((at))", scheme),
+            parenthesized_expr(parenthesized_expr(at_expr()))
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "at",
+                "op": "IsTrue"
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, true].into_boxed_slice()
+        );
     }
 
     let not_expr = |expr| SimpleExpr::Unary {
@@ -139,10 +214,34 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute_one(ctx), false);
     }
 
     assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
+
+    {
+        let expr = assert_ok!(SimpleExpr::lex_with("not at", scheme), not_expr(at_expr()));
+
+        assert_json!(
+            expr,
+            {
+                "op": "Not",
+                "arg": {
+                    "lhs": "at",
+                    "op": "IsTrue"
+                }
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![false, true, false].into_boxed_slice()
+        );
+    }
+
+    assert_ok!(SimpleExpr::lex_with("!at", scheme), not_expr(at_expr()));
 
     {
         let expr = assert_ok!(
@@ -166,11 +265,44 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute_one(ctx), true);
     }
 
     assert_ok!(
         SimpleExpr::lex_with("! (not !t)", scheme),
         not_expr(parenthesized_expr(not_expr(not_expr(t_expr()))))
+    );
+
+    {
+        let expr = assert_ok!(
+            SimpleExpr::lex_with("!!at", scheme),
+            not_expr(not_expr(at_expr()))
+        );
+
+        assert_json!(
+            expr,
+            {
+                "op": "Not",
+                "arg": {
+                    "op": "Not",
+                    "arg": {
+                        "lhs": "at",
+                        "op": "IsTrue"
+                    }
+                }
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, true].into_boxed_slice()
+        );
+    }
+
+    assert_ok!(
+        SimpleExpr::lex_with("! (not !at)", scheme),
+        not_expr(parenthesized_expr(not_expr(not_expr(at_expr()))))
     );
 }

@@ -200,6 +200,20 @@ macro_rules! declare_types {
             }
         })*
 
+        $(impl<'a> TryFrom<&'a LhsValue<'a>> for &'a $lhs_ty {
+            type Error = TypeMismatchError;
+
+            fn try_from(value: &'a LhsValue<'a>) -> Result<&'a $lhs_ty, TypeMismatchError> {
+                match value {
+                    LhsValue::$name(value) => Ok(value),
+                    _ => Err(TypeMismatchError {
+                        expected: specialized_try_from!($name).into(),
+                        actual: value.get_type(),
+                    }),
+                }
+            }
+        })*
+
         declare_types! {
             /// An RHS value parsed from a filter string.
             #[derive(PartialEq, Eq, Clone, Serialize)]
@@ -356,6 +370,14 @@ impl<'a> IntoIterator for Array<'a> {
     type IntoIter = std::vec::IntoIter<LhsValue<'a>>;
     fn into_iter(self) -> Self::IntoIter {
         self.data.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a Array<'a> {
+    type Item = &'a LhsValue<'a>;
+    type IntoIter = std::slice::Iter<'a, LhsValue<'a>>;
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.data).iter()
     }
 }
 
