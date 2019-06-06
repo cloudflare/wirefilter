@@ -1,6 +1,6 @@
 use super::field_expr::LhsFieldExpr;
 use crate::{
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::{CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, FieldIndex, IndexAccessError, Scheme},
     types::{GetType, LhsValue, Type},
@@ -19,12 +19,23 @@ pub(crate) struct IndexExpr<'s> {
     pub indexes: Vec<FieldIndex>,
 }
 
+macro_rules! index_access {
+    ($indexes:ident, $first:expr, $default:ident, $func:ident) => {
+        $indexes
+            .iter()
+            .fold($first, |value, idx| {
+                value.and_then(|val| val.get(idx).unwrap())
+            })
+            .map_or($default, |val| $func(val))
+    };
+}
+
 impl<'s> IndexExpr<'s> {
     pub fn uses(&self, field: Field<'s>) -> bool {
         self.lhs.uses(field)
     }
 
-    pub fn compile_with<F: 's>(self, default: bool, func: F) -> CompiledExpr<'s>
+    pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledOneExpr<'s>
     where
         F: Fn(&LhsValue<'_>) -> bool,
     {
@@ -32,22 +43,42 @@ impl<'s> IndexExpr<'s> {
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = call.compile();
-                CompiledExpr::new(move |ctx| {
-                    indexes
-                        .iter()
-                        .fold((&call.execute(ctx)).as_ref().ok(), |value, idx| {
-                            value.and_then(|val| val.get(idx).unwrap())
-                        })
-                        .map_or(default, |val| func(val))
+                CompiledOneExpr::new(move |ctx| {
+                    index_access!(indexes, (&call.execute(ctx)).as_ref().ok(), default, func)
                 })
             }
-            LhsFieldExpr::Field(f) => CompiledExpr::new(move |ctx| {
-                indexes
-                    .iter()
-                    .fold(Some(ctx.get_field_value_unchecked(f)), |value, idx| {
-                        value.and_then(|val| val.get(idx).unwrap())
-                    })
-                    .map_or(default, |val| func(val))
+            LhsFieldExpr::Field(f) => CompiledOneExpr::new(move |ctx| {
+                index_access!(
+                    indexes,
+                    Some(ctx.get_field_value_unchecked(f)),
+                    default,
+                    func
+                )
+            }),
+        }
+    }
+
+    pub fn compile_vec_with<F: 's>(self, default: &'s [bool], func: F) -> CompiledVecExpr<'s>
+    where
+        F: Fn(&LhsValue<'_>) -> Box<[bool]>,
+    {
+        let Self { lhs, indexes } = self;
+        match lhs {
+            LhsFieldExpr::FunctionCallExpr(call) => {
+                let call = call.compile();
+                CompiledVecExpr::new(move |ctx| {
+                    let default = default.to_vec().into_boxed_slice();
+                    index_access!(indexes, (&call.execute(ctx)).as_ref().ok(), default, func)
+                })
+            }
+            LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
+                let default = default.to_vec().into_boxed_slice();
+                index_access!(
+                    indexes,
+                    Some(ctx.get_field_value_unchecked(f)),
+                    default,
+                    func
+                )
             }),
         }
     }

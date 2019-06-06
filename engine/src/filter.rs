@@ -17,17 +17,60 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
+pub(crate) struct CompiledOneExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
 
-impl<'s> CompiledExpr<'s> {
+impl<'s> CompiledOneExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
-        CompiledExpr(Box::new(closure))
+        CompiledOneExpr(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.
     pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
         self.0(ctx)
+    }
+}
+
+type CompiledVecExprResult = Box<[bool]>;
+
+pub(crate) struct CompiledVecExpr<'s>(
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's>,
+);
+
+impl<'s> CompiledVecExpr<'s> {
+    /// Creates a compiled expression IR from a generic closure.
+    pub(crate) fn new(
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's,
+    ) -> Self {
+        CompiledVecExpr(Box::new(closure))
+    }
+
+    /// Executes a filter against a provided context with values.
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
+        self.0(ctx)
+    }
+}
+
+pub(crate) enum CompiledExpr<'s> {
+    One(CompiledOneExpr<'s>),
+    Vec(CompiledVecExpr<'s>),
+}
+
+impl<'s> CompiledExpr<'s> {
+    #[cfg(test)]
+    pub fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
+        match self {
+            CompiledExpr::One(one) => one.execute(ctx),
+            CompiledExpr::Vec(_) => unreachable!(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn execute_vec<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
+        match self {
+            CompiledExpr::One(_) => unreachable!(),
+            CompiledExpr::Vec(vec) => vec.execute(ctx),
+        }
     }
 }
 
@@ -79,13 +122,13 @@ impl<'s> CompiledValueExpr<'s> {
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
 pub struct Filter<'s> {
-    root_expr: CompiledExpr<'s>,
+    root_expr: CompiledOneExpr<'s>,
     scheme: &'s Scheme,
 }
 
 impl<'s> Filter<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledExpr<'s>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledOneExpr<'s>, scheme: &'s Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 
