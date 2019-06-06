@@ -152,17 +152,13 @@ impl<'s> LhsFieldExpr<'s> {
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for LhsFieldExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
-        Ok(match FunctionCallExpr::lex_with(input, scheme) {
-            Ok((call, input)) => (LhsFieldExpr::FunctionCallExpr(call), input),
-            Err(err @ (LexErrorKind::InvalidArgumentType { .. }, _))
-            | Err(err @ (LexErrorKind::InvalidArgumentKind { .. }, _))
-            | Err(err @ (LexErrorKind::InvalidArgumentsCount { .. }, _)) => Err(err)?,
-            // Fallback to field
-            Err(_) => {
-                let (field, input) = Field::lex_with(input, scheme)?;
-                (LhsFieldExpr::Field(field), input)
-            }
-        })
+        FunctionCallExpr::lex_with(input, scheme)
+            .map(|(call, input)| (LhsFieldExpr::FunctionCallExpr(call), input))
+            .or_else(|(err, rest)| match err {
+                LexErrorKind::UnknownFunction(_) => Field::lex_with(input, scheme)
+                    .map(|(field, input)| (LhsFieldExpr::Field(field), input)),
+                _ => Err((err, rest)),
+            })
     }
 }
 
