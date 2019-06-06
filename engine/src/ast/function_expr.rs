@@ -45,6 +45,33 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let _initial_input = input;
 
+        macro_rules! c_is_field {
+            ($c:expr) => {
+                (($c.is_ascii_alphanumeric() && !$c.is_ascii_hexdigit()) || $c == '_')
+            };
+        }
+
+        // Grammar is ambiguous but lets try to parse the tokens we can be sure of
+        // This will provide better error reporting in most cases
+        let mut chars = input.chars();
+        if let Some(c) = chars.next() {
+            // check up to 3 next chars because third char of an hexa-string is either ':'
+            // or '-'
+            let c2 = chars.next();
+            let c3 = chars.next();
+            if c == '"' {
+                return RhsValue::lex_with(input, Type::Bytes)
+                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input));
+            } else if c_is_field!(c)
+                || (c2.is_some() && c_is_field!(c2.unwrap()))
+                || (c3.is_some() && c_is_field!(c3.unwrap()))
+            {
+                return IndexExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input));
+            }
+        }
+
+        // Fallback to blind parsing next argument
         IndexExpr::lex_with(input, scheme)
             .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
             .or_else(|_| {
@@ -55,18 +82,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 RhsValue::lex_with(input, Type::Int)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
-            // try to parse Bytes after Int because digit literals < 255 are wrongly interpreted
-            // as Bytes
+            // try to parse Bytes after Int because digit literals < 255 are wrongly
+            // interpreted as Bytes
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
-            .or_else(|_| {
-                Err((
-                    LexErrorKind::ExpectedName("a valid function argument"),
-                    _initial_input,
-                ))
-            })
+            .or_else(|_| Err((LexErrorKind::EOF, _initial_input)))
     }
 }
 
@@ -158,15 +180,15 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             c.is_ascii_alphanumeric() || c == '_'
         })?;
 
+        let function = scheme
+            .get_function(name)
+            .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
+
         input = skip_space(input);
 
         input = expect(input, "(")?;
 
         input = skip_space(input);
-
-        let function = scheme
-            .get_function(name)
-            .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
 
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
 
@@ -252,6 +274,7 @@ fn test_function() {
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
         },
+        scheme::UnknownFieldError,
         types::{Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
@@ -425,7 +448,13 @@ fn test_function() {
 
     assert_err!(
         FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
-        LexErrorKind::ExpectedName("a valid function argument"),
-        "http.test );"
+        LexErrorKind::UnknownField(UnknownFieldError),
+        "http.test"
+    );
+
+    assert_err!(
+        FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
+        LexErrorKind::UnknownField(UnknownFieldError),
+        "http.test"
     );
 }
