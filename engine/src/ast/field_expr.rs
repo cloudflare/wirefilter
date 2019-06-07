@@ -9,13 +9,13 @@ use crate::{
     rhs_types::{Bytes, ExplicitIpRange, Regex},
     scheme::{Field, Scheme},
     strict_partial_ord::StrictPartialOrd,
-    types::{Array, GetType, LhsValue, RhsValue, RhsValues, Type},
+    types::{GetType, LhsValue, RhsValue, RhsValues, Type},
 };
 use fnv::FnvBuildHasher;
 use indexmap::IndexSet;
 use memmem::Searcher;
 use serde::{Serialize, Serializer};
-use std::{cmp::Ordering, convert::TryFrom, net::IpAddr};
+use std::{cmp::Ordering, net::IpAddr};
 
 const LESS: u8 = 0b001;
 const GREATER: u8 = 0b010;
@@ -269,46 +269,35 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     CompiledExpr::One(lhs.compile_one_with(false, move |x| *cast_value!(x, Bool)))
                 }
                 Type::Array(arr_type) => match *arr_type {
-                    Type::Bool => CompiledExpr::Vec(lhs.compile_vec_with(&[], move |x| {
-                        let arr = <(&Array)>::try_from(x).unwrap();
-                        let mut output = Vec::new();
-                        for item in arr.into_iter() {
-                            output.push(*<(&bool)>::try_from(item).unwrap());
-                        }
-                        output.into_boxed_slice()
-                    })),
+                    Type::Bool => {
+                        CompiledExpr::Vec(lhs.compile_vec_with(&[], move |x| *cast_value!(x, Bool)))
+                    }
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
             },
-            FieldOp::Ordering { op, rhs } => {
-                match op {
-                    OrderingOp::NotEqual => {
-                        CompiledExpr::One(lhs.compile_one_with(true, move |x| {
-                            op.matches_opt(x.strict_partial_cmp(&rhs))
-                        }))
-                    }
-                    _ => CompiledExpr::One(lhs.compile_one_with(false, move |x| {
-                        op.matches_opt(x.strict_partial_cmp(&rhs))
-                    })),
-                }
-            }
+            FieldOp::Ordering { op, rhs } => match op {
+                OrderingOp::NotEqual => lhs.compile_with(true, &[], move |x| {
+                    op.matches_opt(x.strict_partial_cmp(&rhs))
+                }),
+                _ => lhs.compile_with(false, &[], move |x| {
+                    op.matches_opt(x.strict_partial_cmp(&rhs))
+                }),
+            },
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => CompiledExpr::One(
-                lhs.compile_one_with(false, move |x| cast_value!(x, Int) & rhs != 0),
-            ),
+            } => lhs.compile_with(false, &[], move |x| cast_value!(x, Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                lhs.compile_with(false, &[], move |x| {
                     searcher.search_in(cast_value!(x, Bytes)).is_some()
-                }))
+                })
             }
-            FieldOp::Matches(regex) => CompiledExpr::One(
-                lhs.compile_one_with(false, move |x| regex.is_match(cast_value!(x, Bytes))),
-            ),
+            FieldOp::Matches(regex) => {
+                lhs.compile_with(false, &[], move |x| regex.is_match(cast_value!(x, Bytes)))
+            }
             FieldOp::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
@@ -322,27 +311,23 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| {
-                        match cast_value!(x, Ip) {
-                            IpAddr::V4(addr) => v4.contains(addr),
-                            IpAddr::V6(addr) => v6.contains(addr),
-                        }
-                    }))
+                    lhs.compile_with(false, &[], move |x| match cast_value!(x, Ip) {
+                        IpAddr::V4(addr) => v4.contains(addr),
+                        IpAddr::V6(addr) => v6.contains(addr),
+                    })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    CompiledExpr::One(
-                        lhs.compile_one_with(false, move |x| values.contains(cast_value!(x, Int))),
-                    )
+                    lhs.compile_with(false, &[], move |x| values.contains(cast_value!(x, Int)))
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                    lhs.compile_with(false, &[], move |x| {
                         values.contains(cast_value!(x, Bytes) as &[u8])
-                    }))
+                    })
                 }
                 RhsValues::Bool(_) => unreachable!(),
                 RhsValues::Map(_) => unreachable!(),
@@ -364,7 +349,7 @@ mod tests {
             FunctionOptParam, FunctionParam, FunctionParamError,
         },
         rhs_types::IpRange,
-        scheme::FieldIndex,
+        scheme::{FieldIndex, IndexAccessError},
         types::{Array, ExpectedType, Map},
     };
     use cidr::{Cidr, IpCidr};
@@ -1642,5 +1627,210 @@ mod tests {
         ctx.set_field_value("http.headers", headers).unwrap();
 
         assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_map_each_on_array_for_cmp() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.cookies[*] == "three""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.cookies")),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("three".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.cookies", "*"],
+                "op": "Equal",
+                "rhs": "three",
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "one".into()).unwrap();
+            arr.insert(1, "two".into()).unwrap();
+            arr.insert(2, "three".into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![false, false, true].into_boxed_slice()
+        );
+    }
+
+    #[test]
+    fn test_map_each_on_map_for_cmp() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(r#"http.headers[*] == "three""#, &SCHEME),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.headers")),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("three".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.headers", "*"],
+                "op": "Equal",
+                "rhs": "three",
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let headers = LhsValue::Map({
+            let mut map = Map::new(Type::Bytes);
+            map.insert("0".to_string(), "one".into()).unwrap();
+            map.insert("1".to_string(), "two".into()).unwrap();
+            map.insert("2".to_string(), "three".into()).unwrap();
+            map
+        });
+        ctx.set_field_value("http.headers", headers).unwrap();
+
+        let mut true_count = 0;
+        let mut false_count = 0;
+        for val in expr.execute_vec(ctx).iter() {
+            if *val {
+                true_count += 1;
+            } else {
+                false_count += 1;
+            }
+        }
+        assert_eq!(false_count, 2);
+        assert_eq!(true_count, 1);
+    }
+
+    #[test]
+    fn test_map_each_on_array_full() {
+        let expr = assert_ok!(
+            FieldExpr::lex_with(
+                r#"concat(http.cookies[*], "-cf")[*] == "three-cf""#,
+                &SCHEME
+            ),
+            FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("concat"),
+                        function: SCHEME.get_function("concat").unwrap(),
+                        args: vec![
+                            FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                lhs: LhsFieldExpr::Field(field("http.cookies")),
+                                indexes: vec![FieldIndex::MapEach],
+                            }),
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                                "-cf".to_owned()
+                            ))),
+                        ],
+                    }),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("three-cf".to_owned().into())
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    {
+                        "name": "concat",
+                        "args": [
+                            {
+                                "kind": "IndexExpr",
+                                "value": ["http.cookies", "*"],
+                            },
+                            {
+                                "kind": "Literal",
+                                "value": "-cf"
+                            }
+                        ]
+                    },
+                    "*",
+                ],
+                "op": "Equal",
+                "rhs": "three-cf"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "one".into()).unwrap();
+            arr.insert(1, "two".into()).unwrap();
+            arr.insert(2, "three".into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![false, false, true].into_boxed_slice()
+        );
+    }
+
+    #[test]
+    fn test_map_each_error() {
+        assert_err!(
+            FieldExpr::lex_with(r#"http.host[*] == "three""#, &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Bytes,
+            }),
+            "[*]"
+        );
+
+        assert_err!(
+            FieldExpr::lex_with(r#"ip.addr[*] == 127.0.0.1"#, &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Ip,
+            }),
+            "[*]"
+        );
+
+        assert_err!(
+            FieldExpr::lex_with(r#"ssl[*]"#, &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Bool,
+            }),
+            "[*]"
+        );
+
+        assert_err!(
+            FieldExpr::lex_with(r#"tcp.port[*] == 80"#, &SCHEME),
+            LexErrorKind::InvalidIndexAccess(IndexAccessError {
+                index: FieldIndex::MapEach,
+                actual: Type::Int,
+            }),
+            "[*]"
+        );
     }
 }

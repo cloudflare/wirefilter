@@ -599,6 +599,15 @@ impl<'a> LhsValue<'a> {
             LhsValue::Map(m) => LhsValue::Map(m.to_owned()),
         }
     }
+
+    /// Returns an iterator over the Map or Array
+    pub fn iter(&'a self) -> Option<Iter<'a>> {
+        match self {
+            LhsValue::Array(array) => Some(Iter::IterArray((&array.data).iter())),
+            LhsValue::Map(map) => Some(Iter::IterMap((&map.data).iter())),
+            _ => None,
+        }
+    }
 }
 
 pub enum IntoIter<'a> {
@@ -625,6 +634,22 @@ impl<'a> IntoIterator for LhsValue<'a> {
             LhsValue::Array(array) => IntoIter::IntoArray(array.into_iter()),
             LhsValue::Map(map) => IntoIter::IntoMap(map.into_iter()),
             _ => unreachable!(),
+        }
+    }
+}
+
+pub enum Iter<'a> {
+    IterArray(std::slice::Iter<'a, LhsValue<'a>>),
+    IterMap(std::collections::hash_map::Iter<'a, String, LhsValue<'a>>),
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a LhsValue<'a>;
+
+    fn next(&mut self) -> Option<&'a LhsValue<'a>> {
+        match self {
+            Iter::IterArray(array) => array.next(),
+            Iter::IterMap(map) => map.next().map(|(_, v)| v),
         }
     }
 }
