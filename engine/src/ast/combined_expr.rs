@@ -1,6 +1,6 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
-    filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
+    filter::{CompiledBoolExpr, CompiledExpr, CompiledVecExpr},
     lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{GetType, Type, TypeMismatchError},
@@ -130,27 +130,27 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                 let mut items = items.into_iter();
                 let first = items.next().unwrap().compile();
                 match first {
-                    CompiledExpr::One(first) => {
+                    CompiledExpr::BoolExpr(first) => {
                         let items = items
                             .map(|item| match item.compile() {
-                                CompiledExpr::One(one) => one,
-                                CompiledExpr::Vec(_) => unreachable!(),
+                                CompiledExpr::BoolExpr(expr) => expr,
+                                CompiledExpr::BoolVecExpr(_) => unreachable!(),
                             })
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
                         match op {
                             CombiningOp::And => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                CompiledExpr::BoolExpr(CompiledBoolExpr::new(move |ctx| {
                                     first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
                                 }))
                             }
                             CombiningOp::Or => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                CompiledExpr::BoolExpr(CompiledBoolExpr::new(move |ctx| {
                                     first.execute(ctx) || items.iter().any(|item| item.execute(ctx))
                                 }))
                             }
                             CombiningOp::Xor => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                CompiledExpr::BoolExpr(CompiledBoolExpr::new(move |ctx| {
                                     items.iter().fold(first.execute(ctx), |acc, item| {
                                         acc ^ item.execute(ctx)
                                     })
@@ -158,17 +158,17 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                             }
                         }
                     }
-                    CompiledExpr::Vec(first) => {
+                    CompiledExpr::BoolVecExpr(first) => {
                         let items = items
                             .map(|item| match item.compile() {
-                                CompiledExpr::One(_) => unreachable!(),
-                                CompiledExpr::Vec(vec) => vec,
+                                CompiledExpr::BoolExpr(_) => unreachable!(),
+                                CompiledExpr::BoolVecExpr(expr) => expr,
                             })
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
                         match op {
                             CombiningOp::And => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                CompiledExpr::BoolVecExpr(CompiledVecExpr::new(move |ctx| {
                                     let items = items.iter().map(|item| item.execute(ctx));
                                     let mut output = first.execute(ctx).into_vec();
                                     for values in items {
@@ -185,7 +185,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                                 }))
                             }
                             CombiningOp::Or => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                CompiledExpr::BoolVecExpr(CompiledVecExpr::new(move |ctx| {
                                     let items = items.iter().map(|item| item.execute(ctx));
                                     let mut output = first.execute(ctx).into_vec();
                                     for values in items {
@@ -202,7 +202,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                                 }))
                             }
                             CombiningOp::Xor => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                CompiledExpr::BoolVecExpr(CompiledVecExpr::new(move |ctx| {
                                     let items = items.iter().map(|item| item.execute(ctx));
                                     let mut output = first.execute(ctx).into_vec();
                                     for values in items {

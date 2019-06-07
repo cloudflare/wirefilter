@@ -68,7 +68,7 @@ lex_enum!(ComparisonOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-enum FieldOp {
+pub(crate) enum FieldOp {
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
 
@@ -173,10 +173,10 @@ impl<'s> GetType for LhsFieldExpr<'s> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct FieldExpr<'s> {
-    lhs: IndexExpr<'s>,
+    pub(crate) lhs: IndexExpr<'s>,
 
     #[serde(flatten)]
-    op: FieldOp,
+    pub(crate) op: FieldOp,
 }
 
 impl<'s> GetType for FieldExpr<'s> {
@@ -265,11 +265,11 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
 
         match self.op {
             FieldOp::IsTrue => match lhs.get_type() {
-                Type::Bool => {
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| *cast_value!(x, Bool)))
-                }
+                Type::Bool => CompiledExpr::BoolExpr(
+                    lhs.compile_one_with(false, move |x| *cast_value!(x, Bool)),
+                ),
                 Type::Array(arr_type) => match *arr_type {
-                    Type::Bool => CompiledExpr::Vec(lhs.compile_vec_with(&[], move |x| {
+                    Type::Bool => CompiledExpr::BoolVecExpr(lhs.compile_vec_with(&[], move |x| {
                         let arr = <(&Array)>::try_from(x).unwrap();
                         let mut output = Vec::new();
                         for item in arr.into_iter() {
@@ -284,11 +284,11 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Ordering { op, rhs } => {
                 match op {
                     OrderingOp::NotEqual => {
-                        CompiledExpr::One(lhs.compile_one_with(true, move |x| {
+                        CompiledExpr::BoolExpr(lhs.compile_one_with(true, move |x| {
                             op.matches_opt(x.strict_partial_cmp(&rhs))
                         }))
                     }
-                    _ => CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                    _ => CompiledExpr::BoolExpr(lhs.compile_one_with(false, move |x| {
                         op.matches_opt(x.strict_partial_cmp(&rhs))
                     })),
                 }
@@ -296,17 +296,17 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
             FieldOp::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => CompiledExpr::One(
+            } => CompiledExpr::BoolExpr(
                 lhs.compile_one_with(false, move |x| cast_value!(x, Int) & rhs != 0),
             ),
             FieldOp::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                CompiledExpr::BoolExpr(lhs.compile_one_with(false, move |x| {
                     searcher.search_in(cast_value!(x, Bytes)).is_some()
                 }))
             }
-            FieldOp::Matches(regex) => CompiledExpr::One(
+            FieldOp::Matches(regex) => CompiledExpr::BoolExpr(
                 lhs.compile_one_with(false, move |x| regex.is_match(cast_value!(x, Bytes))),
             ),
             FieldOp::OneOf(values) => match values {
@@ -322,7 +322,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                    CompiledExpr::BoolExpr(lhs.compile_one_with(false, move |x| {
                         match cast_value!(x, Ip) {
                             IpAddr::V4(addr) => v4.contains(addr),
                             IpAddr::V6(addr) => v6.contains(addr),
@@ -332,7 +332,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    CompiledExpr::One(
+                    CompiledExpr::BoolExpr(
                         lhs.compile_one_with(false, move |x| values.contains(cast_value!(x, Int))),
                     )
                 }
@@ -340,7 +340,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| {
+                    CompiledExpr::BoolExpr(lhs.compile_one_with(false, move |x| {
                         values.contains(cast_value!(x, Bytes) as &[u8])
                     }))
                 }

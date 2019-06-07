@@ -79,8 +79,8 @@ impl<'s> FilterAst<'s> {
     /// Compiles a [`FilterAst`] into a [`Filter`].
     pub fn compile(self) -> Filter<'s> {
         match self.op.compile() {
-            CompiledExpr::One(one) => Filter::new(one, self.scheme),
-            CompiledExpr::Vec(_) => unreachable!(),
+            CompiledExpr::BoolExpr(expr) => Filter::new(expr, self.scheme),
+            CompiledExpr::BoolVecExpr(_) => unreachable!(),
         }
     }
 }

@@ -5,72 +5,79 @@ use crate::{
 };
 use failure::Fail;
 
-/// An error that occurs if filter and provided [`ExecutionContext`] have
+/// SchemeMismatchError occurs when the filter and [`ExecutionContext`] have
 /// different [schemes](struct@Scheme).
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "execution context doesn't match the scheme with which filter was parsed")]
 pub struct SchemeMismatchError;
 
-// Each AST expression node gets compiled into CompiledExpr. Therefore, Filter
-// essentialy is a public API facade for a tree of CompiledExprs. When filter
-// gets executed it calls `execute` method on its root expression which then
-// under the hood propagates field values to its leafs by recursively calling
-// their `execute` methods and aggregating results into a single boolean value
-// as recursion unwinds.
-pub(crate) struct CompiledOneExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
-
-impl<'s> CompiledOneExpr<'s> {
-    /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
-        CompiledOneExpr(Box::new(closure))
-    }
-
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
-        self.0(ctx)
-    }
-}
-
-type CompiledVecExprResult = Box<[bool]>;
-
-pub(crate) struct CompiledVecExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's>,
-);
-
-impl<'s> CompiledVecExpr<'s> {
-    /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's,
-    ) -> Self {
-        CompiledVecExpr(Box::new(closure))
-    }
-
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
-        self.0(ctx)
-    }
-}
-
+/// CompiledExpr is a compiled expression. An expression can compile into either
+/// variant of CompiledExpr, depending on the node and it's place in the AST.
 pub(crate) enum CompiledExpr<'s> {
-    One(CompiledOneExpr<'s>),
-    Vec(CompiledVecExpr<'s>),
+    /// The expression returns either true or false.
+    BoolExpr(CompiledBoolExpr<'s>),
+    /// The expression returns a slice of true or false.
+    ///
+    /// An example of a BoolVecExpr would be when comparing the elements of
+    /// two or more arrays or comparing each element of an array against an RhsValue.
+    BoolVecExpr(CompiledVecExpr<'s>),
 }
 
 impl<'s> CompiledExpr<'s> {
     #[cfg(test)]
     pub fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
         match self {
-            CompiledExpr::One(one) => one.execute(ctx),
-            CompiledExpr::Vec(_) => unreachable!(),
+            CompiledExpr::BoolExpr(expr) => expr.execute(ctx),
+            CompiledExpr::BoolVecExpr(_) => unreachable!(),
         }
     }
 
     #[cfg(test)]
     pub fn execute_vec<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
         match self {
-            CompiledExpr::One(_) => unreachable!(),
-            CompiledExpr::Vec(vec) => vec.execute(ctx),
+            CompiledExpr::BoolExpr(_) => unreachable!(),
+            CompiledExpr::BoolVecExpr(expr) => expr.execute(ctx),
         }
+    }
+}
+
+/// CompiledBoolExpr is a compiled expression which returns either true or false.
+pub(crate) struct CompiledBoolExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
+
+impl<'s> CompiledBoolExpr<'s> {
+    /// Creates a compiled expression from a generic closure.
+    pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
+        CompiledBoolExpr(Box::new(closure))
+    }
+
+    /// Evaluate the expression against the context.
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
+        self.0(ctx)
+    }
+}
+
+/// CompiledVecExprResult is the slice of true or false returned by CompiledVecExpr.
+type CompiledVecExprResult = Box<[bool]>;
+
+/// CompiledVecExpr is a compiled expression which returns a slice of true or false.
+///
+/// An example of a BoolVecExpr would be comparing the elements of two or more
+/// arrays or comparing each element of an array against an RhsValue.
+pub(crate) struct CompiledVecExpr<'s>(
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's>,
+);
+
+impl<'s> CompiledVecExpr<'s> {
+    /// Creates a compiled expression from a generic closure.
+    pub(crate) fn new(
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's,
+    ) -> Self {
+        CompiledVecExpr(Box::new(closure))
+    }
+
+    /// Evaluate the expression against the context.
+    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
+        self.0(ctx)
     }
 }
 
@@ -122,13 +129,13 @@ impl<'s> CompiledValueExpr<'s> {
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
 pub struct Filter<'s> {
-    root_expr: CompiledOneExpr<'s>,
+    root_expr: CompiledBoolExpr<'s>,
     scheme: &'s Scheme,
 }
 
 impl<'s> Filter<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledOneExpr<'s>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledBoolExpr<'s>, scheme: &'s Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 

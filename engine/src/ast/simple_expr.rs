@@ -1,6 +1,6 @@
 use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
 use crate::{
-    filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
+    filter::{CompiledBoolExpr, CompiledExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{GetType, Type},
@@ -76,12 +76,14 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
             } => {
                 let arg = arg.compile();
                 match arg {
-                    CompiledExpr::One(one) => {
-                        CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))
+                    CompiledExpr::BoolExpr(expr) => {
+                        CompiledExpr::BoolExpr(CompiledBoolExpr::new(move |ctx| !expr.execute(ctx)))
                     }
-                    CompiledExpr::Vec(vec) => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                        vec.execute(ctx).iter().map(|item| !item).collect()
-                    })),
+                    CompiledExpr::BoolVecExpr(expr) => {
+                        CompiledExpr::BoolVecExpr(CompiledVecExpr::new(move |ctx| {
+                            expr.execute(ctx).iter().map(|item| !item).collect()
+                        }))
+                    }
                 }
             }
         }

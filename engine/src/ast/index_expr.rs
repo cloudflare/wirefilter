@@ -1,19 +1,19 @@
 use super::field_expr::LhsFieldExpr;
 use crate::{
-    filter::{CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
+    filter::{CompiledBoolExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, FieldIndex, IndexAccessError, Scheme},
     types::{GetType, LhsValue, Type},
 };
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
 // IndexExpr is an expr that destructures an index into an LhsFieldExpr.
 //
 // For example, given a scheme which declares a field, http.request.headers,
 // as a map of string to list of strings, then the expression
 // http.request.headers["Cookie"][0] would have an LhsFieldExpr
 // http.request.headers and indexes ["Cookie", 0].
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct IndexExpr<'s> {
     pub lhs: LhsFieldExpr<'s>,
     pub indexes: Vec<FieldIndex>,
@@ -35,7 +35,7 @@ impl<'s> IndexExpr<'s> {
         self.lhs.uses(field)
     }
 
-    pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledOneExpr<'s>
+    pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledBoolExpr<'s>
     where
         F: Fn(&LhsValue<'_>) -> bool,
     {
@@ -43,11 +43,11 @@ impl<'s> IndexExpr<'s> {
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = call.compile();
-                CompiledOneExpr::new(move |ctx| {
+                CompiledBoolExpr::new(move |ctx| {
                     index_access!(indexes, (&call.execute(ctx)).as_ref().ok(), default, func)
                 })
             }
-            LhsFieldExpr::Field(f) => CompiledOneExpr::new(move |ctx| {
+            LhsFieldExpr::Field(f) => CompiledBoolExpr::new(move |ctx| {
                 index_access!(
                     indexes,
                     Some(ctx.get_field_value_unchecked(f)),
