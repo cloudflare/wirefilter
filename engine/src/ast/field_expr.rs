@@ -68,7 +68,7 @@ lex_enum!(ComparisonOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-enum FieldOp {
+pub(crate) enum FieldOp {
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
 
@@ -173,10 +173,10 @@ impl<'s> GetType for LhsFieldExpr<'s> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct FieldExpr<'s> {
-    lhs: IndexExpr<'s>,
+    pub(crate) lhs: IndexExpr<'s>,
 
     #[serde(flatten)]
-    op: FieldOp,
+    pub(crate) op: FieldOp,
 }
 
 impl<'s> GetType for FieldExpr<'s> {

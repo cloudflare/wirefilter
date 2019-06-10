@@ -1,19 +1,27 @@
 use crate::{
-    ast::index_expr::IndexExpr,
-    filter::CompiledValueExpr,
+    ast::{index_expr::IndexExpr, simple_expr::SimpleExpr, Expr},
+    filter::{CompiledExpr, CompiledValueExpr},
     functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
-    types::{GetType, LhsValue, RhsValue, Type},
+    types::{Array, GetType, LhsValue, RhsValue, Type},
 };
 use derivative::Derivative;
 use serde::Serialize;
 
+/// FunctionCallArgExpr is a function argument. It can be a sub-expression with
+/// [`SimpleExpr`], a field with [`IndexExpr`] or a literal with [`Literal`].
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub(crate) enum FunctionCallArgExpr<'s> {
+    /// IndexExpr is a field that supports the indexing operator.
     IndexExpr(IndexExpr<'s>),
+    /// A Literal.
     Literal(RhsValue),
+    /// SimpleExpr is a sub-expression which can evaluate to either true/false
+    /// or a list of true/false. It compiles to a CompiledExpr and is coerced
+    /// into a CompiledValueExpr.
+    SimpleExpr(SimpleExpr<'s>),
 }
 
 impl<'s> FunctionCallArgExpr<'s> {
@@ -21,6 +29,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
+            FunctionCallArgExpr::SimpleExpr(simple_expr) => simple_expr.uses(field),
         }
     }
 
@@ -28,6 +37,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(_) => FunctionArgKind::Field,
             FunctionCallArgExpr::Literal(_) => FunctionArgKind::Literal,
+            FunctionCallArgExpr::SimpleExpr(_) => FunctionArgKind::Field,
         }
     }
 
@@ -36,6 +46,29 @@ impl<'s> FunctionCallArgExpr<'s> {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
             FunctionCallArgExpr::Literal(literal) => {
                 CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned().into())
+            }
+            // The function argument is an expression compiled as either an
+            // CompiledExpr::One or CompiledExpr::Vec.
+            // Here we execute the expression to get the actual argument
+            // for the function and forward the result in a CompiledValueExpr.
+            FunctionCallArgExpr::SimpleExpr(simple_expr) => {
+                let compiled_expr = simple_expr.compile();
+                match compiled_expr {
+                    CompiledExpr::One(expr) => {
+                        CompiledValueExpr::new(move |ctx| LhsValue::from(expr.execute(ctx)).into())
+                    }
+                    CompiledExpr::Vec(expr) => CompiledValueExpr::new(move |ctx| {
+                        let result = expr.execute(ctx);
+                        LhsValue::Array({
+                            let mut arr = Array::new(Type::Bool);
+                            for next in result.iter() {
+                                arr.push((*next).into()).unwrap();
+                            }
+                            arr
+                        })
+                        .into()
+                    }),
+                }
             }
         }
     }
@@ -62,6 +95,9 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
             if c == '"' {
                 return RhsValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input));
+            } else if c == '(' {
+                return SimpleExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs), input));
             } else if c_is_field!(c)
                 || (c2.is_some() && c_is_field!(c2.unwrap()))
                 || (c3.is_some() && c_is_field!(c3.unwrap()))
@@ -74,6 +110,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
         // Fallback to blind parsing next argument
         IndexExpr::lex_with(input, scheme)
             .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+            .or_else(|_| {
+                SimpleExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs), input))
+            })
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Ip)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
@@ -97,6 +137,7 @@ impl<'s> GetType for FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.get_type(),
             FunctionCallArgExpr::Literal(literal) => literal.get_type(),
+            FunctionCallArgExpr::SimpleExpr(simple_expr) => simple_expr.get_type(),
         }
     }
 }
@@ -267,18 +308,41 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
     }
 }
 
-#[test]
-fn test_function() {
-    use super::field_expr::LhsFieldExpr;
+#[cfg(test)]
+mod tests {
+    use super::*;
     use crate::{
+        ast::{
+            combined_expr::{CombinedExpr, CombiningOp},
+            field_expr::{FieldExpr, FieldOp, LhsFieldExpr},
+        },
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
         },
         scheme::UnknownFieldError,
-        types::{Type, TypeMismatchError},
+        types::{Array, Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
+    use std::convert::TryFrom;
 
+    // test function
+    fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        let arg = match args.next() {
+            Some(Ok(arg)) => match args.next() {
+                Some(_) => unreachable!(),
+                None => arg,
+            },
+            _ => unreachable!(),
+        };
+        Some(LhsValue::Bool(
+            Array::try_from(arg)
+                .unwrap()
+                .into_iter()
+                .any(|lhs| bool::try_from(lhs).unwrap()),
+        ))
+    }
+
+    // test function
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
     }
@@ -287,10 +351,27 @@ fn test_function() {
         static ref SCHEME: Scheme = {
             let mut scheme = Scheme! {
                 http.host: Bytes,
+                http.request.headers.keys: Array(Bytes),
+                http.request.headers.values: Array(Bytes),
+                http.request.headers.is_empty: Array(Bool),
                 ip.addr: Ip,
                 ssl: Bool,
                 tcp.port: Int,
             };
+            scheme
+                .add_function(
+                    "any".into(),
+                    Function {
+                        params: vec![FunctionParam {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Array(Box::new(Type::Bool)),
+                        }],
+                        opt_params: vec![],
+                        return_type: Type::Bool,
+                        implementation: FunctionImpl::new(any_function),
+                    },
+                )
+                .unwrap();
             scheme
                 .add_function(
                     "echo".into(),
@@ -312,149 +393,218 @@ fn test_function() {
         };
     }
 
-    let expr = assert_ok!(
-        FunctionCallExpr::lex_with("echo ( http.host );", &SCHEME),
-        FunctionCallExpr {
-            name: String::from("echo"),
-            function: SCHEME.get_function("echo").unwrap(),
-            args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
-                indexes: vec![],
-            })],
-        },
-        ";"
-    );
+    #[test]
+    fn test_lex_function_call_expr() {
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with("echo ( http.host );", &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                    indexes: vec![],
+                })],
+            },
+            ";"
+        );
 
-    assert_json!(
-        expr,
-        {
-            "name": "echo",
-            "args": [
-                {
-                    "kind": "IndexExpr",
-                    "value": "http.host"
-                }
-            ]
-        }
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( );", &SCHEME),
-        LexErrorKind::InvalidArgumentsCount {
-            expected_min: 1,
-            expected_max: Some(2),
-        },
-        ");"
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( http.host , http.host );", &SCHEME),
-        LexErrorKind::InvalidArgumentKind {
-            index: 1,
-            mismatch: FunctionArgKindMismatchError {
-                actual: FunctionArgKind::Field,
-                expected: FunctionArgKind::Literal,
-            }
-        },
-        "http.host"
-    );
-
-    let expr = assert_ok!(
-        FunctionCallExpr::lex_with("echo ( echo ( http.host ) );", &SCHEME),
-        FunctionCallExpr {
-            name: String::from("echo"),
-            function: SCHEME.get_function("echo").unwrap(),
-            args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
-                lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                    name: String::from("echo"),
-                    function: SCHEME.get_function("echo").unwrap(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
-                        indexes: vec![],
-                    })],
-                }),
-                indexes: vec![],
-            })]
-            .to_vec(),
-        },
-        ";"
-    );
-
-    assert_json!(
-        expr,
-        {
-            "name": "echo",
-            "args": [
-                {
-                    "kind": "IndexExpr",
-                    "value": {
-                        "name": "echo",
-                        "args": [
-                            {
-                                "kind": "IndexExpr",
-                                "value": "http.host"
-                            }
-                        ]
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": "http.host"
                     }
+                ]
+            }
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( );", &SCHEME),
+            LexErrorKind::InvalidArgumentsCount {
+                expected_min: 1,
+                expected_max: Some(2),
+            },
+            ");"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.host , http.host );", &SCHEME),
+            LexErrorKind::InvalidArgumentKind {
+                index: 1,
+                mismatch: FunctionArgKindMismatchError {
+                    actual: FunctionArgKind::Field,
+                    expected: FunctionArgKind::Literal,
                 }
-            ]
-        }
-    );
+            },
+            "http.host"
+        );
 
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( \"test\" );", &SCHEME),
-        LexErrorKind::InvalidArgumentKind {
-            index: 0,
-            mismatch: FunctionArgKindMismatchError {
-                actual: FunctionArgKind::Literal,
-                expected: FunctionArgKind::Field,
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with("echo ( echo ( http.host ) );", &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("echo"),
+                        function: SCHEME.get_function("echo").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                            indexes: vec![],
+                        })],
+                    }),
+                    indexes: vec![],
+                })]
+                .to_vec(),
+            },
+            ";"
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": {
+                            "name": "echo",
+                            "args": [
+                                {
+                                    "kind": "IndexExpr",
+                                    "value": "http.host"
+                                }
+                            ]
+                        }
+                    }
+                ]
             }
-        },
-        "\"test\""
-    );
+        );
 
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( 10 );", &SCHEME),
-        LexErrorKind::InvalidArgumentKind {
-            index: 0,
-            mismatch: FunctionArgKindMismatchError {
-                actual: FunctionArgKind::Literal,
-                expected: FunctionArgKind::Field,
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( \"test\" );", &SCHEME),
+            LexErrorKind::InvalidArgumentKind {
+                index: 0,
+                mismatch: FunctionArgKindMismatchError {
+                    actual: FunctionArgKind::Literal,
+                    expected: FunctionArgKind::Field,
+                }
+            },
+            "\"test\""
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( 10 );", &SCHEME),
+            LexErrorKind::InvalidArgumentKind {
+                index: 0,
+                mismatch: FunctionArgKindMismatchError {
+                    actual: FunctionArgKind::Literal,
+                    expected: FunctionArgKind::Field,
+                }
+            },
+            "10"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
+            LexErrorKind::InvalidArgumentType {
+                index: 0,
+                mismatch: TypeMismatchError {
+                    actual: Type::Ip,
+                    expected: Type::Bytes.into(),
+                }
+            },
+            "ip.addr"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
+            LexErrorKind::InvalidArgumentsCount {
+                expected_min: 1,
+                expected_max: Some(2),
+            },
+            "\"test\" );"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
+            LexErrorKind::UnknownField(UnknownFieldError),
+            "http.test"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
+            LexErrorKind::UnknownField(UnknownFieldError),
+            "http.test"
+        );
+
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with(
+                r#"any ( ( http.request.headers.is_empty or http.request.headers.is_empty ) )"#,
+                &SCHEME
+            ),
+            FunctionCallExpr {
+                name: String::from("any"),
+                function: SCHEME.get_function("any").unwrap(),
+                args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Parenthesized(
+                    Box::new(CombinedExpr::Combining {
+                        op: CombiningOp::Or,
+                        items: vec![
+                            CombinedExpr::Simple(SimpleExpr::Field(FieldExpr {
+                                lhs: IndexExpr {
+                                    lhs: LhsFieldExpr::Field(
+                                        SCHEME
+                                            .get_field_index("http.request.headers.is_empty")
+                                            .unwrap()
+                                    ),
+                                    indexes: vec![],
+                                },
+                                op: FieldOp::IsTrue,
+                            })),
+                            CombinedExpr::Simple(SimpleExpr::Field(FieldExpr {
+                                lhs: IndexExpr {
+                                    lhs: LhsFieldExpr::Field(
+                                        SCHEME
+                                            .get_field_index("http.request.headers.is_empty")
+                                            .unwrap()
+                                    ),
+                                    indexes: vec![],
+                                },
+                                op: FieldOp::IsTrue,
+                            }))
+                        ]
+                    })
+                ))],
+            },
+            ""
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "any",
+                "args": [
+                    {
+                        "kind": "SimpleExpr",
+                        "value": {
+                            "items": [
+                                {
+                                    "lhs": "http.request.headers.is_empty",
+                                    "op": "IsTrue",
+                                },
+                                {
+                                    "lhs": "http.request.headers.is_empty",
+                                    "op": "IsTrue",
+                                }
+                            ],
+                            "op": "Or",
+                        }
+                    }
+                ]
             }
-        },
-        "10"
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
-        LexErrorKind::InvalidArgumentType {
-            index: 0,
-            mismatch: TypeMismatchError {
-                actual: Type::Ip,
-                expected: Type::Bytes.into(),
-            }
-        },
-        "ip.addr"
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
-        LexErrorKind::InvalidArgumentsCount {
-            expected_min: 1,
-            expected_max: Some(2),
-        },
-        "\"test\" );"
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
-        LexErrorKind::UnknownField(UnknownFieldError),
-        "http.test"
-    );
-
-    assert_err!(
-        FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
-        LexErrorKind::UnknownField(UnknownFieldError),
-        "http.test"
-    );
+        );
+    }
 }
