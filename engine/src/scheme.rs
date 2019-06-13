@@ -17,7 +17,8 @@ use std::{
     ptr,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[serde(tag = "kind", content = "value")]
 /// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
 /// representing an index into an Array, or `[MapKey(String)`],
 /// representing a key into a Map.
@@ -65,19 +66,6 @@ impl<'i> Lex<'i> for FieldIndex {
                 Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
             },
             _ => unreachable!(),
-        }
-    }
-}
-
-impl Serialize for FieldIndex {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            FieldIndex::ArrayIndex(idx) => serializer.serialize_u32(*idx),
-            FieldIndex::MapKey(key) => serializer.serialize_str(key),
-            FieldIndex::MapEach => serializer.serialize_str("*"),
         }
     }
 }
