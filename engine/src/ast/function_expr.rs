@@ -677,7 +677,7 @@ mod tests {
                 "args": [
                     {
                         "kind": "IndexExpr",
-                        "value": ["http.request.headers.keys", "*"],
+                        "value": ["http.request.headers.keys", {"kind": "MapEach"}],
                     }
                 ]
             }
@@ -703,7 +703,7 @@ mod tests {
                 "args": [
                     {
                         "kind": "IndexExpr",
-                        "value": ["http.headers", "*"],
+                        "value": ["http.headers", {"kind": "MapEach"}],
                     }
                 ]
             }
