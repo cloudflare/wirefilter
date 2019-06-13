@@ -1029,7 +1029,10 @@ mod tests {
         assert_json!(
             expr,
             {
-                "lhs": ["http.headers", "host"],
+                "lhs": [
+                    "http.headers",
+                    {"kind": "MapKey", "value": "host"}
+                ],
                 "op": "Contains",
                 "rhs": "abc",
             }
@@ -1179,7 +1182,7 @@ mod tests {
             {
                 "lhs": [
                     "http.cookies",
-                    0
+                    {"kind": "ArrayIndex", "value": 0}
                 ],
                 "op": "Equal",
                 "rhs": "example.org"
@@ -1215,7 +1218,7 @@ mod tests {
             {
                 "lhs": [
                     "http.cookies",
-                    0
+                    {"kind": "ArrayIndex", "value": 0}
                 ],
                 "op": "NotEqual",
                 "rhs": "example.org"
@@ -1251,7 +1254,7 @@ mod tests {
             {
                 "lhs": [
                     "http.headers",
-                    "missing"
+                    {"kind": "MapKey", "value": "missing"}
                 ],
                 "op": "Equal",
                 "rhs": "example.org"
@@ -1287,7 +1290,7 @@ mod tests {
             {
                 "lhs": [
                     "http.headers",
-                    "missing"
+                    {"kind": "MapKey", "value": "missing"}
                 ],
                 "op": "NotEqual",
                 "rhs": "example.org"
@@ -1457,7 +1460,7 @@ mod tests {
                             }
                         ]
                     },
-                    0,
+                    {"kind": "ArrayIndex", "value": 0},
                 ],
                 "op": "Equal",
                 "rhs": "three"
@@ -1528,7 +1531,7 @@ mod tests {
                         "args": [
                             {
                                 "kind": "IndexExpr",
-                                "value": ["http.cookies", "*"],
+                                "value": ["http.cookies", {"kind": "MapEach"}],
                             },
                             {
                                 "kind": "Literal",
@@ -1536,7 +1539,7 @@ mod tests {
                             }
                         ]
                     },
-                    2,
+                    {"kind": "ArrayIndex", "value": 2},
                 ],
                 "op": "Equal",
                 "rhs": "three-cf"
@@ -1599,7 +1602,7 @@ mod tests {
                         "args": [
                             {
                                 "kind": "IndexExpr",
-                                "value": ["http.headers", "*"],
+                                "value": ["http.headers", {"kind": "MapEach"}],
                             },
                             {
                                 "kind": "Literal",
@@ -1607,7 +1610,7 @@ mod tests {
                             }
                         ]
                     },
-                    2,
+                    {"kind": "ArrayIndex", "value": 2},
                 ],
                 "op": "OneOf",
                 "rhs": ["one-cf", "two-cf", "three-cf"],
@@ -1648,7 +1651,7 @@ mod tests {
         assert_json!(
             expr,
             {
-                "lhs": ["http.cookies", "*"],
+                "lhs": ["http.cookies", {"kind": "MapEach"}],
                 "op": "Equal",
                 "rhs": "three",
             }
@@ -1691,7 +1694,7 @@ mod tests {
         assert_json!(
             expr,
             {
-                "lhs": ["http.headers", "*"],
+                "lhs": ["http.headers", {"kind": "MapEach"}],
                 "op": "Equal",
                 "rhs": "three",
             }
@@ -1762,7 +1765,7 @@ mod tests {
                         "args": [
                             {
                                 "kind": "IndexExpr",
-                                "value": ["http.cookies", "*"],
+                                "value": ["http.cookies", {"kind": "MapEach"}],
                             },
                             {
                                 "kind": "Literal",
@@ -1770,7 +1773,7 @@ mod tests {
                             }
                         ]
                     },
-                    "*",
+                    {"kind": "MapEach"},
                 ],
                 "op": "Equal",
                 "rhs": "three-cf"
