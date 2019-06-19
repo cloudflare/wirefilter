@@ -551,63 +551,6 @@ mod tests {
             }
         );
 
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( \"test\" );", &SCHEME),
-            LexErrorKind::InvalidArgumentKind {
-                index: 0,
-                mismatch: FunctionArgKindMismatchError {
-                    actual: FunctionArgKind::Literal,
-                    expected: FunctionArgKind::Field,
-                }
-            },
-            "\"test\""
-        );
-
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( 10 );", &SCHEME),
-            LexErrorKind::InvalidArgumentKind {
-                index: 0,
-                mismatch: FunctionArgKindMismatchError {
-                    actual: FunctionArgKind::Literal,
-                    expected: FunctionArgKind::Field,
-                }
-            },
-            "10"
-        );
-
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
-            LexErrorKind::InvalidArgumentType {
-                index: 0,
-                mismatch: TypeMismatchError {
-                    actual: Type::Ip,
-                    expected: Type::Bytes.into(),
-                }
-            },
-            "ip.addr"
-        );
-
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
-            LexErrorKind::InvalidArgumentsCount {
-                expected_min: 1,
-                expected_max: Some(2),
-            },
-            "\"test\" );"
-        );
-
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
-            LexErrorKind::UnknownField(UnknownFieldError),
-            "http.test"
-        );
-
-        assert_err!(
-            FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
-            LexErrorKind::UnknownField(UnknownFieldError),
-            "http.test"
-        );
-
         let expr = assert_ok!(
             FunctionCallExpr::lex_with(
                 r#"any ( ( http.request.headers.is_empty or http.request.headers.is_empty ) )"#,
@@ -730,6 +673,83 @@ mod tests {
             }
         );
 
+        assert_ok!(
+            FunctionCallArgExpr::lex_with("http.request.headers.keys[*] == \"test\"", &SCHEME),
+            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(
+                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
+                    ),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("test".to_owned().into())
+                }
+            })),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_lex_function_call_expr_failure() {
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( \"test\" );", &SCHEME),
+            LexErrorKind::InvalidArgumentKind {
+                index: 0,
+                mismatch: FunctionArgKindMismatchError {
+                    actual: FunctionArgKind::Literal,
+                    expected: FunctionArgKind::Field,
+                }
+            },
+            "\"test\""
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( 10 );", &SCHEME),
+            LexErrorKind::InvalidArgumentKind {
+                index: 0,
+                mismatch: FunctionArgKindMismatchError {
+                    actual: FunctionArgKind::Literal,
+                    expected: FunctionArgKind::Field,
+                }
+            },
+            "10"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( ip.addr );", &SCHEME),
+            LexErrorKind::InvalidArgumentType {
+                index: 0,
+                mismatch: TypeMismatchError {
+                    actual: Type::Ip,
+                    expected: Type::Bytes.into(),
+                }
+            },
+            "ip.addr"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
+            LexErrorKind::InvalidArgumentsCount {
+                expected_min: 1,
+                expected_max: Some(2),
+            },
+            "\"test\" );"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
+            LexErrorKind::UnknownField(UnknownFieldError),
+            "http.test"
+        );
+
+        assert_err!(
+            FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
+            LexErrorKind::UnknownField(UnknownFieldError),
+            "http.test"
+        );
+
         assert_err!(
             FunctionCallExpr::lex_with("echo ( http.host[*] );", &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
@@ -770,23 +790,6 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( http.host, http.headers[*] );", &SCHEME),
             LexErrorKind::InvalidMapEachAccess,
             "http.headers[*]"
-        );
-
-        assert_ok!(
-            FunctionCallArgExpr::lex_with("http.request.headers.keys[*] == \"test\"", &SCHEME),
-            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
-                lhs: IndexExpr {
-                    lhs: LhsFieldExpr::Field(
-                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
-                    ),
-                    indexes: vec![FieldIndex::MapEach],
-                },
-                op: FieldOp::Ordering {
-                    op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("test".to_owned().into())
-                }
-            })),
-            ""
         );
     }
 }
