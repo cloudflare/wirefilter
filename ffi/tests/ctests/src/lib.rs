@@ -29,6 +29,8 @@ macro_rules! ffi_ctest {
 
 mod ffi_ctest {
     ffi_ctest!(
+        create_array_type,
+        create_map_type,
         create_scheme,
         add_fields_to_scheme,
         parse_good_filter,
