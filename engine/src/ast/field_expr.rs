@@ -183,7 +183,13 @@ impl<'s> GetType for FieldExpr<'s> {
     fn get_type(&self) -> Type {
         match self.op {
             FieldOp::IsTrue => self.lhs.get_type(),
-            _ => Type::Bool,
+            _ => {
+                if self.lhs.map_each_to().is_some() {
+                    Type::Array(Box::new(Type::Bool))
+                } else {
+                    Type::Bool
+                }
+            }
         }
     }
 }
@@ -1690,6 +1696,8 @@ mod tests {
                 }
             }
         );
+
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
 
         assert_json!(
             expr,

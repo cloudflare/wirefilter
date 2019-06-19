@@ -696,6 +696,8 @@ mod tests {
             ";"
         );
 
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bytes)));
+
         assert_json!(
             expr,
             {
