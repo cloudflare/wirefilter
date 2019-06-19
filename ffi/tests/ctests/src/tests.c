@@ -46,6 +46,16 @@ void initialize_scheme(wirefilter_scheme_t *scheme) {
     );
 }
 
+void wirefilter_ffi_ctest_create_array_type() {
+    wirefilter_type_t array_type = wirefilter_create_array_type(WIREFILTER_TYPE_BYTES);
+    rust_assert(array_type.tag == WIREFILTER_TYPE_TAG_ARRAY, "could not create valid array type");
+}
+
+void wirefilter_ffi_ctest_create_map_type() {
+    wirefilter_type_t map_type = wirefilter_create_map_type(WIREFILTER_TYPE_BYTES);
+    rust_assert(map_type.tag == WIREFILTER_TYPE_TAG_MAP, "could not create valid map type");
+}
+
 void wirefilter_ffi_ctest_create_scheme() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
