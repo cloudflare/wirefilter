@@ -1,5 +1,10 @@
 use crate::{
-    ast::{index_expr::IndexExpr, simple_expr::SimpleExpr, Expr},
+    ast::{
+        field_expr::{FieldExpr, FieldOp},
+        index_expr::IndexExpr,
+        simple_expr::SimpleExpr,
+        Expr,
+    },
     filter::{CompiledExpr, CompiledValueExpr},
     functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
     lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
@@ -81,6 +86,16 @@ impl<'s> FunctionCallArgExpr<'s> {
             FunctionCallArgExpr::SimpleExpr(_) => None,
         }
     }
+
+    pub fn simplify(self) -> Self {
+        match self {
+            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
+                lhs,
+                op: FieldOp::IsTrue,
+            })) => FunctionCallArgExpr::IndexExpr(lhs),
+            _ => self,
+        }
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
@@ -111,17 +126,21 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 || (c2.is_some() && c_is_field!(c2.unwrap()))
                 || (c3.is_some() && c_is_field!(c3.unwrap()))
             {
-                return IndexExpr::lex_with(input, scheme)
-                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input));
+                return SimpleExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs).simplify(), input))
+                    .or_else(|_| {
+                        IndexExpr::lex_with(input, scheme)
+                            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+                    });
             }
         }
 
         // Fallback to blind parsing next argument
-        IndexExpr::lex_with(input, scheme)
-            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
+        SimpleExpr::lex_with(input, scheme)
+            .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs).simplify(), input))
             .or_else(|_| {
-                SimpleExpr::lex_with(input, scheme)
-                    .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs), input))
+                IndexExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
             })
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Ip)
@@ -361,7 +380,7 @@ mod tests {
     use crate::{
         ast::{
             combined_expr::{CombinedExpr, CombiningOp},
-            field_expr::{FieldExpr, FieldOp, LhsFieldExpr},
+            field_expr::{FieldExpr, FieldOp, LhsFieldExpr, OrderingOp},
         },
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
@@ -751,6 +770,23 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( http.host, http.headers[*] );", &SCHEME),
             LexErrorKind::InvalidMapEachAccess,
             "http.headers[*]"
+        );
+
+        assert_ok!(
+            FunctionCallArgExpr::lex_with("http.request.headers.keys[*] == \"test\"", &SCHEME),
+            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(
+                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
+                    ),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: FieldOp::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("test".to_owned().into())
+                }
+            })),
+            ""
         );
     }
 }
