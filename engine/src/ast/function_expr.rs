@@ -87,6 +87,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn simplify(self) -> Self {
         match self {
             FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
@@ -126,22 +127,14 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 || (c2.is_some() && c_is_field!(c2.unwrap()))
                 || (c3.is_some() && c_is_field!(c3.unwrap()))
             {
-                return SimpleExpr::lex_with(input, scheme)
-                    .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs).simplify(), input))
-                    .or_else(|_| {
-                        IndexExpr::lex_with(input, scheme)
-                            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
-                    });
+                return IndexExpr::lex_with(input, scheme)
+                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input));
             }
         }
 
         // Fallback to blind parsing next argument
-        SimpleExpr::lex_with(input, scheme)
-            .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs).simplify(), input))
-            .or_else(|_| {
-                IndexExpr::lex_with(input, scheme)
-                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
-            })
+        IndexExpr::lex_with(input, scheme)
+            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Ip)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
@@ -380,7 +373,7 @@ mod tests {
     use crate::{
         ast::{
             combined_expr::{CombinedExpr, CombiningOp},
-            field_expr::{FieldExpr, FieldOp, LhsFieldExpr, OrderingOp},
+            field_expr::{FieldExpr, FieldOp, LhsFieldExpr},
         },
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
@@ -671,23 +664,6 @@ mod tests {
                     }
                 ]
             }
-        );
-
-        assert_ok!(
-            FunctionCallArgExpr::lex_with("http.request.headers.keys[*] == \"test\"", &SCHEME),
-            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
-                lhs: IndexExpr {
-                    lhs: LhsFieldExpr::Field(
-                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
-                    ),
-                    indexes: vec![FieldIndex::MapEach],
-                },
-                op: FieldOp::Ordering {
-                    op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("test".to_owned().into())
-                }
-            })),
-            ""
         );
     }
 
