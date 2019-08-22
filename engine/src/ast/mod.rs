@@ -1,10 +1,10 @@
-mod combined_expr;
 mod field_expr;
 mod function_expr;
 mod index_expr;
+mod logical_expr;
 mod simple_expr;
 
-use self::combined_expr::CombinedExpr;
+use self::logical_expr::LogicalExpr;
 use crate::{
     filter::{CompiledExpr, Filter},
     lex::{LexErrorKind, LexResult, LexWith},
@@ -30,7 +30,7 @@ pub struct FilterAst<'s> {
     #[serde(skip)]
     scheme: &'s Scheme,
 
-    op: CombinedExpr<'s>,
+    op: LogicalExpr<'s>,
 }
 
 impl<'s> Debug for FilterAst<'s> {
@@ -41,17 +41,17 @@ impl<'s> Debug for FilterAst<'s> {
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
-        let (op, input) = CombinedExpr::lex_with(input, scheme)?;
-        // CombinedExpr::lex_with can return an AST where the root is an
-        // CombinedExpr::Combining of type [`Array(Bool)`].
+        let (op, input) = LogicalExpr::lex_with(input, scheme)?;
+        // LogicalExpr::lex_with can return an AST where the root is an
+        // LogicalExpr::Combining of type [`Array(Bool)`].
         //
         // It must do this because we need to be able to use
-        // CombinedExpr::Combining of type [`Array(Bool)`]
+        // LogicalExpr::Combining of type [`Array(Bool)`]
         // as arguments to functions, however it should not be valid as a
         // filter expression itself.
         //
         // Here we enforce the constraint that the root of the AST, a
-        // CombinedExpr, must evaluate to type [`Bool`].
+        // LogicalExpr, must evaluate to type [`Bool`].
         let ty = op.get_type();
         match ty {
             Type::Bool => Ok((FilterAst { scheme, op }, input)),

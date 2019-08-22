@@ -1,4 +1,4 @@
-use super::{combined_expr::CombinedExpr, field_expr::FieldExpr, Expr};
+use super::{field_expr::ComparisonExpr, logical_expr::LogicalExpr, Expr};
 use crate::{
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
@@ -14,8 +14,8 @@ lex_enum!(UnaryOp {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 pub enum SimpleExpr<'s> {
-    Field(FieldExpr<'s>),
-    Parenthesized(Box<CombinedExpr<'s>>),
+    Comparison(ComparisonExpr<'s>),
+    Parenthesized(Box<LogicalExpr<'s>>),
     Unary {
         op: UnaryOp,
         arg: Box<SimpleExpr<'s>>,
@@ -25,7 +25,7 @@ pub enum SimpleExpr<'s> {
 impl<'s> GetType for SimpleExpr<'s> {
     fn get_type(&self) -> Type {
         match &self {
-            SimpleExpr::Field(op) => op.get_type(),
+            SimpleExpr::Comparison(op) => op.get_type(),
             SimpleExpr::Parenthesized(op) => op.get_type(),
             SimpleExpr::Unary { arg, .. } => arg.get_type(),
         }
@@ -36,7 +36,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         Ok(if let Ok(input) = expect(input, "(") {
             let input = skip_space(input);
-            let (op, input) = CombinedExpr::lex_with(input, scheme)?;
+            let (op, input) = LogicalExpr::lex_with(input, scheme)?;
             let input = skip_space(input);
             let input = expect(input, ")")?;
             (SimpleExpr::Parenthesized(Box::new(op)), input)
@@ -51,8 +51,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
                 input,
             )
         } else {
-            let (op, input) = FieldExpr::lex_with(input, scheme)?;
-            (SimpleExpr::Field(op), input)
+            let (op, input) = ComparisonExpr::lex_with(input, scheme)?;
+            (SimpleExpr::Comparison(op), input)
         })
     }
 }
@@ -60,7 +60,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
 impl<'s> Expr<'s> for SimpleExpr<'s> {
     fn uses(&self, field: Field<'s>) -> bool {
         match self {
-            SimpleExpr::Field(op) => op.uses(field),
+            SimpleExpr::Comparison(op) => op.uses(field),
             SimpleExpr::Parenthesized(op) => op.uses(field),
             SimpleExpr::Unary { arg, .. } => arg.uses(field),
         }
@@ -68,7 +68,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 
     fn compile(self) -> CompiledExpr<'s> {
         match self {
-            SimpleExpr::Field(op) => op.compile(),
+            SimpleExpr::Comparison(op) => op.compile(),
             SimpleExpr::Parenthesized(op) => op.compile(),
             SimpleExpr::Unary {
                 op: UnaryOp::Not,
@@ -109,10 +109,10 @@ fn test() {
     })
     .unwrap();
 
-    let t_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("t", scheme)).unwrap());
+    let t_expr = SimpleExpr::Comparison(complete(ComparisonExpr::lex_with("t", scheme)).unwrap());
     let t_expr = || t_expr.clone();
 
-    let at_expr = SimpleExpr::Field(complete(FieldExpr::lex_with("at", scheme)).unwrap());
+    let at_expr = SimpleExpr::Comparison(complete(ComparisonExpr::lex_with("at", scheme)).unwrap());
     let at_expr = || at_expr.clone();
 
     {
@@ -150,7 +150,7 @@ fn test() {
         );
     }
 
-    let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
+    let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(LogicalExpr::Simple(expr)));
 
     {
         let expr = assert_ok!(
