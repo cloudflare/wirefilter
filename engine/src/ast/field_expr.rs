@@ -172,14 +172,14 @@ impl<'s> GetType for LhsFieldExpr<'s> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
-pub struct FieldExpr<'s> {
+pub struct ComparisonExpr<'s> {
     pub(crate) lhs: IndexExpr<'s>,
 
     #[serde(flatten)]
     pub(crate) op: FieldOp,
 }
 
-impl<'s> GetType for FieldExpr<'s> {
+impl<'s> GetType for ComparisonExpr<'s> {
     fn get_type(&self) -> Type {
         match self.op {
             FieldOp::IsTrue => self.lhs.get_type(),
@@ -194,7 +194,7 @@ impl<'s> GetType for FieldExpr<'s> {
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for ComparisonExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
@@ -248,11 +248,11 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FieldExpr<'s> {
             }
         };
 
-        Ok((FieldExpr { lhs, op }, input))
+        Ok((ComparisonExpr { lhs, op }, input))
     }
 }
 
-impl<'s> Expr<'s> for FieldExpr<'s> {
+impl<'s> Expr<'s> for ComparisonExpr<'s> {
     fn uses(&self, field: Field<'s>) -> bool {
         self.lhs.uses(field)
     }
@@ -527,8 +527,8 @@ mod tests {
     #[test]
     fn test_is_true() {
         let expr = assert_ok!(
-            FieldExpr::lex_with("ssl", &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with("ssl", &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("ssl")),
                     indexes: vec![],
@@ -558,8 +558,8 @@ mod tests {
     #[test]
     fn test_ip_compare() {
         let expr = assert_ok!(
-            FieldExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with("ip.addr <= 10:20:30:40:50:60:70:80", &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("ip.addr")),
                     indexes: vec![],
@@ -613,8 +613,8 @@ mod tests {
         // just check that parsing doesn't conflict with IPv6
         {
             let expr = assert_ok!(
-                FieldExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", &SCHEME),
-                FieldExpr {
+                ComparisonExpr::lex_with("http.host >= 10:20:30:40:50:60:70:80", &SCHEME),
+                ComparisonExpr {
                     lhs: IndexExpr {
                         lhs: LhsFieldExpr::Field(field("http.host")),
                         indexes: vec![],
@@ -641,8 +641,8 @@ mod tests {
         // just check that parsing doesn't conflict with regular numbers
         {
             let expr = assert_ok!(
-                FieldExpr::lex_with(r#"http.host < 12"#, &SCHEME),
-                FieldExpr {
+                ComparisonExpr::lex_with(r#"http.host < 12"#, &SCHEME),
+                ComparisonExpr {
                     lhs: IndexExpr {
                         lhs: LhsFieldExpr::Field(field("http.host")),
                         indexes: vec![],
@@ -665,8 +665,8 @@ mod tests {
         }
 
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.host == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
@@ -700,8 +700,8 @@ mod tests {
     #[test]
     fn test_bitwise_and() {
         let expr = assert_ok!(
-            FieldExpr::lex_with("tcp.port & 1", &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with("tcp.port & 1", &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
@@ -735,8 +735,8 @@ mod tests {
     #[test]
     fn test_int_in() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"tcp.port in { 80 443 2082..2083 }"#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
@@ -786,8 +786,8 @@ mod tests {
     #[test]
     fn test_bytes_in() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.host in { "example.org" "example.com" }"#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
@@ -829,11 +829,11 @@ mod tests {
     #[test]
     fn test_ip_in() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(
+            ComparisonExpr::lex_with(
                 r#"ip.addr in { 127.0.0.0/8 ::1 10.0.0.0..10.0.255.255 }"#,
                 &SCHEME
             ),
-            FieldExpr {
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("ip.addr")),
                     indexes: vec![],
@@ -888,8 +888,8 @@ mod tests {
     #[test]
     fn test_contains_bytes() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host contains "abc""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.host contains "abc""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
@@ -920,8 +920,8 @@ mod tests {
     #[test]
     fn test_contains_str() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.host contains 6F:72:67"#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.host contains 6F:72:67"#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
@@ -952,8 +952,8 @@ mod tests {
     #[test]
     fn test_int_compare() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"tcp.port < 8000"#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"tcp.port < 8000"#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
@@ -987,8 +987,8 @@ mod tests {
     #[test]
     fn test_array_contains_str() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.cookies[0] contains "abc""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.cookies[0] contains "abc""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
@@ -1022,8 +1022,8 @@ mod tests {
     #[test]
     fn test_map_of_bytes_contains_str() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.headers["host"] contains "abc""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.headers["host"] contains "abc""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("host".to_string())],
@@ -1070,8 +1070,8 @@ mod tests {
     #[test]
     fn test_bytes_compare_with_echo_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"echo(http.host) == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"echo(http.host) == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("echo"),
@@ -1120,8 +1120,8 @@ mod tests {
     #[test]
     fn test_bytes_compare_with_lowercase_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"lowercase(http.host) == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"lowercase(http.host) == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("lowercase"),
@@ -1170,8 +1170,8 @@ mod tests {
     #[test]
     fn test_missing_array_value_equal() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.cookies[0] == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.cookies[0] == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
@@ -1206,8 +1206,8 @@ mod tests {
     #[test]
     fn test_missing_array_value_not_equal() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.cookies[0] != "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.cookies[0] != "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
@@ -1242,8 +1242,8 @@ mod tests {
     #[test]
     fn test_missing_map_value_equal() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.headers["missing"] == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.headers["missing"] == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
@@ -1278,8 +1278,8 @@ mod tests {
     #[test]
     fn test_missing_map_value_not_equal() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.headers["missing"] != "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.headers["missing"] != "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
@@ -1314,8 +1314,8 @@ mod tests {
     #[test]
     fn test_bytes_compare_with_concat_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"concat(http.host) == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"concat(http.host) == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
@@ -1361,8 +1361,8 @@ mod tests {
         assert_eq!(expr.execute_one(ctx), false);
 
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"concat(http.host, ".org") == "example.org""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"concat(http.host, ".org") == "example.org""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
@@ -1420,11 +1420,11 @@ mod tests {
     #[test]
     fn test_filter_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(
+            ComparisonExpr::lex_with(
                 r#"filter(http.cookies, array.of.bool)[0] == "three""#,
                 &SCHEME
             ),
-            FieldExpr {
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("filter"),
@@ -1500,11 +1500,11 @@ mod tests {
     #[test]
     fn test_map_each_on_array_with_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(
+            ComparisonExpr::lex_with(
                 r#"concat(http.cookies[*], "-cf")[2] == "three-cf""#,
                 &SCHEME
             ),
-            FieldExpr {
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
@@ -1570,11 +1570,11 @@ mod tests {
     #[test]
     fn test_map_each_on_map_with_function() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(
+            ComparisonExpr::lex_with(
                 r#"concat(http.headers[*], "-cf")[2] in {"one-cf" "two-cf" "three-cf"}"#,
                 &SCHEME
             ),
-            FieldExpr {
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
@@ -1641,8 +1641,8 @@ mod tests {
     #[test]
     fn test_map_each_on_array_for_cmp() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.cookies[*] == "three""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.cookies[*] == "three""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::MapEach],
@@ -1684,8 +1684,8 @@ mod tests {
     #[test]
     fn test_map_each_on_map_for_cmp() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(r#"http.headers[*] == "three""#, &SCHEME),
-            FieldExpr {
+            ComparisonExpr::lex_with(r#"http.headers[*] == "three""#, &SCHEME),
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapEach],
@@ -1736,11 +1736,11 @@ mod tests {
     #[test]
     fn test_map_each_on_array_full() {
         let expr = assert_ok!(
-            FieldExpr::lex_with(
+            ComparisonExpr::lex_with(
                 r#"concat(http.cookies[*], "-cf")[*] == "three-cf""#,
                 &SCHEME
             ),
-            FieldExpr {
+            ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
@@ -1809,7 +1809,7 @@ mod tests {
     #[test]
     fn test_map_each_error() {
         assert_err!(
-            FieldExpr::lex_with(r#"http.host[*] == "three""#, &SCHEME),
+            ComparisonExpr::lex_with(r#"http.host[*] == "three""#, &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes,
@@ -1818,7 +1818,7 @@ mod tests {
         );
 
         assert_err!(
-            FieldExpr::lex_with(r#"ip.addr[*] == 127.0.0.1"#, &SCHEME),
+            ComparisonExpr::lex_with(r#"ip.addr[*] == 127.0.0.1"#, &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Ip,
@@ -1827,7 +1827,7 @@ mod tests {
         );
 
         assert_err!(
-            FieldExpr::lex_with(r#"ssl[*]"#, &SCHEME),
+            ComparisonExpr::lex_with(r#"ssl[*]"#, &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bool,
@@ -1836,7 +1836,7 @@ mod tests {
         );
 
         assert_err!(
-            FieldExpr::lex_with(r#"tcp.port[*] == 80"#, &SCHEME),
+            ComparisonExpr::lex_with(r#"tcp.port[*] == 80"#, &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Int,

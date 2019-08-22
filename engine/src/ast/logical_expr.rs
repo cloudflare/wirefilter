@@ -7,7 +7,7 @@ use crate::{
 };
 use serde::Serialize;
 
-lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
+lex_enum!(#[derive(PartialOrd, Ord)] LogicalOp {
     "or" | "||" => Or,
     "xor" | "^^" => Xor,
     "and" | "&&" => And,
@@ -15,26 +15,26 @@ lex_enum!(#[derive(PartialOrd, Ord)] CombiningOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-pub enum CombinedExpr<'s> {
+pub enum LogicalExpr<'s> {
     Simple(SimpleExpr<'s>),
     Combining {
-        op: CombiningOp,
-        items: Vec<CombinedExpr<'s>>,
+        op: LogicalOp,
+        items: Vec<LogicalExpr<'s>>,
     },
 }
 
-impl<'s> GetType for CombinedExpr<'s> {
+impl<'s> GetType for LogicalExpr<'s> {
     fn get_type(&self) -> Type {
         match &self {
-            CombinedExpr::Simple(lhs) => lhs.get_type(),
-            CombinedExpr::Combining { ref items, .. } => items[0].get_type(),
+            LogicalExpr::Simple(lhs) => lhs.get_type(),
+            LogicalExpr::Combining { ref items, .. } => items[0].get_type(),
         }
     }
 }
 
-impl<'s> CombinedExpr<'s> {
-    fn lex_combining_op(input: &str) -> (Option<CombiningOp>, &str) {
-        match CombiningOp::lex(skip_space(input)) {
+impl<'s> LogicalExpr<'s> {
+    fn lex_combining_op(input: &str) -> (Option<LogicalOp>, &str) {
+        match LogicalOp::lex(skip_space(input)) {
             Ok((op, input)) => (Some(op), skip_space(input)),
             Err(_) => (None, input),
         }
@@ -43,14 +43,14 @@ impl<'s> CombinedExpr<'s> {
     fn lex_more_with_precedence<'i>(
         self,
         scheme: &'s Scheme,
-        min_prec: Option<CombiningOp>,
-        mut lookahead: (Option<CombiningOp>, &'i str),
+        min_prec: Option<LogicalOp>,
+        mut lookahead: (Option<LogicalOp>, &'i str),
     ) -> LexResult<'i, Self> {
         let mut lhs = self;
 
         while let Some(op) = lookahead.0 {
             let mut rhs = SimpleExpr::lex_with(lookahead.1, scheme)
-                .map(|(op, input)| (CombinedExpr::Simple(op), input))?;
+                .map(|(op, input)| (LogicalExpr::Simple(op), input))?;
 
             loop {
                 lookahead = Self::lex_combining_op(rhs.1);
@@ -62,7 +62,7 @@ impl<'s> CombinedExpr<'s> {
                     .lex_more_with_precedence(scheme, lookahead.0, lookahead)?;
             }
 
-            // check that the CombinedExpr is valid by ensuring both the left
+            // check that the LogicalExpr is valid by ensuring both the left
             // hand side and right hand side of the operator are comparable.
             // For example, it doesn't make sense to do a logical operator on
             // a Bool and Bytes, or an Array(Bool) with Bool.
@@ -82,14 +82,14 @@ impl<'s> CombinedExpr<'s> {
             }
 
             match lhs {
-                CombinedExpr::Combining {
+                LogicalExpr::Combining {
                     op: lhs_op,
                     ref mut items,
                 } if lhs_op == op => {
                     items.push(rhs.0);
                 }
                 _ => {
-                    lhs = CombinedExpr::Combining {
+                    lhs = LogicalExpr::Combining {
                         op,
                         items: vec![lhs, rhs.0],
                     };
@@ -107,26 +107,26 @@ impl<'s> CombinedExpr<'s> {
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for CombinedExpr<'s> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for LogicalExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let (lhs, input) = SimpleExpr::lex_with(input, scheme)?;
         let lookahead = Self::lex_combining_op(input);
-        CombinedExpr::Simple(lhs).lex_more_with_precedence(scheme, None, lookahead)
+        LogicalExpr::Simple(lhs).lex_more_with_precedence(scheme, None, lookahead)
     }
 }
 
-impl<'s> Expr<'s> for CombinedExpr<'s> {
+impl<'s> Expr<'s> for LogicalExpr<'s> {
     fn uses(&self, field: Field<'s>) -> bool {
         match self {
-            CombinedExpr::Simple(op) => op.uses(field),
-            CombinedExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),
+            LogicalExpr::Simple(op) => op.uses(field),
+            LogicalExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),
         }
     }
 
     fn compile(self) -> CompiledExpr<'s> {
         match self {
-            CombinedExpr::Simple(op) => op.compile(),
-            CombinedExpr::Combining { op, items } => {
+            LogicalExpr::Simple(op) => op.compile(),
+            LogicalExpr::Combining { op, items } => {
                 let mut items = items.into_iter();
                 let first = items.next().unwrap().compile();
                 match first {
@@ -139,23 +139,17 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
                         match op {
-                            CombiningOp::And => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                    first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
-                                }))
-                            }
-                            CombiningOp::Or => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                    first.execute(ctx) || items.iter().any(|item| item.execute(ctx))
-                                }))
-                            }
-                            CombiningOp::Xor => {
-                                CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                    items.iter().fold(first.execute(ctx), |acc, item| {
-                                        acc ^ item.execute(ctx)
-                                    })
-                                }))
-                            }
+                            LogicalOp::And => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
+                            })),
+                            LogicalOp::Or => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                first.execute(ctx) || items.iter().any(|item| item.execute(ctx))
+                            })),
+                            LogicalOp::Xor => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+                                items
+                                    .iter()
+                                    .fold(first.execute(ctx), |acc, item| acc ^ item.execute(ctx))
+                            })),
                         }
                     }
                     CompiledExpr::Vec(first) => {
@@ -167,57 +161,51 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
                             .collect::<Vec<_>>()
                             .into_boxed_slice();
                         match op {
-                            CombiningOp::And => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                    let items = items.iter().map(|item| item.execute(ctx));
-                                    let mut output = first.execute(ctx).into_vec();
-                                    for values in items {
-                                        for (idx, val) in values.iter().enumerate() {
-                                            if idx < output.len() {
-                                                output[idx] = output[idx] && *val;
-                                            }
-                                        }
-                                        if values.len() < output.len() {
-                                            output.truncate(values.len());
+                            LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                let items = items.iter().map(|item| item.execute(ctx));
+                                let mut output = first.execute(ctx).into_vec();
+                                for values in items {
+                                    for (idx, val) in values.iter().enumerate() {
+                                        if idx < output.len() {
+                                            output[idx] = output[idx] && *val;
                                         }
                                     }
-                                    output.into_boxed_slice()
-                                }))
-                            }
-                            CombiningOp::Or => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                    let items = items.iter().map(|item| item.execute(ctx));
-                                    let mut output = first.execute(ctx).into_vec();
-                                    for values in items {
-                                        for (idx, val) in values.iter().enumerate() {
-                                            if idx < output.len() {
-                                                output[idx] = output[idx] || *val;
-                                            }
-                                        }
-                                        if values.len() < output.len() {
-                                            output.truncate(values.len());
+                                    if values.len() < output.len() {
+                                        output.truncate(values.len());
+                                    }
+                                }
+                                output.into_boxed_slice()
+                            })),
+                            LogicalOp::Or => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                let items = items.iter().map(|item| item.execute(ctx));
+                                let mut output = first.execute(ctx).into_vec();
+                                for values in items {
+                                    for (idx, val) in values.iter().enumerate() {
+                                        if idx < output.len() {
+                                            output[idx] = output[idx] || *val;
                                         }
                                     }
-                                    output.into_boxed_slice()
-                                }))
-                            }
-                            CombiningOp::Xor => {
-                                CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                    let items = items.iter().map(|item| item.execute(ctx));
-                                    let mut output = first.execute(ctx).into_vec();
-                                    for values in items {
-                                        for (idx, val) in values.iter().enumerate() {
-                                            if idx < output.len() {
-                                                output[idx] ^= *val;
-                                            }
-                                        }
-                                        if values.len() < output.len() {
-                                            output.truncate(values.len());
+                                    if values.len() < output.len() {
+                                        output.truncate(values.len());
+                                    }
+                                }
+                                output.into_boxed_slice()
+                            })),
+                            LogicalOp::Xor => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+                                let items = items.iter().map(|item| item.execute(ctx));
+                                let mut output = first.execute(ctx).into_vec();
+                                for values in items {
+                                    for (idx, val) in values.iter().enumerate() {
+                                        if idx < output.len() {
+                                            output[idx] ^= *val;
                                         }
                                     }
-                                    output.into_boxed_slice()
-                                }))
-                            }
+                                    if values.len() < output.len() {
+                                        output.truncate(values.len());
+                                    }
+                                }
+                                output.into_boxed_slice()
+                            })),
                         }
                     }
                 }
@@ -229,7 +217,7 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn test() {
-    use super::field_expr::FieldExpr;
+    use super::field_expr::ComparisonExpr;
     use crate::{
         execution_context::ExecutionContext,
         lex::complete,
@@ -245,33 +233,33 @@ fn test() {
 
     let ctx = &mut ExecutionContext::new(scheme);
 
-    let t_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("t", scheme)).unwrap(),
+    let t_expr = LogicalExpr::Simple(SimpleExpr::Comparison(
+        complete(ComparisonExpr::lex_with("t", scheme)).unwrap(),
     ));
 
     let t_expr = || t_expr.clone();
 
-    let f_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("f", scheme)).unwrap(),
+    let f_expr = LogicalExpr::Simple(SimpleExpr::Comparison(
+        complete(ComparisonExpr::lex_with("f", scheme)).unwrap(),
     ));
 
     let f_expr = || f_expr.clone();
 
-    assert_ok!(CombinedExpr::lex_with("t", scheme), t_expr());
+    assert_ok!(LogicalExpr::lex_with("t", scheme), t_expr());
 
-    let at_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("at", scheme)).unwrap(),
+    let at_expr = LogicalExpr::Simple(SimpleExpr::Comparison(
+        complete(ComparisonExpr::lex_with("at", scheme)).unwrap(),
     ));
 
     let at_expr = || at_expr.clone();
 
-    let af_expr = CombinedExpr::Simple(SimpleExpr::Field(
-        complete(FieldExpr::lex_with("af", scheme)).unwrap(),
+    let af_expr = LogicalExpr::Simple(SimpleExpr::Comparison(
+        complete(ComparisonExpr::lex_with("af", scheme)).unwrap(),
     ));
 
     let af_expr = || af_expr.clone();
 
-    assert_ok!(CombinedExpr::lex_with("at", scheme), at_expr());
+    assert_ok!(LogicalExpr::lex_with("at", scheme), at_expr());
 
     ctx.set_field_value("t", true).unwrap();
     ctx.set_field_value("f", false).unwrap();
@@ -294,9 +282,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t and t", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::And,
+            LogicalExpr::lex_with("t and t", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::And,
                 items: vec![t_expr(), t_expr()],
             }
         );
@@ -308,9 +296,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t and f", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::And,
+            LogicalExpr::lex_with("t and f", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::And,
                 items: vec![t_expr(), f_expr()],
             }
         );
@@ -339,9 +327,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t or f", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Or,
+            LogicalExpr::lex_with("t or f", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Or,
                 items: vec![t_expr(), f_expr()],
             }
         );
@@ -370,9 +358,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f or f", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Or,
+            LogicalExpr::lex_with("f or f", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Or,
                 items: vec![f_expr(), f_expr()],
             }
         );
@@ -384,9 +372,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("t xor f", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Xor,
+            LogicalExpr::lex_with("t xor f", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Xor,
                 items: vec![t_expr(), f_expr()],
             }
         );
@@ -415,9 +403,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f xor f", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Xor,
+            LogicalExpr::lex_with("f xor f", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Xor,
                 items: vec![f_expr(), f_expr()],
             }
         );
@@ -429,9 +417,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("f xor t", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Xor,
+            LogicalExpr::lex_with("f xor t", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Xor,
                 items: vec![f_expr(), t_expr()],
             }
         );
@@ -442,21 +430,21 @@ fn test() {
     }
 
     assert_ok!(
-        CombinedExpr::lex_with("t or t && t and t or t ^^ t and t || t", scheme),
-        CombinedExpr::Combining {
-            op: CombiningOp::Or,
+        LogicalExpr::lex_with("t or t && t and t or t ^^ t and t || t", scheme),
+        LogicalExpr::Combining {
+            op: LogicalOp::Or,
             items: vec![
                 t_expr(),
-                CombinedExpr::Combining {
-                    op: CombiningOp::And,
+                LogicalExpr::Combining {
+                    op: LogicalOp::And,
                     items: vec![t_expr(), t_expr(), t_expr()],
                 },
-                CombinedExpr::Combining {
-                    op: CombiningOp::Xor,
+                LogicalExpr::Combining {
+                    op: LogicalOp::Xor,
                     items: vec![
                         t_expr(),
-                        CombinedExpr::Combining {
-                            op: CombiningOp::And,
+                        LogicalExpr::Combining {
+                            op: LogicalOp::And,
                             items: vec![t_expr(), t_expr()],
                         },
                     ],
@@ -468,9 +456,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("at and af", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::And,
+            LogicalExpr::lex_with("at and af", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::And,
                 items: vec![at_expr(), af_expr()],
             }
         );
@@ -485,9 +473,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("at or af", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Or,
+            LogicalExpr::lex_with("at or af", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Or,
                 items: vec![at_expr(), af_expr()],
             }
         );
@@ -502,9 +490,9 @@ fn test() {
 
     {
         let expr = assert_ok!(
-            CombinedExpr::lex_with("at xor af", scheme),
-            CombinedExpr::Combining {
-                op: CombiningOp::Xor,
+            LogicalExpr::lex_with("at xor af", scheme),
+            LogicalExpr::Combining {
+                op: LogicalOp::Xor,
                 items: vec![at_expr(), af_expr()],
             }
         );
@@ -519,7 +507,7 @@ fn test() {
 
     {
         assert_err!(
-            CombinedExpr::lex_with("t and af", scheme),
+            LogicalExpr::lex_with("t and af", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Box::new(Type::Bool)),
@@ -528,7 +516,7 @@ fn test() {
         );
 
         assert_err!(
-            CombinedExpr::lex_with("at and f", scheme),
+            LogicalExpr::lex_with("at and f", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Box::new(Type::Bool)).into(),
                 actual: Type::Bool,
@@ -539,7 +527,7 @@ fn test() {
 
     {
         assert_err!(
-            CombinedExpr::lex_with("t or af", scheme),
+            LogicalExpr::lex_with("t or af", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Box::new(Type::Bool)),
@@ -548,7 +536,7 @@ fn test() {
         );
 
         assert_err!(
-            CombinedExpr::lex_with("at or f", scheme),
+            LogicalExpr::lex_with("at or f", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Box::new(Type::Bool)).into(),
                 actual: Type::Bool,
@@ -559,7 +547,7 @@ fn test() {
 
     {
         assert_err!(
-            CombinedExpr::lex_with("t xor af", scheme),
+            LogicalExpr::lex_with("t xor af", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Box::new(Type::Bool)),
@@ -568,7 +556,7 @@ fn test() {
         );
 
         assert_err!(
-            CombinedExpr::lex_with("at xor f", scheme),
+            LogicalExpr::lex_with("at xor f", scheme),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Box::new(Type::Bool)).into(),
                 actual: Type::Bool,

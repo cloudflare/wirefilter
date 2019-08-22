@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        field_expr::{FieldExpr, FieldOp},
+        field_expr::{ComparisonExpr, FieldOp},
         index_expr::IndexExpr,
         simple_expr::SimpleExpr,
         Expr,
@@ -90,7 +90,7 @@ impl<'s> FunctionCallArgExpr<'s> {
     #[allow(dead_code)]
     pub fn simplify(self) -> Self {
         match self {
-            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Field(FieldExpr {
+            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(ComparisonExpr {
                 lhs,
                 op: FieldOp::IsTrue,
             })) => FunctionCallArgExpr::IndexExpr(lhs),
@@ -372,8 +372,8 @@ mod tests {
     use super::*;
     use crate::{
         ast::{
-            combined_expr::{CombinedExpr, CombiningOp},
-            field_expr::{FieldExpr, FieldOp, LhsFieldExpr},
+            field_expr::{ComparisonExpr, FieldOp, LhsFieldExpr},
+            logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
             Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
@@ -553,10 +553,10 @@ mod tests {
                 name: String::from("any"),
                 function: SCHEME.get_function("any").unwrap(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Parenthesized(
-                    Box::new(CombinedExpr::Combining {
-                        op: CombiningOp::Or,
+                    Box::new(LogicalExpr::Combining {
+                        op: LogicalOp::Or,
                         items: vec![
-                            CombinedExpr::Simple(SimpleExpr::Field(FieldExpr {
+                            LogicalExpr::Simple(SimpleExpr::Comparison(ComparisonExpr {
                                 lhs: IndexExpr {
                                     lhs: LhsFieldExpr::Field(
                                         SCHEME
@@ -567,7 +567,7 @@ mod tests {
                                 },
                                 op: FieldOp::IsTrue,
                             })),
-                            CombinedExpr::Simple(SimpleExpr::Field(FieldExpr {
+                            LogicalExpr::Simple(SimpleExpr::Comparison(ComparisonExpr {
                                 lhs: IndexExpr {
                                     lhs: LhsFieldExpr::Field(
                                         SCHEME
