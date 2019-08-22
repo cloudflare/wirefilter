@@ -50,8 +50,10 @@ impl<'i> Lex<'i> for FieldIndex {
         // The token inside an [] can be either an integer index into an Array
         // or a string key into a Map. The token is a key into a Map if it
         // starts and ends with "\"", otherwise an integer index or an error.
-        let (rhs, rest) = RhsValue::lex_with(input, Type::Bytes)
-            .or_else(|_| RhsValue::lex_with(input, Type::Int))?;
+        let (rhs, rest) = match expect(input, "\"") {
+            Ok(_) => RhsValue::lex_with(input, Type::Bytes),
+            Err(_) => RhsValue::lex_with(input, Type::Int),
+        }?;
 
         match rhs {
             RhsValue::Int(i) => match u32::try_from(i) {

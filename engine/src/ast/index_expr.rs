@@ -285,3 +285,41 @@ impl<'s> Serialize for IndexExpr<'s> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::field_expr::LhsFieldExpr;
+    use crate::FieldIndex;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref SCHEME: Scheme = {
+            let scheme: Scheme = Scheme! {
+                test: Array(Bool),
+            };
+            scheme
+        };
+    }
+
+    #[test]
+    fn test_array_indices() {
+        fn run(i: i32) {
+            let filter = format!("test[{}]", i);
+            assert_ok!(
+                IndexExpr::lex_with(&filter, &SCHEME),
+                IndexExpr {
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("test").unwrap()),
+                    indexes: vec![FieldIndex::ArrayIndex(i as u32)],
+                }
+            );
+        }
+
+        run(0);
+        run(1);
+        run(99);
+        run(999);
+        run(9999);
+        run(99999);
+    }
+}
