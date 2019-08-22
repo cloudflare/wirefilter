@@ -402,7 +402,7 @@ mod tests {
     impl FunctionDefinition for FilterFunction {
         fn check_param(
             &self,
-            params: &mut ExactSizeIterator<Item = FunctionParam>,
+            params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
             next_param: &FunctionParam,
         ) -> Result<(), FunctionParamError> {
             match params.len() {
@@ -421,7 +421,7 @@ mod tests {
             Ok(())
         }
 
-        fn return_type(&self, params: &mut ExactSizeIterator<Item = FunctionParam>) -> Type {
+        fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
             params.next().unwrap().val_type.clone()
         }
 
@@ -438,7 +438,7 @@ mod tests {
         /// Execute the real implementation.
         fn execute<'a>(
             &self,
-            args: &mut Iterator<Item = CompiledValueResult<'a>>,
+            args: &mut dyn Iterator<Item = CompiledValueResult<'a>>,
         ) -> Option<LhsValue<'a>> {
             let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
             let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
