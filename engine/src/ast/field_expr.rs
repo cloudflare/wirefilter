@@ -68,7 +68,7 @@ lex_enum!(ComparisonOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-pub(crate) enum FieldOp {
+pub(crate) enum ComparisonOpExpr {
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
 
@@ -99,7 +99,7 @@ fn serialize_op_rhs<T: Serialize, S: Serializer>(
 ) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeStruct;
 
-    let mut out = ser.serialize_struct("FieldOp", 2)?;
+    let mut out = ser.serialize_struct("ComparisonOpExpr", 2)?;
     out.serialize_field("op", op)?;
     out.serialize_field("rhs", rhs)?;
     out.end()
@@ -108,7 +108,7 @@ fn serialize_op_rhs<T: Serialize, S: Serializer>(
 fn serialize_is_true<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
     use serde::ser::SerializeStruct;
 
-    let mut out = ser.serialize_struct("FieldOp", 1)?;
+    let mut out = ser.serialize_struct("ComparisonOpExpr", 1)?;
     out.serialize_field("op", "IsTrue")?;
     out.end()
 }
@@ -176,13 +176,13 @@ pub struct ComparisonExpr<'s> {
     pub(crate) lhs: IndexExpr<'s>,
 
     #[serde(flatten)]
-    pub(crate) op: FieldOp,
+    pub(crate) op: ComparisonOpExpr,
 }
 
 impl<'s> GetType for ComparisonExpr<'s> {
     fn get_type(&self) -> Type {
         match self.op {
-            FieldOp::IsTrue => self.lhs.get_type(),
+            ComparisonOpExpr::IsTrue => self.lhs.get_type(),
             _ => {
                 if self.lhs.map_each_to().is_some() {
                     Type::Array(Box::new(Type::Bool))
@@ -204,7 +204,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for ComparisonExpr<'s> {
 
         let (op, input) = if lhs_type == Type::Bool || lhs_type == Type::Array(Box::new(Type::Bool))
         {
-            (FieldOp::IsTrue, input)
+            (ComparisonOpExpr::IsTrue, input)
         } else {
             let (op, input) = ComparisonOp::lex(skip_space(input))?;
 
@@ -217,26 +217,26 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for ComparisonExpr<'s> {
                 | (Type::Bytes, ComparisonOp::In)
                 | (Type::Int, ComparisonOp::In) => {
                     let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
-                    (FieldOp::OneOf(rhs), input)
+                    (ComparisonOpExpr::OneOf(rhs), input)
                 }
                 (Type::Ip, ComparisonOp::Ordering(op))
                 | (Type::Bytes, ComparisonOp::Ordering(op))
                 | (Type::Int, ComparisonOp::Ordering(op)) => {
                     let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
-                    (FieldOp::Ordering { op, rhs }, input)
+                    (ComparisonOpExpr::Ordering { op, rhs }, input)
                 }
                 (Type::Int, ComparisonOp::Int(op)) => {
                     let (rhs, input) = i32::lex(input)?;
-                    (FieldOp::Int { op, rhs }, input)
+                    (ComparisonOpExpr::Int { op, rhs }, input)
                 }
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
                     BytesOp::Contains => {
                         let (bytes, input) = Bytes::lex(input)?;
-                        (FieldOp::Contains(bytes), input)
+                        (ComparisonOpExpr::Contains(bytes), input)
                     }
                     BytesOp::Matches => {
                         let (regex, input) = Regex::lex(input)?;
-                        (FieldOp::Matches(regex), input)
+                        (ComparisonOpExpr::Matches(regex), input)
                     }
                 },
                 _ => {
@@ -270,7 +270,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
         }
 
         match self.op {
-            FieldOp::IsTrue => match lhs.get_type() {
+            ComparisonOpExpr::IsTrue => match lhs.get_type() {
                 Type::Bool => {
                     CompiledExpr::One(lhs.compile_one_with(false, move |x| *cast_value!(x, Bool)))
                 }
@@ -282,7 +282,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 },
                 _ => unreachable!(),
             },
-            FieldOp::Ordering { op, rhs } => match op {
+            ComparisonOpExpr::Ordering { op, rhs } => match op {
                 OrderingOp::NotEqual => lhs.compile_with(true, &[], move |x| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
@@ -290,21 +290,21 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
             },
-            FieldOp::Int {
+            ComparisonOpExpr::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
             } => lhs.compile_with(false, &[], move |x| cast_value!(x, Int) & rhs != 0),
-            FieldOp::Contains(bytes) => {
+            ComparisonOpExpr::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
                 lhs.compile_with(false, &[], move |x| {
                     searcher.search_in(cast_value!(x, Bytes)).is_some()
                 })
             }
-            FieldOp::Matches(regex) => {
+            ComparisonOpExpr::Matches(regex) => {
                 lhs.compile_with(false, &[], move |x| regex.is_match(cast_value!(x, Bytes)))
             }
-            FieldOp::OneOf(values) => match values {
+            ComparisonOpExpr::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
                     let mut v6 = Vec::new();
@@ -533,7 +533,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("ssl")),
                     indexes: vec![],
                 },
-                op: FieldOp::IsTrue
+                op: ComparisonOpExpr::IsTrue
             }
         );
 
@@ -564,7 +564,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("ip.addr")),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThanEqual,
                     rhs: RhsValue::Ip(IpAddr::from([
                         0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
@@ -619,7 +619,7 @@ mod tests {
                         lhs: LhsFieldExpr::Field(field("http.host")),
                         indexes: vec![],
                     },
-                    op: FieldOp::Ordering {
+                    op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::GreaterThanEqual,
                         rhs: RhsValue::Bytes(
                             vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()
@@ -647,7 +647,7 @@ mod tests {
                         lhs: LhsFieldExpr::Field(field("http.host")),
                         indexes: vec![],
                     },
-                    op: FieldOp::Ordering {
+                    op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::LessThan,
                         rhs: RhsValue::Bytes(vec![0x12].into()),
                     },
@@ -671,7 +671,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -706,7 +706,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
                 },
-                op: FieldOp::Int {
+                op: ComparisonOpExpr::Int {
                     op: IntOp::BitwiseAnd,
                     rhs: 1,
                 }
@@ -741,7 +741,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
                 },
-                op: FieldOp::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083])),
+                op: ComparisonOpExpr::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083])),
             }
         );
 
@@ -792,7 +792,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
                 },
-                op: FieldOp::OneOf(RhsValues::Bytes(
+                op: ComparisonOpExpr::OneOf(RhsValues::Bytes(
                     ["example.org", "example.com",]
                         .iter()
                         .map(|s| s.to_string().into())
@@ -838,7 +838,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("ip.addr")),
                     indexes: vec![],
                 },
-                op: FieldOp::OneOf(RhsValues::Ip(vec![
+                op: ComparisonOpExpr::OneOf(RhsValues::Ip(vec![
                     IpRange::Cidr(IpCidr::new([127, 0, 0, 0].into(), 8).unwrap()),
                     IpRange::Cidr(IpCidr::new_host([0, 0, 0, 0, 0, 0, 0, 1].into())),
                     IpRange::Explicit(ExplicitIpRange::V4(
@@ -894,7 +894,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
                 },
-                op: FieldOp::Contains("abc".to_owned().into())
+                op: ComparisonOpExpr::Contains("abc".to_owned().into())
             }
         );
 
@@ -926,7 +926,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.host")),
                     indexes: vec![],
                 },
-                op: FieldOp::Contains(vec![0x6F, 0x72, 0x67].into()),
+                op: ComparisonOpExpr::Contains(vec![0x6F, 0x72, 0x67].into()),
             }
         );
 
@@ -958,7 +958,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThan,
                     rhs: RhsValue::Int(8000)
                 },
@@ -993,7 +993,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
-                op: FieldOp::Contains("abc".to_owned().into()),
+                op: ComparisonOpExpr::Contains("abc".to_owned().into()),
             }
         );
 
@@ -1028,7 +1028,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("host".to_string())],
                 },
-                op: FieldOp::Contains("abc".to_owned().into()),
+                op: ComparisonOpExpr::Contains("abc".to_owned().into()),
             }
         );
 
@@ -1083,7 +1083,7 @@ mod tests {
                     }),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1133,7 +1133,7 @@ mod tests {
                     }),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1176,7 +1176,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1212,7 +1212,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1248,7 +1248,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1284,7 +1284,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1327,7 +1327,7 @@ mod tests {
                     }),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1379,7 +1379,7 @@ mod tests {
                     }),
                     indexes: vec![],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("example.org".to_owned().into())
                 }
@@ -1442,7 +1442,7 @@ mod tests {
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("three".to_owned().into())
                 }
@@ -1521,7 +1521,7 @@ mod tests {
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("three-cf".to_owned().into())
                 }
@@ -1591,7 +1591,7 @@ mod tests {
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
-                op: FieldOp::OneOf(RhsValues::Bytes(vec![
+                op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
                     "one-cf".to_owned().into(),
                     "two-cf".to_owned().into(),
                     "three-cf".to_owned().into()
@@ -1647,7 +1647,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.cookies")),
                     indexes: vec![FieldIndex::MapEach],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("three".to_owned().into())
                 }
@@ -1690,7 +1690,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("http.headers")),
                     indexes: vec![FieldIndex::MapEach],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("three".to_owned().into())
                 }
@@ -1757,7 +1757,7 @@ mod tests {
                     }),
                     indexes: vec![FieldIndex::MapEach],
                 },
-                op: FieldOp::Ordering {
+                op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
                     rhs: RhsValue::Bytes("three-cf".to_owned().into())
                 }

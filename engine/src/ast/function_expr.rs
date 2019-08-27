@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        field_expr::{ComparisonExpr, FieldOp},
+        field_expr::{ComparisonExpr, ComparisonOpExpr},
         index_expr::IndexExpr,
         simple_expr::SimpleExpr,
         Expr,
@@ -92,7 +92,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(ComparisonExpr {
                 lhs,
-                op: FieldOp::IsTrue,
+                op: ComparisonOpExpr::IsTrue,
             })) => FunctionCallArgExpr::IndexExpr(lhs),
             _ => self,
         }
@@ -372,7 +372,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::{
-            field_expr::{ComparisonExpr, FieldOp, LhsFieldExpr},
+            field_expr::{ComparisonExpr, ComparisonOpExpr, LhsFieldExpr},
             logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
@@ -565,7 +565,7 @@ mod tests {
                                     ),
                                     indexes: vec![],
                                 },
-                                op: FieldOp::IsTrue,
+                                op: ComparisonOpExpr::IsTrue,
                             })),
                             LogicalExpr::Simple(SimpleExpr::Comparison(ComparisonExpr {
                                 lhs: IndexExpr {
@@ -576,7 +576,7 @@ mod tests {
                                     ),
                                     indexes: vec![],
                                 },
-                                op: FieldOp::IsTrue,
+                                op: ComparisonOpExpr::IsTrue,
                             }))
                         ]
                     })
