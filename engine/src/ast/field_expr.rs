@@ -196,17 +196,26 @@ impl<'s> GetType for ComparisonExpr<'s> {
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for ComparisonExpr<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
-        let initial_input = input;
-
         let (lhs, input) = IndexExpr::lex_with(input, scheme)?;
 
+        Self::lex_with_lhs(input, scheme, lhs)
+    }
+}
+
+impl<'s> ComparisonExpr<'s> {
+    pub(crate) fn lex_with_lhs<'i>(
+        input: &'i str,
+        _scheme: &'s Scheme,
+        lhs: IndexExpr<'s>,
+    ) -> LexResult<'i, Self> {
         let lhs_type = lhs.get_type();
 
         let (op, input) = if lhs_type == Type::Bool || lhs_type == Type::Array(Box::new(Type::Bool))
         {
             (ComparisonOpExpr::IsTrue, input)
         } else {
-            let (op, input) = ComparisonOp::lex(skip_space(input))?;
+            let initial_input = skip_space(input);
+            let (op, input) = ComparisonOp::lex(initial_input)?;
 
             let input_after_op = input;
 

@@ -1,13 +1,13 @@
 use crate::{
     ast::{
-        field_expr::{ComparisonExpr, ComparisonOpExpr},
+        field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
         index_expr::IndexExpr,
         simple_expr::SimpleExpr,
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
     functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
-    lex::{expect, skip_space, span, take_while, LexError, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{Array, GetType, LhsValue, RhsValue, Type},
 };
@@ -127,18 +127,38 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 || (c2.is_some() && c_is_field!(c2.unwrap()))
                 || (c3.is_some() && c_is_field!(c3.unwrap()))
             {
-                return IndexExpr::lex_with(input, scheme)
-                    .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input));
+                let (lhs, input) = IndexExpr::lex_with(input, scheme)?;
+                let lookahead = skip_space(input);
+                if ComparisonOp::lex(lookahead).is_ok() {
+                    return ComparisonExpr::lex_with_lhs(input, scheme, lhs).map(|(op, input)| {
+                        (
+                            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(op)),
+                            input,
+                        )
+                    });
+                } else {
+                    return Ok((FunctionCallArgExpr::IndexExpr(lhs), input));
+                }
             }
         }
 
         // Fallback to blind parsing next argument
-        IndexExpr::lex_with(input, scheme)
-            .map(|(lhs, input)| (FunctionCallArgExpr::IndexExpr(lhs), input))
-            .or_else(|_| {
-                RhsValue::lex_with(input, Type::Ip)
-                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
-            })
+        if let Ok((lhs, input)) = IndexExpr::lex_with(input, scheme) {
+            let lookahead = skip_space(input);
+            if ComparisonOp::lex(lookahead).is_ok() {
+                return ComparisonExpr::lex_with_lhs(input, scheme, lhs).map(|(op, input)| {
+                    (
+                        FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(op)),
+                        input,
+                    )
+                });
+            } else {
+                return Ok((FunctionCallArgExpr::IndexExpr(lhs), input));
+            }
+        }
+
+        RhsValue::lex_with(input, Type::Ip)
+            .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             .or_else(|_| {
                 RhsValue::lex_with(input, Type::Int)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
@@ -372,7 +392,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::{
-            field_expr::{ComparisonExpr, ComparisonOpExpr, LhsFieldExpr},
+            field_expr::{ComparisonExpr, ComparisonOpExpr, LhsFieldExpr, OrderingOp},
             logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
@@ -384,24 +404,33 @@ mod tests {
     use lazy_static::lazy_static;
     use std::convert::TryFrom;
 
-    // test function
     fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        let arg = match args.next() {
-            Some(Ok(arg)) => match args.next() {
-                Some(_) => unreachable!(),
-                None => arg,
-            },
+        match args.next()? {
+            Ok(v) => Some(LhsValue::Bool(
+                Array::try_from(v)
+                    .unwrap()
+                    .into_iter()
+                    .any(|lhs| bool::try_from(lhs).unwrap()),
+            )),
+            Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
             _ => unreachable!(),
-        };
-        Some(LhsValue::Bool(
-            Array::try_from(arg)
-                .unwrap()
-                .into_iter()
-                .any(|lhs| bool::try_from(lhs).unwrap()),
-        ))
+        }
     }
 
-    // test function
+    fn lower_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        use std::borrow::Cow;
+
+        match args.next()? {
+            Ok(LhsValue::Bytes(mut b)) => {
+                let mut text: Vec<u8> = b.to_mut().to_vec();
+                text.make_ascii_lowercase();
+                Some(LhsValue::Bytes(Cow::Owned(text)))
+            }
+            Err(Type::Bytes) => None,
+            _ => unreachable!(),
+        }
+    }
+
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
     }
@@ -411,7 +440,7 @@ mod tests {
             let mut scheme = Scheme! {
                 http.headers: Map(Bytes),
                 http.host: Bytes,
-                http.request.headers.keys: Array(Bytes),
+                http.request.headers.names: Array(Bytes),
                 http.request.headers.values: Array(Bytes),
                 http.request.headers.is_empty: Array(Bool),
                 ip.addr: Ip,
@@ -446,6 +475,20 @@ mod tests {
                         }],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
+                    },
+                )
+                .unwrap();
+            scheme
+                .add_function(
+                    "lower".into(),
+                    Function {
+                        params: vec![FunctionParam {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
+                        opt_params: vec![],
+                        return_type: Type::Bytes,
+                        implementation: FunctionImpl::new(lower_function),
                     },
                 )
                 .unwrap();
@@ -611,13 +654,15 @@ mod tests {
         );
 
         let expr = assert_ok!(
-            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[*] );", &SCHEME),
+            FunctionCallExpr::lex_with("echo ( http.request.headers.names[*] );", &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
-                        SCHEME.get_field_index("http.request.headers.keys").unwrap()
+                        SCHEME
+                            .get_field_index("http.request.headers.names")
+                            .unwrap()
                     ),
                     indexes: vec![FieldIndex::MapEach],
                 })],
@@ -632,7 +677,7 @@ mod tests {
                 "args": [
                     {
                         "kind": "IndexExpr",
-                        "value": ["http.request.headers.keys", {"kind": "MapEach"}],
+                        "value": ["http.request.headers.names", {"kind": "MapEach"}],
                     }
                 ]
             }
@@ -665,6 +710,60 @@ mod tests {
                 ]
             }
         );
+
+        assert_ok!(
+            FunctionCallArgExpr::lex_with("http.request.headers.names[*] == \"test\"", &SCHEME),
+            FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(
+                        SCHEME
+                            .get_field_index("http.request.headers.names")
+                            .unwrap()
+                    ),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("test".to_owned().into())
+                }
+            })),
+            ""
+        );
+
+        assert_ok!(
+            FunctionCallExpr::lex_with(
+                "any(lower(http.request.headers.names[*])[*] contains \"c\")",
+                &SCHEME
+            ),
+            FunctionCallExpr {
+                name: "any".into(),
+                function: SCHEME.get_function("any").unwrap(),
+                args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
+                    ComparisonExpr {
+                        lhs: IndexExpr {
+                            lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                                name: "lower".into(),
+                                function: SCHEME.get_function("lower").unwrap(),
+                                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                    lhs: LhsFieldExpr::Field(
+                                        SCHEME
+                                            .get_field_index("http.request.headers.names")
+                                            .unwrap()
+                                    ),
+                                    indexes: vec![FieldIndex::MapEach],
+                                })],
+                            }),
+                            indexes: vec![FieldIndex::MapEach],
+                        },
+                        op: ComparisonOpExpr::Contains("c".to_string().into(),)
+                    }
+                ))],
+            },
+            ""
+        );
+
+        let expr = FunctionCallArgExpr::lex_with("lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"", &SCHEME);
+        assert!(!expr.is_err());
     }
 
     #[test]
@@ -736,7 +835,7 @@ mod tests {
         );
 
         assert_err!(
-            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[0][*] );", &SCHEME),
+            FunctionCallExpr::lex_with("echo ( http.request.headers.names[0][*] );", &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes,
@@ -745,7 +844,7 @@ mod tests {
         );
 
         assert_err!(
-            FunctionCallExpr::lex_with("echo ( http.request.headers.keys[*][0] );", &SCHEME),
+            FunctionCallExpr::lex_with("echo ( http.request.headers.names[*][0] );", &SCHEME),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::ArrayIndex(0),
                 actual: Type::Bytes,
