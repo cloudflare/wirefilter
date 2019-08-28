@@ -808,8 +808,8 @@ fn test_parse_error_in_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -825,8 +825,8 @@ fn test_parse_error_in_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -934,8 +934,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -951,8 +951,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -968,8 +968,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -985,8 +985,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -1002,8 +1002,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
@@ -1019,8 +1019,8 @@ fn test_parse_error_ordering_op() {
                     },
                     input: &filter,
                     line_number: 0,
-                    span_start: 0,
-                    span_len: 10
+                    span_start: 8,
+                    span_len: 2
                 }
             );
         }
