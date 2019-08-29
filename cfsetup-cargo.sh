@@ -20,11 +20,18 @@ case $CMD in
 		mkdir engine/benches
 		echo 'fn main() {}' > engine/benches/bench.rs
 
+		# Fetch all the dependencies
+		cargo fetch --locked
+
 		# Build library with Cargo.lock (including all the dependencies)
-		cargo build --locked --all $@
+		cargo build --frozen --offline --all $@
+		cargo bench --frozen --offline --all --no-run
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
+		cargo clean --frozen --offline -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
+
+		# Give unpriviledge user permission to access cargo target directory
+		chown -R 1000:1000 $CARGO_TARGET_DIR
 		;;
 	wasm-pack)
 		# Latest release of wasm-pack can't find target via CARGO_TARGET_DIR nor
