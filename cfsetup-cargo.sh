@@ -28,7 +28,10 @@ case $CMD in
 		cargo bench --frozen --offline --all --no-run
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm -p wirefilter-parser $@
+		cargo clean --frozen --offline -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
+
+		# Give unpriviledge user permission to access cargo target directory
+		chown -R 1000:1000 $CARGO_TARGET_DIR
 		;;
 	wasm-pack)
 		# Latest release of wasm-pack can't find target via CARGO_TARGET_DIR nor

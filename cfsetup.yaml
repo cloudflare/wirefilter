@@ -1,8 +1,8 @@
 everything: &everything
   build: &build
-    builddeps:
-      - rust
-      - cargo-deb
+    builddeps: &builddeps
+      ? rust
+      ? cargo-deb
     pre-cache-copy-paths: &paths
       - engine/Cargo.toml
       - ffi/Cargo.toml
@@ -13,15 +13,26 @@ everything: &everything
       - Cargo.toml
       - cfsetup-cargo.sh
     pre-cache:
-      - ./cfsetup-cargo.sh prebuild --release
+      - ./cfsetup-cargo.sh prebuild --release --target x86_64-unknown-linux-gnu
     post-cache:
       - cd ffi
-      - sudo ../cfsetup-cargo.sh deb -- --release --frozen
+      - ../cfsetup-cargo.sh build --release --target x86_64-unknown-linux-gnu --frozen --offline
+      - ../cfsetup-cargo.sh deb --no-build --target x86_64-unknown-linux-gnu -- --frozen --offline
     artifacts:
-      - /var/lib/cargo/target/debian/*.deb
+      - /var/lib/cargo/target/x86_64-unknown-linux-gnu/debian/*.deb
   build-arm64:
-    <<: *build
-    target-arch: arm64
+    builddeps:
+      <<: *builddeps
+      ? crossbuild-essential-arm64
+    pre-cache-copy-paths: *paths
+    pre-cache:
+      - ./cfsetup-cargo.sh prebuild --release --target aarch64-unknown-linux-gnu
+    post-cache:
+      - cd ffi
+      - ../cfsetup-cargo.sh build --release --target aarch64-unknown-linux-gnu --frozen --offline
+      - ../cfsetup-cargo.sh deb --no-build --target aarch64-unknown-linux-gnu -- --frozen --offline
+    artifacts:
+      - /var/lib/cargo/target/aarch64-unknown-linux-gnu/debian/*.deb
   build-wasm:
     builddeps: &wasm-deps
       - rust
@@ -31,7 +42,7 @@ everything: &everything
     pre-cache:
       - ./cfsetup-cargo.sh prebuild --target wasm32-unknown-unknown
     post-cache:
-      - sudo ./cfsetup-cargo.sh wasm-pack wasm --debug --mode no-install --target browser --scope cloudflare
+      - ./cfsetup-cargo.sh wasm-pack wasm --debug --mode no-install --target browser --scope cloudflare
     artifacts: &wasm-artifacts
       - wasm/pkg/*.tgz
   publish-wasm:
@@ -43,7 +54,7 @@ everything: &everything
       - ./cfsetup-cargo.sh prebuild --release --target wasm32-unknown-unknown
     post-cache:
       - export RUSTFLAGS="-C opt-level=z -C codegen-units=1"
-      - sudo ./cfsetup-cargo.sh wasm-pack wasm --mode no-install --target browser --scope cloudflare
+      - ./cfsetup-cargo.sh wasm-pack wasm --mode no-install --target browser --scope cloudflare
       - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
       - npm publish wasm/pkg/*.tgz
     artifacts: *wasm-artifacts
@@ -54,9 +65,9 @@ everything: &everything
     pre-cache: &test-pre-cache
       - ./cfsetup-cargo.sh prebuild
     post-cache:
-      - sudo ./cfsetup-cargo.sh test --frozen
-      - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen
-      - sudo ./cfsetup-cargo.sh fmt -- --check
+      - ./cfsetup-cargo.sh test --frozen
+      - ./cfsetup-cargo.sh clippy --all-targets --frozen
+      - ./cfsetup-cargo.sh fmt -- --check
   ci-test:
     builddeps:
       - rust
@@ -64,9 +75,9 @@ everything: &everything
     pre-cache-copy-paths: *paths
     pre-cache: *test-pre-cache
     post-cache:
-      - sudo ./cfsetup-cargo.sh test --frozen | cargo-to-teamcity
-      - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen -- -D clippy
-      - sudo ./cfsetup-cargo.sh fmt -- --check
+      - ./cfsetup-cargo.sh test --frozen | cargo-to-teamcity
+      - ./cfsetup-cargo.sh clippy --all-targets --frozen -- -D clippy
+      - ./cfsetup-cargo.sh fmt -- --check
 
 buster: *everything
 stretch: *everything
