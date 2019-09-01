@@ -289,8 +289,7 @@ impl<'s> Serialize for IndexExpr<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::field_expr::LhsFieldExpr;
-    use crate::FieldIndex;
+    use crate::{ast::field_expr::LhsFieldExpr, FieldIndex};
     use lazy_static::lazy_static;
 
     lazy_static! {

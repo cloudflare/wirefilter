@@ -33,6 +33,7 @@ mod ffi_ctest {
         create_map_type,
         create_scheme,
         add_fields_to_scheme,
+        add_malloced_type_field_to_scheme,
         parse_good_filter,
         parse_bad_filter,
         filter_uses_field,

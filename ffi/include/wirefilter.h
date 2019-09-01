@@ -57,14 +57,14 @@ typedef enum {
 } wirefilter_type_tag_t;
 
 typedef struct {
-    wirefilter_type_tag_t tag;
-    void *data[2];
+    uint8_t tag;
+    void *data;
 } wirefilter_type_t;
 
-static const wirefilter_type_t WIREFILTER_TYPE_IP = {.tag = WIREFILTER_TYPE_TAG_IP, .data = {NULL, NULL}};
-static const wirefilter_type_t WIREFILTER_TYPE_BYTES = {.tag = WIREFILTER_TYPE_TAG_BYTES, .data = {NULL, NULL}};
-static const wirefilter_type_t WIREFILTER_TYPE_INT = {.tag = WIREFILTER_TYPE_TAG_INT, .data = {NULL, NULL}};
-static const wirefilter_type_t WIREFILTER_TYPE_BOOL = {.tag = WIREFILTER_TYPE_TAG_BOOL, .data = {NULL, NULL}};
+static const wirefilter_type_t WIREFILTER_TYPE_IP = {.tag = WIREFILTER_TYPE_TAG_IP, .data = NULL};
+static const wirefilter_type_t WIREFILTER_TYPE_BYTES = {.tag = WIREFILTER_TYPE_TAG_BYTES, .data = NULL};
+static const wirefilter_type_t WIREFILTER_TYPE_INT = {.tag = WIREFILTER_TYPE_TAG_INT, .data = NULL};
+static const wirefilter_type_t WIREFILTER_TYPE_BOOL = {.tag = WIREFILTER_TYPE_TAG_BOOL, .data = NULL};
 
 wirefilter_scheme_t *wirefilter_create_scheme();
 void wirefilter_free_scheme(wirefilter_scheme_t *scheme);

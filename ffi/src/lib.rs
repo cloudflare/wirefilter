@@ -5,7 +5,9 @@ use crate::transfer_types::{
     StaticRustAllocatedString,
 };
 use fnv::FnvHasher;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::{
+    convert::TryFrom,
     hash::Hasher,
     io::{self, Write},
     net::IpAddr,
@@ -15,6 +17,68 @@ use wirefilter::{
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+pub enum CTypeTag {
+    Ip,
+    Bytes,
+    Int,
+    Bool,
+    Array,
+    Map,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct CType {
+    tag: u8,
+    data: Option<Box<Type>>,
+}
+
+impl From<CType> for Type {
+    fn from(ty: CType) -> Self {
+        match CTypeTag::try_from(ty.tag).unwrap() {
+            CTypeTag::Ip => Type::Ip,
+            CTypeTag::Bytes => Type::Bytes,
+            CTypeTag::Int => Type::Int,
+            CTypeTag::Bool => Type::Bool,
+            CTypeTag::Array => Type::Array(ty.data.unwrap()),
+            CTypeTag::Map => Type::Map(ty.data.unwrap()),
+        }
+    }
+}
+
+impl From<Type> for CType {
+    fn from(ty: Type) -> Self {
+        match ty {
+            Type::Ip => CType {
+                tag: CTypeTag::Ip.into(),
+                data: None,
+            },
+            Type::Bytes => CType {
+                tag: CTypeTag::Bytes.into(),
+                data: None,
+            },
+            Type::Int => CType {
+                tag: CTypeTag::Int.into(),
+                data: None,
+            },
+            Type::Bool => CType {
+                tag: CTypeTag::Bool.into(),
+                data: None,
+            },
+            Type::Array(arr) => CType {
+                tag: CTypeTag::Array.into(),
+                data: Some(arr),
+            },
+            Type::Map(map) => CType {
+                tag: CTypeTag::Map.into(),
+                data: Some(map),
+            },
+        }
+    }
+}
 
 #[repr(u8)]
 pub enum ParsingResult<'s> {
@@ -54,22 +118,30 @@ pub extern "C" fn wirefilter_free_scheme(scheme: RustBox<Scheme>) {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_create_map_type(ty: Type) -> Type {
-    Type::Map(Box::new(ty))
+pub extern "C" fn wirefilter_create_map_type(ty: CType) -> CType {
+    CType {
+        tag: CTypeTag::Map.into(),
+        data: Some(Box::new(Type::from(ty))),
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_create_array_type(ty: Type) -> Type {
-    Type::Array(Box::new(ty))
+pub extern "C" fn wirefilter_create_array_type(ty: CType) -> CType {
+    CType {
+        tag: CTypeTag::Array.into(),
+        data: Some(Box::new(Type::from(ty))),
+    }
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
     scheme: &mut Scheme,
     name: ExternallyAllocatedStr<'_>,
-    ty: Type,
+    ty: CType,
 ) {
-    scheme.add_field(name.into_ref().to_owned(), ty).unwrap();
+    scheme
+        .add_field(name.into_ref().to_owned(), ty.into())
+        .unwrap();
 }
 
 #[no_mangle]
@@ -234,8 +306,8 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_create_map<'a>(ty: Type) -> RustBox<LhsValue<'a>> {
-    let map = Box::new(LhsValue::Map(Map::new(ty)));
+pub extern "C" fn wirefilter_create_map<'a>(ty: CType) -> RustBox<LhsValue<'a>> {
+    let map = Box::new(LhsValue::Map(Map::new(ty.into())));
     map.into()
 }
 
@@ -328,8 +400,8 @@ pub extern "C" fn wirefilter_free_map(map: RustBox<LhsValue<'_>>) {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_create_array<'a>(ty: Type) -> RustBox<LhsValue<'a>> {
-    let arr = Box::new(LhsValue::Array(Array::new(ty)));
+pub extern "C" fn wirefilter_create_array<'a>(ty: CType) -> RustBox<LhsValue<'a>> {
+    let arr = Box::new(LhsValue::Array(Array::new(ty.into())));
     arr.into()
 }
 
@@ -455,44 +527,44 @@ mod ffi_test {
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("ip1"),
-            Type::Ip,
+            Type::Ip.into(),
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("ip2"),
-            Type::Ip,
+            Type::Ip.into(),
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("str1"),
-            Type::Bytes,
+            Type::Bytes.into(),
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("str2"),
-            Type::Bytes,
+            Type::Bytes.into(),
         );
 
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("num1"),
-            Type::Int,
+            Type::Int.into(),
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("num2"),
-            Type::Int,
+            Type::Int.into(),
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("map1"),
-            wirefilter_create_map_type(Type::Int),
+            wirefilter_create_map_type(Type::Int.into()),
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
             ExternallyAllocatedStr::from("map2"),
-            wirefilter_create_map_type(Type::Bytes),
+            wirefilter_create_map_type(Type::Bytes.into()),
         );
 
         scheme
@@ -537,7 +609,7 @@ mod ffi_test {
             1337,
         );
 
-        let mut map1 = wirefilter_create_map(Type::Int);
+        let mut map1 = wirefilter_create_map(Type::Int.into());
 
         wirefilter_add_int_value_to_map(&mut map1, ExternallyAllocatedStr::from("key"), 42);
 
@@ -547,7 +619,7 @@ mod ffi_test {
             map1,
         );
 
-        let mut map2 = wirefilter_create_map(Type::Bytes);
+        let mut map2 = wirefilter_create_map(Type::Bytes.into());
 
         wirefilter_add_bytes_value_to_map(
             &mut map2,

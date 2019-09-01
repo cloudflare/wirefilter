@@ -148,7 +148,6 @@ macro_rules! declare_types {
     ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
         #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Hash)]
-        #[repr(C)]
         pub enum Type {
             $($(# $attrs)* $name$(($val_ty))?,)*
         }
