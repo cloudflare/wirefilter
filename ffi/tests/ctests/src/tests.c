@@ -71,6 +71,25 @@ void wirefilter_ffi_ctest_add_fields_to_scheme() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_add_malloced_type_field_to_scheme() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    wirefilter_type_t *byte_type = (wirefilter_type_t *)malloc(sizeof(wirefilter_type_t));
+    rust_assert(byte_type != NULL, "could not allocate type");
+    *byte_type = WIREFILTER_TYPE_BYTES;
+
+    wirefilter_add_type_field_to_scheme(
+        scheme,
+        wirefilter_string("http.host"),
+        *byte_type
+    );
+
+    free(byte_type);
+
+    wirefilter_free_scheme(scheme);
+}
+
 void wirefilter_ffi_ctest_parse_good_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
