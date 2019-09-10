@@ -165,11 +165,14 @@ pub struct FieldRedefinitionError(String);
 #[fail(display = "attempt to redefine function {}", _0)]
 pub struct FunctionRedefinitionError(String);
 
+/// An error that occurs when trying to redefine a field or function.
 #[derive(Debug, PartialEq, Fail)]
 pub enum ItemRedefinitionError {
+    /// An error that occurs when previously defined field gets redefined.
     #[fail(display = "{}", _0)]
     Field(#[cause] FieldRedefinitionError),
 
+    /// An error that occurs when previously defined function gets redefined.
     #[fail(display = "{}", _0)]
     Function(#[cause] FunctionRedefinitionError),
 }
