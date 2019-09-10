@@ -80,6 +80,9 @@ pub use self::{
         FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
     },
     lex::LexErrorKind,
-    scheme::{FieldIndex, FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
+    scheme::{
+        FieldIndex, FieldRedefinitionError, ItemRedefinitionError, ParseError, Scheme,
+        UnknownFieldError,
+    },
     types::{Array, ExpectedType, GetType, LhsValue, Map, Type, TypeMismatchError},
 };
