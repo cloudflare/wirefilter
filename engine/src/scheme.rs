@@ -271,7 +271,7 @@ impl<'i> Display for ParseError<'i> {
 /// This is necessary to provide typechecking for runtime values provided
 /// to the [execution context](::ExecutionContext) and also to aid parser
 /// in ambiguous contexts.
-#[derive(Default, Deserialize)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Scheme {
     fields: IndexMap<String, Type, FnvBuildHasher>,

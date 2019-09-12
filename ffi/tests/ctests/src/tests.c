@@ -218,6 +218,26 @@ void wirefilter_ffi_ctest_filter_serialize() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_scheme_serialize() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_rust_allocated_str_t json = wirefilter_serialize_scheme_to_json(scheme);
+
+    rust_assert(json.data != NULL && json.length > 0, "could not serialize scheme to JSON");
+
+    rust_assert(
+        strncmp(json.data, "{\"http.host\":\"Bytes\",\"ip.addr\":\"Ip\",\"ssl\":\"Bool\",\"tcp.port\":\"Int\",\"http.headers\":{\"Map\":\"Bytes\"},\"http.cookies\":{\"Array\":\"Bytes\"}}", json.length) == 0,
+        "invalid JSON serialization"
+    );
+
+    wirefilter_free_string(json);
+
+    wirefilter_free_scheme(scheme);
+}
+
 void wirefilter_ffi_ctest_compile_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
@@ -263,30 +283,104 @@ void wirefilter_ffi_ctest_add_values_to_execution_context() {
     wirefilter_externally_allocated_byte_arr_t http_host;
     http_host.data = (unsigned char *)"www.cloudflare.com";
     http_host.length = strlen((char *)http_host.data);
-    wirefilter_add_bytes_value_to_execution_context(
+    rust_assert(wirefilter_add_bytes_value_to_execution_context(
         exec_ctx,
         wirefilter_string("http.host"),
         http_host
-    );
+    ) == true, "could not set value for field http.host");
 
-    uint8_t ip_addr[4] = {192, 168, 0, 1};
-    wirefilter_add_ipv4_value_to_execution_context(
+    uint8_t ipv4_addr[4] = {192, 168, 0, 1};
+    rust_assert(wirefilter_add_ipv4_value_to_execution_context(
         exec_ctx,
         wirefilter_string("ip.addr"),
-        ip_addr
-    );
+        ipv4_addr
+    ) == true, "could not set value for field ip.addr");
 
-    wirefilter_add_bool_value_to_execution_context(
+    uint8_t ipv6_addr[16] = {20, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    rust_assert(wirefilter_add_ipv4_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("ip.addr"),
+        ipv6_addr
+    ) == true, "could not set value for field ip.addr");
+
+    rust_assert(wirefilter_add_bool_value_to_execution_context(
         exec_ctx,
         wirefilter_string("ssl"),
         false
-    );
+    ) == true, "could not set value for field ssl");
 
-    wirefilter_add_int_value_to_execution_context(
+    rust_assert(wirefilter_add_int_value_to_execution_context(
         exec_ctx,
         wirefilter_string("tcp.port"),
         80
+    ) == true, "could not set value for field tcp.port");
+
+    wirefilter_free_execution_context(exec_ctx);
+
+    wirefilter_free_scheme(scheme);
+}
+
+void wirefilter_ffi_ctest_add_values_to_execution_context_errors() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
+    rust_assert(exec_ctx != NULL, "could not create execution context");
+
+    wirefilter_externally_allocated_byte_arr_t http_host;
+    http_host.data = (unsigned char *)"www.cloudflare.com";
+    http_host.length = strlen((char *)http_host.data);
+    rust_assert(wirefilter_add_bytes_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        http_host
+    ) == false, "managed to set value for non-existent bytes field");
+
+    uint8_t ipv4_addr[4] = {192, 168, 0, 1};
+    rust_assert(wirefilter_add_ipv4_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        ipv4_addr
+    ) == false, "managed to set value for non-existent ipv4 field");
+
+    uint8_t ipv6_addr[16] = {20, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    rust_assert(wirefilter_add_ipv6_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        ipv6_addr
+    ) == false, "managed to set value for non-existent ipv6 field");
+
+    rust_assert(wirefilter_add_bool_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        false
+    ) == false, "managed to set value for non-existent bool field");
+
+    rust_assert(wirefilter_add_int_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        80
+    ) == false, "managed to set value for non-existent int field");
+
+    wirefilter_map_t *more_http_headers = wirefilter_create_map(
+        WIREFILTER_TYPE_BYTES
     );
+    rust_assert(wirefilter_add_map_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        more_http_headers
+    ) == false, "managed to set value for non-existent map field");
+
+    wirefilter_array_t *http_cookies = wirefilter_create_array(
+        WIREFILTER_TYPE_BYTES
+    );
+    rust_assert(wirefilter_add_array_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("doesnotexist"),
+        http_cookies
+    ) == false, "managed to set value for non-existent array field");
 
     wirefilter_free_execution_context(exec_ctx);
 
@@ -406,11 +500,11 @@ void wirefilter_ffi_ctest_match_map() {
         http_host
     );
 
-    wirefilter_add_map_value_to_execution_context(
+    rust_assert(wirefilter_add_map_value_to_execution_context(
         exec_ctx,
         wirefilter_string("http.headers"),
         http_headers
-    );
+    ) == true, "could not set value for map field http.headers");
 
     rust_assert(wirefilter_match(filter, exec_ctx) == true, "could not match filter");
 
@@ -496,11 +590,11 @@ void wirefilter_ffi_ctest_match_array() {
         http_host
     );
 
-    wirefilter_add_array_value_to_execution_context(
+    rust_assert(wirefilter_add_array_value_to_execution_context(
         exec_ctx,
         wirefilter_string("http.cookies"),
         http_cookies
-    );
+    ) == true, "could not set value for map field http.cookies");
 
     rust_assert(wirefilter_match(filter, exec_ctx) == true, "could not match filter");
 

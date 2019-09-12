@@ -216,6 +216,14 @@ pub extern "C" fn wirefilter_serialize_filter_to_json(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_serialize_scheme_to_json(scheme: &Scheme) -> RustAllocatedString {
+    let result = serde_json::to_string(scheme);
+    result
+        .unwrap_or_else(|err| panic!("{} while serializing scheme {:#?}", err, scheme))
+        .into()
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
     scheme: &'s Scheme,
 ) -> RustBox<ExecutionContext<'e>> {
@@ -232,10 +240,8 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'_>,
     value: i32,
-) {
-    exec_context
-        .set_field_value(name.into_ref(), value)
-        .unwrap();
+) -> bool {
+    exec_context.set_field_value(name.into_ref(), value).is_ok()
 }
 
 #[no_mangle]
@@ -243,11 +249,9 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'_>,
     value: ExternallyAllocatedByteArr<'a>,
-) {
+) -> bool {
     let slice: &[u8] = value.into_ref();
-    exec_context
-        .set_field_value(name.into_ref(), slice)
-        .unwrap();
+    exec_context.set_field_value(name.into_ref(), slice).is_ok()
 }
 
 #[no_mangle]
@@ -255,10 +259,10 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 16],
-) {
+) -> bool {
     exec_context
         .set_field_value(name.into_ref(), IpAddr::from(*value))
-        .unwrap();
+        .is_ok()
 }
 
 #[no_mangle]
@@ -266,10 +270,10 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 4],
-) {
+) -> bool {
     exec_context
         .set_field_value(name.into_ref(), IpAddr::from(*value))
-        .unwrap();
+        .is_ok()
 }
 
 #[no_mangle]
@@ -277,10 +281,8 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name: ExternallyAllocatedStr<'_>,
     value: bool,
-) {
-    exec_context
-        .set_field_value(name.into_ref(), value)
-        .unwrap();
+) -> bool {
+    exec_context.set_field_value(name.into_ref(), value).is_ok()
 }
 
 #[no_mangle]
@@ -288,10 +290,10 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'_>,
     value: RustBox<LhsValue<'a>>,
-) {
+) -> bool {
     exec_context
         .set_field_value(name.into_ref(), *value.into_real_box())
-        .unwrap();
+        .is_ok()
 }
 
 #[no_mangle]
@@ -299,10 +301,10 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'_>,
     value: RustBox<LhsValue<'a>>,
-) {
+) -> bool {
     exec_context
         .set_field_value(name.into_ref(), *value.into_real_box())
-        .unwrap();
+        .is_ok()
 }
 
 #[no_mangle]
@@ -713,6 +715,19 @@ mod ffi_test {
 
             wirefilter_free_parsed_filter(filter);
         }
+
+        wirefilter_free_scheme(scheme);
+    }
+
+    #[test]
+    fn scheme_serialize() {
+        let scheme = create_scheme();
+        let json = wirefilter_serialize_scheme_to_json(&scheme);
+
+        let expected: String = serde_json::to_string(&*scheme).unwrap();
+        assert_eq!(&json as &str, expected);
+
+        wirefilter_free_string(json);
 
         wirefilter_free_scheme(scheme);
     }

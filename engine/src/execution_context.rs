@@ -1,7 +1,21 @@
 use crate::{
     scheme::{Field, Scheme},
     types::{GetType, LhsValue, TypeMismatchError},
+    UnknownFieldError,
 };
+use failure::Fail;
+
+/// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
+#[derive(Debug, PartialEq, Fail)]
+pub enum SetFieldValueError {
+    /// An error that occurs when trying to assign a value of the wrong type to a field.
+    #[fail(display = "{}", _0)]
+    TypeMismatchError(#[cause] TypeMismatchError),
+
+    /// An error that occurs when trying to set the value of a field not already in the Scheme.
+    #[fail(display = "{}", _0)]
+    UnknownFieldError(#[cause] UnknownFieldError),
+}
 
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
 /// set of runtime values to execute [`Filter`](::Filter) against.
@@ -51,8 +65,11 @@ impl<'e> ExecutionContext<'e> {
         &mut self,
         name: &str,
         value: V,
-    ) -> Result<(), TypeMismatchError> {
-        let field = self.scheme.get_field_index(name).unwrap();
+    ) -> Result<(), SetFieldValueError> {
+        let field = self
+            .scheme
+            .get_field_index(name)
+            .map_err(SetFieldValueError::UnknownFieldError)?;
         let value = value.into();
 
         let field_type = field.get_type();
@@ -62,10 +79,10 @@ impl<'e> ExecutionContext<'e> {
             self.values[field.index()] = Some(value);
             Ok(())
         } else {
-            Err(TypeMismatchError {
+            Err(SetFieldValueError::TypeMismatchError(TypeMismatchError {
                 expected: field_type.into(),
                 actual: value_type,
-            })
+            }))
         }
     }
 }
@@ -80,9 +97,21 @@ fn test_field_value_type_mismatch() {
 
     assert_eq!(
         ctx.set_field_value("foo", LhsValue::Bool(false)),
-        Err(TypeMismatchError {
+        Err(SetFieldValueError::TypeMismatchError(TypeMismatchError {
             expected: Type::Int.into(),
-            actual: Type::Bool
-        })
+            actual: Type::Bool,
+        }))
+    );
+}
+
+#[test]
+fn test_field_value_not_found() {
+    let scheme = Scheme::new();
+
+    let mut ctx = ExecutionContext::new(&scheme);
+
+    assert_eq!(
+        ctx.set_field_value("foo", LhsValue::Bool(false)),
+        Err(SetFieldValueError::UnknownFieldError(UnknownFieldError {}))
     );
 }

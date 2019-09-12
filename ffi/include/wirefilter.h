@@ -96,43 +96,43 @@ void wirefilter_free_execution_context(
     wirefilter_execution_context_t *exec_ctx
 );
 
-void wirefilter_add_int_value_to_execution_context(
+bool wirefilter_add_int_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     int32_t value
 );
 
-void wirefilter_add_bytes_value_to_execution_context(
+bool wirefilter_add_bytes_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     wirefilter_externally_allocated_byte_arr_t value
 );
 
-void wirefilter_add_ipv6_value_to_execution_context(
+bool wirefilter_add_ipv6_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     uint8_t value[16]
 );
 
-void wirefilter_add_ipv4_value_to_execution_context(
+bool wirefilter_add_ipv4_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     uint8_t value[4]
 );
 
-void wirefilter_add_bool_value_to_execution_context(
+bool wirefilter_add_bool_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     bool value
 );
 
-void wirefilter_add_map_value_to_execution_context(
+bool wirefilter_add_map_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     wirefilter_map_t *map
 );
 
-void wirefilter_add_array_value_to_execution_context(
+bool wirefilter_add_array_value_to_execution_context(
     wirefilter_execution_context_t *exec_ctx,
     wirefilter_externally_allocated_str_t name,
     wirefilter_array_t *array
@@ -244,6 +244,10 @@ uint64_t wirefilter_get_filter_hash(const wirefilter_filter_ast_t *ast);
 
 wirefilter_rust_allocated_str_t wirefilter_serialize_filter_to_json(
     const wirefilter_filter_ast_t *ast
+);
+
+wirefilter_rust_allocated_str_t wirefilter_serialize_scheme_to_json(
+    const wirefilter_scheme_t *scheme
 );
 
 void wirefilter_free_string(wirefilter_rust_allocated_str_t str);
