@@ -730,7 +730,7 @@ mod tests {
             ""
         );
 
-        assert_ok!(
+        let expr = assert_ok!(
             FunctionCallExpr::lex_with(
                 "any(lower(http.request.headers.names[*])[*] contains \"c\")",
                 &SCHEME
@@ -760,6 +760,35 @@ mod tests {
                 ))],
             },
             ""
+        );
+
+        assert_json!(
+            expr,
+            {
+                "args": [
+                    {
+                        "kind": "SimpleExpr",
+                        "value": {
+                            "lhs": [
+                                {
+                                    "args": [
+                                        {
+                                            "kind": "IndexExpr",
+                                            "value": ["http.request.headers.names", {"kind": "MapEach"}]
+                                        }
+                                    ],
+                                    "name": "lower"
+                                },{
+                                    "kind": "MapEach"
+                                }
+                            ],
+                            "op": "Contains",
+                            "rhs": "c"
+                        }
+                    }
+                ],
+                "name": "any"
+            }
         );
 
         let expr = FunctionCallArgExpr::lex_with("lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"", &SCHEME);
