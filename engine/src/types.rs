@@ -407,7 +407,7 @@ impl<'a> Extend<LhsValue<'a>> for Array<'a> {
 pub struct Map<'a> {
     val_type: Type,
     #[serde(borrow)]
-    data: HashMap<String, LhsValue<'a>>,
+    data: HashMap<Box<[u8]>, LhsValue<'a>>,
 }
 
 impl<'a> Map<'a> {
@@ -420,13 +420,13 @@ impl<'a> Map<'a> {
     }
 
     /// Get a reference to an element if it exists
-    pub fn get(&self, key: &str) -> Option<&LhsValue<'a>> {
+    pub fn get(&self, key: &[u8]) -> Option<&LhsValue<'a>> {
         self.data.get(key)
     }
 
     /// Inserts an element, returns the previously inserted
     /// element if it exists.
-    pub fn insert(&mut self, key: String, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
+    pub fn insert(&mut self, key: &[u8], value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
         if self.val_type != value_type {
             return Err(TypeMismatchError {
@@ -434,7 +434,14 @@ impl<'a> Map<'a> {
                 actual: value_type,
             });
         }
-        self.data.insert(key, value);
+        self.data.insert(
+            {
+                let mut vec = Vec::with_capacity(key.len());
+                vec.extend(key);
+                vec.into_boxed_slice()
+            },
+            value,
+        );
         Ok(())
     }
 
@@ -473,8 +480,8 @@ impl<'a> GetType for Map<'a> {
 }
 
 impl<'a> IntoIterator for Map<'a> {
-    type Item = (String, LhsValue<'a>);
-    type IntoIter = std::collections::hash_map::IntoIter<String, LhsValue<'a>>;
+    type Item = (Box<[u8]>, LhsValue<'a>);
+    type IntoIter = std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>;
     fn into_iter(self) -> Self::IntoIter {
         self.data.into_iter()
     }
@@ -534,7 +541,7 @@ impl<'a> LhsValue<'a> {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
-            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.data.get(key)),
+            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.data.get(key.as_bytes())),
             (_, FieldIndex::MapKey(_)) => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
@@ -567,9 +574,9 @@ impl<'a> LhsValue<'a> {
                 })),
             },
             FieldIndex::MapKey(name) => match self {
-                LhsValue::Map(ref mut map) => {
-                    map.insert(name, value).map_err(SetValueError::TypeMismatch)
-                }
+                LhsValue::Map(ref mut map) => map
+                    .insert(name.as_bytes(), value)
+                    .map_err(SetValueError::TypeMismatch),
                 _ => Err(SetValueError::IndexAccess(IndexAccessError {
                     index: FieldIndex::MapKey(name),
                     actual: self.get_type(),
@@ -611,7 +618,7 @@ impl<'a> LhsValue<'a> {
 
 pub enum IntoIter<'a> {
     IntoArray(std::vec::IntoIter<LhsValue<'a>>),
-    IntoMap(std::collections::hash_map::IntoIter<String, LhsValue<'a>>),
+    IntoMap(std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
 }
 
 impl<'a> Iterator for IntoIter<'a> {
@@ -639,7 +646,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
 
 pub enum Iter<'a> {
     IterArray(std::slice::Iter<'a, LhsValue<'a>>),
-    IterMap(std::collections::hash_map::Iter<'a, String, LhsValue<'a>>),
+    IterMap(std::collections::hash_map::Iter<'a, Box<[u8]>, LhsValue<'a>>),
 }
 
 impl<'a> Iterator for Iter<'a> {

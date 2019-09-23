@@ -313,87 +313,83 @@ pub extern "C" fn wirefilter_create_map<'a>(ty: CType) -> RustBox<LhsValue<'a>> 
     map.into()
 }
 
+// TODO: store a Box<[u8] inside FieldIndex::MapKey instead of String
+// and call map.set(FieldIndex::MapKey(key), value.into()) directly
+macro_rules! map_insert {
+    ($map:ident, $name:ident, $value:ident) => {
+        match $map {
+            LhsValue::Map(map) => map.insert($name.into_ref(), $value.into()).unwrap(),
+            _ => unreachable!(),
+        }
+    };
+}
+
 #[no_mangle]
 pub extern "C" fn wirefilter_add_int_value_to_map(
     map: &mut LhsValue<'_>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: i32,
 ) {
-    map.set(FieldIndex::MapKey(name.into_ref().to_string()), value)
-        .unwrap();
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_map<'a>(
     map: &mut LhsValue<'a>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: ExternallyAllocatedByteArr<'a>,
 ) {
     let slice: &[u8] = value.into_ref();
-    map.set(FieldIndex::MapKey(name.into_ref().to_string()), slice)
-        .unwrap();
+    map_insert!(map, name, slice)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv6_value_to_map(
     map: &mut LhsValue<'_>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: &[u8; 16],
 ) {
-    map.set(
-        FieldIndex::MapKey(name.into_ref().to_string()),
-        IpAddr::from(*value),
-    )
-    .unwrap();
+    let value = IpAddr::from(*value);
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_ipv4_value_to_map(
     map: &mut LhsValue<'_>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: &[u8; 4],
 ) {
-    map.set(
-        FieldIndex::MapKey(name.into_ref().to_string()),
-        IpAddr::from(*value),
-    )
-    .unwrap();
+    let value = IpAddr::from(*value);
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_bool_value_to_map(
     map: &mut LhsValue<'_>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: bool,
 ) {
-    map.set(FieldIndex::MapKey(name.into_ref().to_string()), value)
-        .unwrap();
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
     map: &mut LhsValue<'a>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: RustBox<LhsValue<'a>>,
 ) {
-    map.set(
-        FieldIndex::MapKey(name.into_ref().to_string()),
-        *value.into_real_box(),
-    )
-    .unwrap();
+    let value = *value.into_real_box();
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
     map: &mut LhsValue<'a>,
-    name: ExternallyAllocatedStr<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
     value: RustBox<LhsValue<'a>>,
 ) {
-    map.set(
-        FieldIndex::MapKey(name.into_ref().to_string()),
-        *value.into_real_box(),
-    )
-    .unwrap();
+    let value = *value.into_real_box();
+    map_insert!(map, name, value)
 }
 
 #[no_mangle]
@@ -574,6 +570,9 @@ mod ffi_test {
 
     fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> RustBox<ExecutionContext<'e>> {
         let mut exec_context = wirefilter_create_execution_context(scheme);
+        let invalid_key = &b"\xc3\x28"[..];
+
+        assert!(std::str::from_utf8(invalid_key).is_err());
 
         wirefilter_add_ipv4_value_to_execution_context(
             &mut exec_context,
@@ -613,7 +612,13 @@ mod ffi_test {
 
         let mut map1 = wirefilter_create_map(Type::Int.into());
 
-        wirefilter_add_int_value_to_map(&mut map1, ExternallyAllocatedStr::from("key"), 42);
+        wirefilter_add_int_value_to_map(&mut map1, ExternallyAllocatedByteArr::from("key"), 42);
+
+        wirefilter_add_int_value_to_map(
+            &mut map1,
+            ExternallyAllocatedByteArr::from(invalid_key),
+            42,
+        );
 
         wirefilter_add_map_value_to_execution_context(
             &mut exec_context,
@@ -625,7 +630,13 @@ mod ffi_test {
 
         wirefilter_add_bytes_value_to_map(
             &mut map2,
-            ExternallyAllocatedStr::from("key"),
+            ExternallyAllocatedByteArr::from("key"),
+            ExternallyAllocatedByteArr::from("value"),
+        );
+
+        wirefilter_add_bytes_value_to_map(
+            &mut map2,
+            ExternallyAllocatedByteArr::from(invalid_key),
             ExternallyAllocatedByteArr::from("value"),
         );
 

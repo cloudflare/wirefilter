@@ -1058,8 +1058,7 @@ mod tests {
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
-            map.insert("host".to_string(), "example.org".into())
-                .unwrap();
+            map.insert(b"host", "example.org".into()).unwrap();
             map
         });
 
@@ -1068,7 +1067,7 @@ mod tests {
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
-            map.insert("host".to_string(), "abc.net.au".into()).unwrap();
+            map.insert(b"host", "abc.net.au".into()).unwrap();
             map
         });
 
@@ -1637,9 +1636,9 @@ mod tests {
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
-            map.insert("0".to_string(), "one".into()).unwrap();
-            map.insert("1".to_string(), "two".into()).unwrap();
-            map.insert("2".to_string(), "three".into()).unwrap();
+            map.insert(b"0", "one".into()).unwrap();
+            map.insert(b"1", "two".into()).unwrap();
+            map.insert(b"2", "three".into()).unwrap();
             map
         });
         ctx.set_field_value("http.headers", headers).unwrap();
@@ -1722,9 +1721,9 @@ mod tests {
 
         let headers = LhsValue::Map({
             let mut map = Map::new(Type::Bytes);
-            map.insert("0".to_string(), "one".into()).unwrap();
-            map.insert("1".to_string(), "two".into()).unwrap();
-            map.insert("2".to_string(), "three".into()).unwrap();
+            map.insert(b"0", "one".into()).unwrap();
+            map.insert(b"1", "two".into()).unwrap();
+            map.insert(b"2", "three".into()).unwrap();
             map
         });
         ctx.set_field_value("http.headers", headers).unwrap();
