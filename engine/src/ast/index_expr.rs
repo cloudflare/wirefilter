@@ -36,7 +36,7 @@ macro_rules! index_access_one {
 
 macro_rules! index_access_vec {
     ($indexes:ident, $first:expr, $default:ident, $func:ident) => {
-        index_access_one!($indexes, $first, $default, |val: &LhsValue| {
+        index_access_one!($indexes, $first, $default, |val: &LhsValue<'_>| {
             let mut output = Vec::new();
             for item in val.iter().unwrap() {
                 output.push($func(item));
