@@ -424,6 +424,11 @@ impl<'a> Map<'a> {
         self.data.get(key)
     }
 
+    /// Get a mutable reference to an element if it exists
+    pub fn get_mut(&mut self, key: &[u8]) -> Option<&mut LhsValue<'a>> {
+        self.data.get_mut(key)
+    }
+
     /// Inserts an element, returns the previously inserted
     /// element if it exists.
     pub fn insert(&mut self, key: &[u8], value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
