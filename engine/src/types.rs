@@ -365,6 +365,16 @@ impl<'a> Array<'a> {
     pub fn value_type(&self) -> &Type {
         &self.val_type
     }
+
+    /// Returns the number of elements in the array
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns true if the array contains no elements.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
 impl<'a> GetType for Array<'a> {
@@ -470,6 +480,16 @@ impl<'a> Map<'a> {
     /// Returns the type of the contained values.
     pub fn value_type(&self) -> &Type {
         &self.val_type
+    }
+
+    /// Returns the number of elements in the map
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns true if the map contains no elements.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 }
 
