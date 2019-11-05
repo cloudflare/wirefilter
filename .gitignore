@@ -4,3 +4,4 @@
 /wasm/pkg
 wasm-pack.log
 .DS_Store
+fuzz/*/out

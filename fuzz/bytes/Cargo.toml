@@ -1,0 +1,10 @@
+[package]
+name = "fuzz-bytes"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+afl = "0.5"
+
+[dependencies.wirefilter-engine]
+path = "../../engine"

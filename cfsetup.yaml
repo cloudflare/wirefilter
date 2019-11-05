@@ -7,6 +7,8 @@ everything: &everything
       - engine/Cargo.toml
       - ffi/Cargo.toml
       - ffi/tests/ctests/Cargo.toml
+      - fuzz/bytes/Cargo.toml
+      - fuzz/map-keys/Cargo.toml
       - wasm/Cargo.toml
       - Cargo.lock
       - Cargo.toml
