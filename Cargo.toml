@@ -2,6 +2,8 @@
 members = [
 	"engine",
 	"ffi",
+	"fuzz/bytes",
+	"fuzz/map-keys",
 	"wasm",
 	"wirefilter-parser"
 ]
