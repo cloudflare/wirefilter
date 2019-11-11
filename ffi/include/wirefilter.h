@@ -73,7 +73,7 @@ wirefilter_type_t wirefilter_create_map_type(wirefilter_type_t type);
 
 wirefilter_type_t wirefilter_create_array_type(wirefilter_type_t type);
 
-void wirefilter_add_type_field_to_scheme(
+bool wirefilter_add_type_field_to_scheme(
     wirefilter_scheme_t *scheme,
     wirefilter_externally_allocated_str_t name,
     wirefilter_type_t type
@@ -140,43 +140,43 @@ bool wirefilter_add_array_value_to_execution_context(
 
 wirefilter_map_t *wirefilter_create_map(wirefilter_type_t type);
 
-void wirefilter_add_int_value_to_map(
+bool wirefilter_add_int_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     int32_t value
 );
 
-void wirefilter_add_bytes_value_to_map(
+bool wirefilter_add_bytes_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     wirefilter_externally_allocated_byte_arr_t value
 );
 
-void wirefilter_add_ipv6_value_to_map(
+bool wirefilter_add_ipv6_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     uint8_t value[16]
 );
 
-void wirefilter_add_ipv4_value_to_map(
+bool wirefilter_add_ipv4_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     uint8_t value[4]
 );
 
-void wirefilter_add_bool_value_to_map(
+bool wirefilter_add_bool_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     bool value
 );
 
-void wirefilter_add_map_value_to_map(
+bool wirefilter_add_map_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     wirefilter_map_t *value
 );
 
-void wirefilter_add_array_value_to_map(
+bool wirefilter_add_array_value_to_map(
     wirefilter_map_t *map,
     wirefilter_externally_allocated_str_t name,
     wirefilter_array_t *value
@@ -186,43 +186,43 @@ void wirefilter_free_map(wirefilter_map_t *map);
 
 wirefilter_array_t *wirefilter_create_array(wirefilter_type_t type);
 
-void wirefilter_add_int_value_to_array(
+bool wirefilter_add_int_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     int32_t value
 );
 
-void wirefilter_add_bytes_value_to_array(
+bool wirefilter_add_bytes_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     wirefilter_externally_allocated_byte_arr_t value
 );
 
-void wirefilter_add_ipv6_value_to_array(
+bool wirefilter_add_ipv6_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     uint8_t value[16]
 );
 
-void wirefilter_add_ipv4_value_to_array(
+bool wirefilter_add_ipv4_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     uint8_t value[4]
 );
 
-void wirefilter_add_bool_value_to_array(
+bool wirefilter_add_bool_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     bool value
 );
 
-void wirefilter_add_map_value_to_array(
+bool wirefilter_add_map_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     wirefilter_map_t *value
 );
 
-void wirefilter_add_array_value_to_array(
+bool wirefilter_add_array_value_to_array(
     wirefilter_array_t *array,
     uint32_t index,
     wirefilter_array_t *value
