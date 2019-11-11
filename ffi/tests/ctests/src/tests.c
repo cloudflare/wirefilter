@@ -14,36 +14,36 @@ static wirefilter_externally_allocated_str_t wirefilter_string(const char *s) {
 }
 
 void initialize_scheme(wirefilter_scheme_t *scheme) {
-    wirefilter_add_type_field_to_scheme(
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("http.host"),
         WIREFILTER_TYPE_BYTES
-    );
-    wirefilter_add_type_field_to_scheme(
+    ), "could not add field http.host of type \"Bytes\" to scheme");
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("ip.addr"),
         WIREFILTER_TYPE_IP
-    );
-    wirefilter_add_type_field_to_scheme(
+    ), "could not add field ip.addr of type \"Ip\" to scheme");
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("ssl"),
         WIREFILTER_TYPE_BOOL
-    );
-    wirefilter_add_type_field_to_scheme(
+    ), "could not add field ssl of type \"Bool\" to scheme");
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("tcp.port"),
         WIREFILTER_TYPE_INT
-    );
+    ), "could not add field tcp.port of type \"Int\" to scheme");
     wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("http.headers"),
         wirefilter_create_map_type(WIREFILTER_TYPE_BYTES)
     );
-    wirefilter_add_type_field_to_scheme(
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("http.cookies"),
         wirefilter_create_array_type(WIREFILTER_TYPE_BYTES)
-    );
+    ), "could not add field http.cookies of type \"Array<Bytes>\" to scheme");
 }
 
 void wirefilter_ffi_ctest_create_array_type() {
@@ -79,11 +79,11 @@ void wirefilter_ffi_ctest_add_malloced_type_field_to_scheme() {
     rust_assert(byte_type != NULL, "could not allocate type");
     *byte_type = WIREFILTER_TYPE_BYTES;
 
-    wirefilter_add_type_field_to_scheme(
+    rust_assert(wirefilter_add_type_field_to_scheme(
         scheme,
         wirefilter_string("http.host"),
         *byte_type
-    );
+    ), "could not add field http.host of type \"Bytes\" to scheme");
 
     free(byte_type);
 
@@ -524,11 +524,11 @@ void wirefilter_ffi_ctest_match_map() {
         WIREFILTER_TYPE_BYTES
     );
 
-    wirefilter_add_bytes_value_to_map(
+    rust_assert(wirefilter_add_bytes_value_to_map(
         http_headers,
         wirefilter_string("host"),
         http_host
-    );
+    ), "could not add bytes value to map");
 
     rust_assert(wirefilter_add_map_value_to_execution_context(
         exec_ctx,
@@ -599,26 +599,26 @@ void wirefilter_ffi_ctest_match_array() {
     wirefilter_externally_allocated_byte_arr_t http_cookie_one;
     http_cookie_one.data = (unsigned char *)"one";
     http_cookie_one.length = strlen((char *)http_cookie_one.data);
-    wirefilter_add_bytes_value_to_array(
+    rust_assert(wirefilter_add_bytes_value_to_array(
         http_cookies,
         0,
         http_cookie_one
-    );
+    ), "could not add bytes value to array");
 
     wirefilter_externally_allocated_byte_arr_t http_cookie_two;
     http_cookie_two.data = (unsigned char *)"two";
     http_cookie_two.length = strlen((char *)http_cookie_two.data);
-    wirefilter_add_bytes_value_to_array(
+    rust_assert(wirefilter_add_bytes_value_to_array(
         http_cookies,
         1,
         http_cookie_two
-    );
+    ), "could not add bytes value to array");
 
-    wirefilter_add_bytes_value_to_array(
+    rust_assert(wirefilter_add_bytes_value_to_array(
         http_cookies,
         2,
         http_host
-    );
+    ), "could not add bytes value to array");
 
     rust_assert(wirefilter_add_array_value_to_execution_context(
         exec_ctx,
