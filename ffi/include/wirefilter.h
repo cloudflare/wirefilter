@@ -250,6 +250,10 @@ wirefilter_rust_allocated_str_t wirefilter_serialize_scheme_to_json(
     const wirefilter_scheme_t *scheme
 );
 
+wirefilter_rust_allocated_str_t wirefilter_serialize_type_to_json(
+    const wirefilter_type_t *type
+);
+
 void wirefilter_free_string(wirefilter_rust_allocated_str_t str);
 
 wirefilter_static_rust_allocated_str_t wirefilter_get_version();
