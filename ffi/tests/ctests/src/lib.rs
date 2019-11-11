@@ -40,6 +40,7 @@ mod ffi_ctest {
         filter_hash,
         filter_serialize,
         scheme_serialize,
+        type_serialize,
         compile_filter,
         create_execution_context,
         add_values_to_execution_context,

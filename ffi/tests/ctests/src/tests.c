@@ -238,6 +238,36 @@ void wirefilter_ffi_ctest_scheme_serialize() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_type_serialize() {
+    wirefilter_rust_allocated_str_t json;
+
+    json = wirefilter_serialize_type_to_json(&WIREFILTER_TYPE_BYTES);
+
+    rust_assert(json.data != NULL && json.length > 0, "could not serialize type to JSON");
+
+    rust_assert(
+        strncmp(json.data, "\"Bytes\"", json.length) == 0,
+        "invalid JSON serialization"
+    );
+
+    wirefilter_free_string(json);
+
+    wirefilter_type_t type = wirefilter_create_map_type(
+        wirefilter_create_array_type(WIREFILTER_TYPE_BYTES)
+    );
+
+    json = wirefilter_serialize_type_to_json(&type);
+
+    rust_assert(json.data != NULL && json.length > 0, "could not serialize type to JSON");
+
+    rust_assert(
+        strncmp(json.data, "{\"Map\":{\"Array\":\"Bytes\"}}", json.length) == 0,
+        "invalid JSON serialization"
+    );
+
+    wirefilter_free_string(json);
+}
+
 void wirefilter_ffi_ctest_compile_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");

@@ -29,7 +29,7 @@ pub enum CTypeTag {
     Map,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct CType {
     tag: u8,
@@ -220,6 +220,14 @@ pub extern "C" fn wirefilter_serialize_scheme_to_json(scheme: &Scheme) -> RustAl
     let result = serde_json::to_string(scheme);
     result
         .unwrap_or_else(|err| panic!("{} while serializing scheme {:#?}", err, scheme))
+        .into()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_serialize_type_to_json(ty: &CType) -> RustAllocatedString {
+    let result = serde_json::to_string(&Type::from(ty.clone()));
+    result
+        .unwrap_or_else(|err| panic!("{} while serializing type {:#?}", err, ty))
         .into()
 }
 
