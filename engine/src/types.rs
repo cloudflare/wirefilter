@@ -344,7 +344,7 @@ impl<'a> Deref for InnerArray<'a> {
 /// An array of [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Array<'a> {
-    val_type: Type,
+    val_type: Cow<'a, Type>,
     #[serde(borrow)]
     data: InnerArray<'a>,
 }
@@ -353,7 +353,7 @@ impl<'a> Array<'a> {
     /// Creates a new array
     pub fn new(val_type: Type) -> Self {
         Self {
-            val_type,
+            val_type: Cow::Owned(val_type),
             data: InnerArray::Owned(Vec::new()),
         }
     }
@@ -371,9 +371,9 @@ impl<'a> Array<'a> {
     /// Inserts an element at index `idx`
     pub fn insert(&mut self, idx: usize, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
-        if self.val_type != value_type {
+        if *self.val_type != value_type {
             return Err(TypeMismatchError {
-                expected: self.val_type.clone().into(),
+                expected: self.val_type.clone().into_owned().into(),
                 actual: value_type,
             });
         }
@@ -384,9 +384,9 @@ impl<'a> Array<'a> {
     /// Push an element to the back of the array
     pub fn push(&mut self, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
-        if self.val_type != value_type {
+        if *self.val_type != value_type {
             return Err(TypeMismatchError {
-                expected: self.val_type.clone().into(),
+                expected: self.val_type.clone().into_owned().into(),
                 actual: value_type,
             });
         }
@@ -396,7 +396,7 @@ impl<'a> Array<'a> {
 
     pub(crate) fn to_owned<'b>(&self) -> Array<'b> {
         let mut arr = Array {
-            val_type: self.val_type.clone(),
+            val_type: Cow::Owned(self.val_type.clone().into_owned()),
             data: InnerArray::Owned(Vec::with_capacity(self.data.len())),
         };
         for v in self.data.iter() {
@@ -407,7 +407,10 @@ impl<'a> Array<'a> {
 
     pub(crate) fn as_ref(&'a self) -> Array<'a> {
         Array {
-            val_type: self.val_type.clone(),
+            val_type: match self.val_type {
+                Cow::Owned(ref ty) => Cow::Borrowed(ty),
+                Cow::Borrowed(ty) => Cow::Borrowed(ty),
+            },
             data: match self.data {
                 InnerArray::Owned(ref vec) => InnerArray::Borrowed(&vec[..]),
                 InnerArray::Borrowed(ref slice) => InnerArray::Borrowed(slice),
@@ -433,7 +436,7 @@ impl<'a> Array<'a> {
 
 impl<'a> GetType for Array<'a> {
     fn get_type(&self) -> Type {
-        Type::Array(Box::new(self.val_type.clone()))
+        Type::Array(Box::new(self.val_type.clone().into_owned()))
     }
 }
 
