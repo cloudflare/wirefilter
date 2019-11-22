@@ -522,7 +522,7 @@ impl<'a> Deref for InnerMap<'a> {
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
-    val_type: Type,
+    val_type: Cow<'a, Type>,
     #[serde(borrow)]
     data: InnerMap<'a>,
 }
@@ -531,7 +531,7 @@ impl<'a> Map<'a> {
     /// Creates a new map
     pub fn new(val_type: Type) -> Self {
         Self {
-            val_type,
+            val_type: Cow::Owned(val_type),
             data: InnerMap::Owned(HashMap::new()),
         }
     }
@@ -550,9 +550,9 @@ impl<'a> Map<'a> {
     /// element if it exists.
     pub fn insert(&mut self, key: &[u8], value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
         let value_type = value.get_type();
-        if self.val_type != value_type {
+        if *self.val_type != value_type {
             return Err(TypeMismatchError {
-                expected: self.val_type.clone().into(),
+                expected: self.val_type.clone().into_owned().into(),
                 actual: value_type,
             });
         }
@@ -562,7 +562,7 @@ impl<'a> Map<'a> {
 
     pub(crate) fn to_owned<'b>(&self) -> Map<'b> {
         let mut map = Map {
-            val_type: self.val_type.clone(),
+            val_type: Cow::Owned(self.val_type.clone().into_owned()),
             data: InnerMap::Owned(HashMap::with_capacity(self.data.len())),
         };
         for (k, v) in self.data.iter() {
@@ -599,7 +599,7 @@ impl<'a> Map<'a> {
 
 impl<'a> GetType for Map<'a> {
     fn get_type(&self) -> Type {
-        Type::Map(Box::new(self.val_type.clone()))
+        Type::Map(Box::new(self.val_type.clone().into_owned()))
     }
 }
 
