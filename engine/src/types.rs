@@ -14,6 +14,7 @@ use std::{
     fmt::{self, Debug, Formatter},
     iter::once,
     net::IpAddr,
+    ops::Deref,
     ops::RangeInclusive,
 };
 
@@ -286,12 +287,66 @@ macro_rules! declare_types {
     };
 }
 
+// Ideally, we would want to use Cow<'a, LhsValue<'a>> here
+// but it doesnt work for unknown reasons
+// See https://github.com/rust-lang/rust/issues/23707#issuecomment-557312736
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum InnerArray<'a> {
+    Owned(#[serde(borrow)] Vec<LhsValue<'a>>),
+    #[serde(skip_deserializing)]
+    Borrowed(&'a [LhsValue<'a>]),
+}
+
+impl<'a> InnerArray<'a> {
+    fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
+        if let InnerArray::Borrowed(slice) = self {
+            *self = InnerArray::Owned(slice.to_vec());
+        }
+        match self {
+            InnerArray::Owned(vec) => vec.get_mut(idx),
+            InnerArray::Borrowed(_) => unreachable!(),
+        }
+    }
+
+    fn insert(&mut self, idx: usize, value: LhsValue<'a>) {
+        if let InnerArray::Borrowed(slice) = self {
+            *self = InnerArray::Owned(slice.to_vec());
+        }
+        match self {
+            InnerArray::Owned(vec) => vec.insert(idx, value),
+            InnerArray::Borrowed(_) => unreachable!(),
+        }
+    }
+
+    fn push(&mut self, value: LhsValue<'a>) {
+        if let InnerArray::Borrowed(slice) = self {
+            *self = InnerArray::Owned(slice.to_vec());
+        }
+        match self {
+            InnerArray::Owned(vec) => vec.push(value),
+            InnerArray::Borrowed(_) => unreachable!(),
+        }
+    }
+}
+
+impl<'a> Deref for InnerArray<'a> {
+    type Target = [LhsValue<'a>];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            InnerArray::Owned(vec) => &vec[..],
+            InnerArray::Borrowed(slice) => slice,
+        }
+    }
+}
+
 /// An array of [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Array<'a> {
     val_type: Type,
     #[serde(borrow)]
-    data: Vec<LhsValue<'a>>,
+    data: InnerArray<'a>,
 }
 
 impl<'a> Array<'a> {
@@ -299,7 +354,7 @@ impl<'a> Array<'a> {
     pub fn new(val_type: Type) -> Self {
         Self {
             val_type,
-            data: Vec::new(),
+            data: InnerArray::Owned(Vec::new()),
         }
     }
 
@@ -342,7 +397,7 @@ impl<'a> Array<'a> {
     pub(crate) fn to_owned<'b>(&self) -> Array<'b> {
         let mut arr = Array {
             val_type: self.val_type.clone(),
-            data: Default::default(),
+            data: InnerArray::Owned(Vec::with_capacity(self.data.len())),
         };
         for v in self.data.iter() {
             arr.data.push(v.to_owned());
@@ -351,14 +406,13 @@ impl<'a> Array<'a> {
     }
 
     pub(crate) fn as_ref(&'a self) -> Array<'a> {
-        let mut arr = Array {
+        Array {
             val_type: self.val_type.clone(),
-            data: Default::default(),
-        };
-        for v in self.data.iter() {
-            arr.data.push(v.as_ref());
+            data: match self.data {
+                InnerArray::Owned(ref vec) => InnerArray::Borrowed(&vec[..]),
+                InnerArray::Borrowed(ref slice) => InnerArray::Borrowed(slice),
+            },
         }
-        arr
     }
 
     /// Returns the type of the contained values.
@@ -387,7 +441,10 @@ impl<'a> IntoIterator for Array<'a> {
     type Item = LhsValue<'a>;
     type IntoIter = std::vec::IntoIter<LhsValue<'a>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.data.into_iter()
+        match self.data {
+            InnerArray::Owned(vec) => vec.into_iter(),
+            InnerArray::Borrowed(slice) => slice.to_vec().into_iter(),
+        }
     }
 }
 
@@ -404,11 +461,17 @@ impl<'a> Extend<LhsValue<'a>> for Array<'a> {
     where
         I: IntoIterator<Item = LhsValue<'a>>,
     {
+        if let InnerArray::Borrowed(slice) = self.data {
+            self.data = InnerArray::Owned(slice.to_vec());
+        }
         let value_type = self.value_type().clone();
-        self.data.extend(
-            iter.into_iter()
-                .inspect(|elem| assert!(elem.get_type() == value_type)),
-        )
+        match self.data {
+            InnerArray::Owned(ref mut vec) => vec.extend(
+                iter.into_iter()
+                    .inspect(|elem| assert!(elem.get_type() == value_type)),
+            ),
+            InnerArray::Borrowed(_) => unreachable!(),
+        }
     }
 }
 
