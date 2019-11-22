@@ -478,12 +478,53 @@ impl<'a> Extend<LhsValue<'a>> for Array<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+enum InnerMap<'a> {
+    Owned(#[serde(borrow)] HashMap<Box<[u8]>, LhsValue<'a>>),
+    #[serde(skip_deserializing)]
+    Borrowed(&'a HashMap<Box<[u8]>, LhsValue<'a>>),
+}
+
+impl<'a> InnerMap<'a> {
+    fn get_mut(&mut self, key: &[u8]) -> Option<&mut LhsValue<'a>> {
+        if let InnerMap::Borrowed(map) = self {
+            *self = InnerMap::Owned(map.clone());
+        }
+        match self {
+            InnerMap::Owned(map) => map.get_mut(key),
+            InnerMap::Borrowed(_) => unreachable!(),
+        }
+    }
+
+    fn insert(&mut self, key: &[u8], value: LhsValue<'a>) {
+        if let InnerMap::Borrowed(map) = self {
+            *self = InnerMap::Owned(map.clone());
+        }
+        match self {
+            InnerMap::Owned(map) => map.insert(key.to_vec().into_boxed_slice(), value),
+            InnerMap::Borrowed(_) => unreachable!(),
+        };
+    }
+}
+
+impl<'a> Deref for InnerMap<'a> {
+    type Target = HashMap<Box<[u8]>, LhsValue<'a>>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            InnerMap::Owned(ref map) => &map,
+            InnerMap::Borrowed(ref_map) => ref_map,
+        }
+    }
+}
+
 /// A map of string to [`Type`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Map<'a> {
     val_type: Type,
     #[serde(borrow)]
-    data: HashMap<Box<[u8]>, LhsValue<'a>>,
+    data: InnerMap<'a>,
 }
 
 impl<'a> Map<'a> {
@@ -491,7 +532,7 @@ impl<'a> Map<'a> {
     pub fn new(val_type: Type) -> Self {
         Self {
             val_type,
-            data: HashMap::new(),
+            data: InnerMap::Owned(HashMap::new()),
         }
     }
 
@@ -515,37 +556,29 @@ impl<'a> Map<'a> {
                 actual: value_type,
             });
         }
-        self.data.insert(
-            {
-                let mut vec = Vec::with_capacity(key.len());
-                vec.extend(key);
-                vec.into_boxed_slice()
-            },
-            value,
-        );
+        self.data.insert(key, value);
         Ok(())
     }
 
     pub(crate) fn to_owned<'b>(&self) -> Map<'b> {
         let mut map = Map {
             val_type: self.val_type.clone(),
-            data: Default::default(),
+            data: InnerMap::Owned(HashMap::with_capacity(self.data.len())),
         };
         for (k, v) in self.data.iter() {
-            map.data.insert(k.clone(), v.to_owned());
+            map.data.insert(k, v.to_owned());
         }
         map
     }
 
     pub(crate) fn as_ref(&'a self) -> Map<'a> {
-        let mut map = Map {
+        Map {
             val_type: self.val_type.clone(),
-            data: Default::default(),
-        };
-        for (k, v) in self.data.iter() {
-            map.data.insert(k.clone(), v.as_ref());
+            data: match self.data {
+                InnerMap::Owned(ref map) => InnerMap::Borrowed(map),
+                InnerMap::Borrowed(ref_map) => InnerMap::Borrowed(ref_map),
+            },
         }
-        map
     }
 
     /// Returns the type of the contained values.
@@ -574,7 +607,10 @@ impl<'a> IntoIterator for Map<'a> {
     type Item = (Box<[u8]>, LhsValue<'a>);
     type IntoIter = std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.data.into_iter()
+        match self.data {
+            InnerMap::Owned(map) => map.into_iter(),
+            InnerMap::Borrowed(ref_map) => ref_map.clone().into_iter(),
+        }
     }
 }
 
