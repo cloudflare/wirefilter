@@ -5,11 +5,13 @@ extern crate wirefilter;
 extern crate lazy_static;
 
 use wirefilter::{
-    ExecutionContext, Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionParam,
-    LhsValue, Map, Scheme, Type,
+    Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionParam, LhsValue, Type,
 };
 
+#[cfg(fuzzing)]
 fn main() {
+    use wirefilter::{ExecutionContext, Map, Scheme};
+
     fuzz!(|key: &[u8]| {
         let mut scheme = Scheme! { foo: Map(Bytes) };
         scheme
@@ -27,6 +29,11 @@ fn main() {
 
         assert!(filter.execute(&ctx).unwrap());
     });
+}
+
+#[cfg(not(fuzzing))]
+fn main() {
+    panic!("must compile with `cargo afl build`, not `cargo build`")
 }
 
 /// A function which, given an array of bool, returns true if any one of the
