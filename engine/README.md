@@ -58,6 +58,37 @@ fn main() -> Result<(), failure::Error> {
 }
 ```
 
+## Fuzzing
+
+There are fuzz tests in the fuzz directory.
+
+Install afl:
+
+```
+cargo install afl --force
+```
+
+Build `bytes` fuzz test:
+
+```
+cd fuzz/bytes
+cargo afl build
+```
+
+Run fuzz test (from inside `fuzz/bytes` directory):
+
+```
+cargo afl fuzz -i in -o out ../../target/debug/fuzz-bytes
+```
+
+If you see an error like:
+
+```
+Looks like the target binary is not instrumented!
+```
+
+Try deleting the compiled binary and re-building with `cargo afl build`.
+
 ## Licensing
 
 Licensed under the MIT license. See the [LICENSE](LICENSE) file for details.
