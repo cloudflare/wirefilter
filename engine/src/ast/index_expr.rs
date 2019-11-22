@@ -119,14 +119,14 @@ impl<'s> IndexExpr<'s> {
         let ty = self.get_type();
         let Self { lhs, indexes } = self;
 
-        if indexes.is_empty() {
+        let last = if let Some(&FieldIndex::MapEach) = indexes.last() {
+            indexes.len() - 1
+        } else {
+            indexes.len()
+        };
+        if last == 0 {
             lhs.compile()
         } else {
-            let last = if let Some(&FieldIndex::MapEach) = indexes.last() {
-                indexes.len() - 1
-            } else {
-                indexes.len()
-            };
             match lhs {
                 LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     indexes[..last]
