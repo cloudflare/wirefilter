@@ -440,13 +440,39 @@ impl<'a> GetType for Array<'a> {
     }
 }
 
+pub struct AsRefIterator<'a, T: Iterator<Item = &'a LhsValue<'a>>>(T);
+
+impl<'a, T: Iterator<Item = &'a LhsValue<'a>>> Iterator for AsRefIterator<'a, T> {
+    type Item = LhsValue<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(LhsValue::as_ref)
+    }
+}
+
+pub enum ArrayIterator<'a> {
+    Owned(std::vec::IntoIter<LhsValue<'a>>),
+    Borrowed(AsRefIterator<'a, std::slice::Iter<'a, LhsValue<'a>>>),
+}
+
+impl<'a> Iterator for ArrayIterator<'a> {
+    type Item = LhsValue<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ArrayIterator::Owned(vec_iter) => vec_iter.next(),
+            ArrayIterator::Borrowed(slice_iter) => slice_iter.next(),
+        }
+    }
+}
+
 impl<'a> IntoIterator for Array<'a> {
     type Item = LhsValue<'a>;
-    type IntoIter = std::vec::IntoIter<LhsValue<'a>>;
+    type IntoIter = ArrayIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
         match self.data {
-            InnerArray::Owned(vec) => vec.into_iter(),
-            InnerArray::Borrowed(slice) => slice.to_vec().into_iter(),
+            InnerArray::Owned(vec) => ArrayIterator::Owned(vec.into_iter()),
+            InnerArray::Borrowed(slice) => ArrayIterator::Borrowed(AsRefIterator(slice.iter())),
         }
     }
 }
@@ -744,7 +770,7 @@ impl<'a> LhsValue<'a> {
 }
 
 pub enum IntoIter<'a> {
-    IntoArray(std::vec::IntoIter<LhsValue<'a>>),
+    IntoArray(ArrayIterator<'a>),
     IntoMap(std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
 }
 
