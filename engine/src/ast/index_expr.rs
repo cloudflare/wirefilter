@@ -140,12 +140,12 @@ impl<'s> IndexExpr<'s> {
                 LhsFieldExpr::FunctionCallExpr(call) => {
                     let call = call.compile();
                     CompiledValueExpr::new(move |ctx| {
+                        let result = call.execute(ctx)?;
                         indexes[..last]
                             .iter()
-                            .fold((&call.execute(ctx)).as_ref().ok(), |value, index| {
-                                value.and_then(|val| val.get(index).unwrap())
+                            .fold(Some(result), |value, index| {
+                                value.and_then(|val| val.extract(index).unwrap())
                             })
-                            .map(LhsValue::to_owned)
                             .ok_or_else(|| ty.clone())
                     })
                 }
