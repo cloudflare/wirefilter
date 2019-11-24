@@ -432,6 +432,18 @@ impl<'a> Array<'a> {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    pub(crate) fn extract(self, idx: usize) -> Option<LhsValue<'a>> {
+        let Self { data, .. } = self;
+        if idx >= data.len() {
+            None
+        } else {
+            match data {
+                InnerArray::Owned(mut vec) => Some(vec.swap_remove(idx)),
+                InnerArray::Borrowed(slice) => Some(unsafe { slice.get_unchecked(idx) }.as_ref()),
+            }
+        }
+    }
 }
 
 impl<'a> GetType for Array<'a> {
@@ -630,6 +642,14 @@ impl<'a> Map<'a> {
             InnerMap::Borrowed(map) => MapValuesIntoIter::Borrowed(AsRefIterator(map.values())),
         }
     }
+
+    pub(crate) fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
+        let Self { data, .. } = self;
+        match data {
+            InnerMap::Owned(mut map) => map.remove(key),
+            InnerMap::Borrowed(map) => map.get(key).map(LhsValue::as_ref),
+        }
+    }
 }
 
 impl<'a> GetType for Map<'a> {
@@ -741,6 +761,32 @@ impl<'a> LhsValue<'a> {
                 actual: self.get_type(),
             }),
             (_, FieldIndex::MapEach) => Err(IndexAccessError {
+                index: item.clone(),
+                actual: self.get_type(),
+            }),
+        }
+    }
+
+    pub(crate) fn extract(
+        self,
+        item: &FieldIndex,
+    ) -> Result<Option<LhsValue<'a>>, IndexAccessError> {
+        match item {
+            FieldIndex::ArrayIndex(idx) => match self {
+                LhsValue::Array(arr) => Ok(arr.extract(*idx as usize)),
+                _ => Err(IndexAccessError {
+                    index: item.clone(),
+                    actual: self.get_type(),
+                }),
+            },
+            FieldIndex::MapKey(key) => match self {
+                LhsValue::Map(map) => Ok(map.extract(key.as_bytes())),
+                _ => Err(IndexAccessError {
+                    index: item.clone(),
+                    actual: self.get_type(),
+                }),
+            },
+            FieldIndex::MapEach => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
