@@ -50,6 +50,15 @@ impl From<Bytes> for Box<[u8]> {
     }
 }
 
+impl From<Bytes> for Vec<u8> {
+    fn from(bytes: Bytes) -> Self {
+        match bytes {
+            Bytes::Str(s) => s.into_boxed_bytes().into_vec(),
+            Bytes::Raw(b) => b.into_vec(),
+        }
+    }
+}
+
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

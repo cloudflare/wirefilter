@@ -712,6 +712,19 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
     }
 }
 
+impl<'a> From<RhsValue> for LhsValue<'a> {
+    fn from(rhs_value: RhsValue) -> Self {
+        match rhs_value {
+            RhsValue::Ip(ip) => LhsValue::Ip(ip),
+            RhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Owned(bytes.into())),
+            RhsValue::Int(integer) => LhsValue::Int(integer),
+            RhsValue::Bool(b) => match b {},
+            RhsValue::Array(a) => match a {},
+            RhsValue::Map(m) => match m {},
+        }
+    }
+}
+
 impl<'a> LhsValue<'a> {
     /// Converts a reference to an LhsValue to an LhsValue with an internal
     /// references
