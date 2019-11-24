@@ -621,11 +621,36 @@ impl<'a> Map<'a> {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    /// Convert current map into an iterator over contained values
+    pub fn values_into_iter(self) -> MapValuesIntoIter<'a> {
+        let Map { data, .. } = self;
+        match data {
+            InnerMap::Owned(map) => MapValuesIntoIter::Owned(map.into_iter()),
+            InnerMap::Borrowed(map) => MapValuesIntoIter::Borrowed(AsRefIterator(map.values())),
+        }
+    }
 }
 
 impl<'a> GetType for Map<'a> {
     fn get_type(&self) -> Type {
         Type::Map(Box::new(self.val_type.clone().into_owned()))
+    }
+}
+
+pub enum MapValuesIntoIter<'a> {
+    Owned(std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
+    Borrowed(AsRefIterator<'a, std::collections::hash_map::Values<'a, Box<[u8]>, LhsValue<'a>>>),
+}
+
+impl<'a> Iterator for MapValuesIntoIter<'a> {
+    type Item = LhsValue<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            MapValuesIntoIter::Owned(iter) => iter.next().map(|(_, v)| v),
+            MapValuesIntoIter::Borrowed(iter) => iter.next(),
+        }
     }
 }
 
@@ -787,7 +812,7 @@ impl<'a> LhsValue<'a> {
 
 pub enum IntoIter<'a> {
     IntoArray(ArrayIterator<'a>),
-    IntoMap(std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
+    IntoMap(MapValuesIntoIter<'a>),
 }
 
 impl<'a> Iterator for IntoIter<'a> {
@@ -796,7 +821,7 @@ impl<'a> Iterator for IntoIter<'a> {
     fn next(&mut self) -> Option<LhsValue<'a>> {
         match self {
             IntoIter::IntoArray(array) => array.next(),
-            IntoIter::IntoMap(map) => map.next().map(|(_, v)| v),
+            IntoIter::IntoMap(map) => map.next(),
         }
     }
 }
@@ -807,7 +832,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             LhsValue::Array(array) => IntoIter::IntoArray(array.into_iter()),
-            LhsValue::Map(map) => IntoIter::IntoMap(map.into_iter()),
+            LhsValue::Map(map) => IntoIter::IntoMap(map.values_into_iter()),
             _ => unreachable!(),
         }
     }
