@@ -51,7 +51,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
             FunctionCallArgExpr::Literal(literal) => {
-                CompiledValueExpr::new(move |_| LhsValue::from(&literal).to_owned().into())
+                CompiledValueExpr::new(move |_| LhsValue::from(literal.clone()).into())
             }
             // The function argument is an expression compiled as either an
             // CompiledExpr::One or CompiledExpr::Vec.
