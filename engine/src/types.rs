@@ -394,17 +394,6 @@ impl<'a> Array<'a> {
         Ok(())
     }
 
-    pub(crate) fn to_owned<'b>(&self) -> Array<'b> {
-        let mut arr = Array {
-            val_type: Cow::Owned(self.val_type.clone().into_owned()),
-            data: InnerArray::Owned(Vec::with_capacity(self.data.len())),
-        };
-        for v in self.data.iter() {
-            arr.data.push(v.to_owned());
-        }
-        arr
-    }
-
     pub(crate) fn as_ref(&'a self) -> Array<'a> {
         Array {
             val_type: match self.val_type {
@@ -596,17 +585,6 @@ impl<'a> Map<'a> {
         }
         self.data.insert(key, value);
         Ok(())
-    }
-
-    pub(crate) fn to_owned<'b>(&self) -> Map<'b> {
-        let mut map = Map {
-            val_type: Cow::Owned(self.val_type.clone().into_owned()),
-            data: InnerMap::Owned(HashMap::with_capacity(self.data.len())),
-        };
-        for (k, v) in self.data.iter() {
-            map.data.insert(k, v.to_owned());
-        }
-        map
     }
 
     pub(crate) fn as_ref(&'a self) -> Map<'a> {
@@ -839,23 +817,6 @@ impl<'a> LhsValue<'a> {
                 index: item,
                 actual: self.get_type(),
             })),
-        }
-    }
-
-    /// Deep clone of an LhsValue.
-    /// Will convert any Cow::Borrowed to Cow::Owned and copy
-    /// already existing Cow::Owned.
-    pub fn to_owned<'b>(&self) -> LhsValue<'b> {
-        match &self {
-            LhsValue::Ip(ip) => LhsValue::Ip(*ip),
-            LhsValue::Bytes(bytes) => match bytes {
-                Cow::Borrowed(raw) => LhsValue::Bytes(Cow::Owned(raw.to_vec())),
-                Cow::Owned(raw) => LhsValue::Bytes(Cow::Owned(raw.to_vec())),
-            },
-            LhsValue::Int(integer) => LhsValue::Int(*integer),
-            LhsValue::Bool(b) => LhsValue::Bool(*b),
-            LhsValue::Array(a) => LhsValue::Array(a.to_owned()),
-            LhsValue::Map(m) => LhsValue::Map(m.to_owned()),
         }
     }
 
