@@ -191,16 +191,27 @@ pub(crate) struct FunctionCallExpr<'s> {
     #[derivative(PartialEq = "ignore")]
     #[allow(clippy::borrowed_box)]
     pub function: &'s Box<dyn FunctionDefinition>,
+    #[serde(skip)]
+    pub return_type: Type,
     pub args: Vec<FunctionCallArgExpr<'s>>,
 }
 
 impl<'s> FunctionCallExpr<'s> {
     #[allow(clippy::borrowed_box)]
-    pub fn new(name: &str, function: &'s Box<dyn FunctionDefinition>) -> Self {
+    pub fn new(
+        name: &str,
+        function: &'s Box<dyn FunctionDefinition>,
+        args: Vec<FunctionCallArgExpr<'s>>,
+    ) -> Self {
+        let return_type = function.return_type(&mut (&args).iter().map(|arg| FunctionParam {
+            arg_kind: arg.get_kind(),
+            val_type: arg.get_type(),
+        }));
         Self {
             name: name.into(),
             function,
-            args: Vec::default(),
+            args,
+            return_type,
         }
     }
 
@@ -210,7 +221,12 @@ impl<'s> FunctionCallExpr<'s> {
 
     pub fn compile(self) -> CompiledValueExpr<'s> {
         let ty = self.get_type();
-        let Self { function, args, .. } = self;
+        let Self {
+            function,
+            args,
+            return_type,
+            ..
+        } = self;
         let map_each = args.get(0).and_then(|arg| arg.map_each_to());
         let args = args
             .into_iter()
@@ -219,10 +235,10 @@ impl<'s> FunctionCallExpr<'s> {
             .into_boxed_slice();
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
         let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
-        if let Some(map_each_type) = map_each {
+        if map_each.is_some() {
             CompiledValueExpr::new(move |ctx| {
                 // Create the output array
-                let mut output = Array::new(map_each_type.clone());
+                let mut output = Array::new(return_type.clone());
                 // Compute value of first argument
                 if let Ok(first) = args[0].execute(ctx) {
                     // Apply the function for each element contained
@@ -272,12 +288,7 @@ fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str
 
 impl<'s> GetType for FunctionCallExpr<'s> {
     fn get_type(&self) -> Type {
-        let ty = self
-            .function
-            .return_type(&mut (&self.args).iter().map(|arg| FunctionParam {
-                arg_kind: arg.get_kind(),
-                val_type: arg.get_type(),
-            }));
+        let ty = self.return_type.clone();
         if !self.args.is_empty() && self.args[0].map_each_to().is_some() {
             Type::Array(Box::new(ty))
         } else {
@@ -306,9 +317,9 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
 
-        let mut function_call = FunctionCallExpr::new(name, function);
-
         let mut params = Vec::new();
+
+        let mut args: Vec<FunctionCallArgExpr<'s>> = Vec::new();
 
         let mut index = 0;
 
@@ -345,7 +356,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             function
                 .check_param(
-                    &mut (&function_call.args).iter().map(|arg| FunctionParam {
+                    &mut (&args).iter().map(|arg| FunctionParam {
                         arg_kind: arg.get_kind(),
                         val_type: arg.get_type(),
                     }),
@@ -370,18 +381,20 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
             params.push(next_param);
 
-            function_call.args.push(arg);
+            args.push(arg);
 
             input = skip_space(rest);
 
             index += 1;
         }
 
-        if function_call.args.len() < mandatory_arg_count {
+        if args.len() < mandatory_arg_count {
             return Err(invalid_args_count(&function, input));
         }
 
         input = expect(input, ")")?;
+
+        let function_call = FunctionCallExpr::new(name, function, args);
 
         Ok((function_call, input))
     }
@@ -433,6 +446,14 @@ mod tests {
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
+    }
+
+    fn len_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        match args.next()? {
+            Ok(LhsValue::Bytes(bytes)) => Some(LhsValue::Int(i32::try_from(bytes.len()).unwrap())),
+            Err(Type::Bytes) => None,
+            _ => unreachable!(),
+        }
     }
 
     lazy_static! {
@@ -493,6 +514,20 @@ mod tests {
                 )
                 .unwrap();
             scheme
+                .add_function(
+                    "len".into(),
+                    Function {
+                        params: vec![FunctionParam {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
+                        opt_params: vec![],
+                        return_type: Type::Int,
+                        implementation: FunctionImpl::new(len_function),
+                    },
+                )
+                .unwrap();
+            scheme
         };
     }
 
@@ -507,6 +542,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
                     indexes: vec![],
                 })],
+                return_type: Type::Bytes,
             },
             ";"
         );
@@ -558,10 +594,12 @@ mod tests {
                             lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
                             indexes: vec![],
                         })],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![],
                 })]
                 .to_vec(),
+                return_type: Type::Bytes,
             },
             ";"
         );
@@ -624,6 +662,7 @@ mod tests {
                         ]
                     })
                 ))],
+                return_type: Type::Bool,
             },
             ""
         );
@@ -666,6 +705,7 @@ mod tests {
                     ),
                     indexes: vec![FieldIndex::MapEach],
                 })],
+                return_type: Type::Bytes,
             },
             ";"
         );
@@ -692,6 +732,7 @@ mod tests {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.headers").unwrap()),
                     indexes: vec![FieldIndex::MapEach],
                 })],
+                return_type: Type::Bytes,
             },
             ";"
         );
@@ -752,12 +793,14 @@ mod tests {
                                     ),
                                     indexes: vec![FieldIndex::MapEach],
                                 })],
+                                return_type: Type::Bytes,
                             }),
                             indexes: vec![FieldIndex::MapEach],
                         },
                         op: ComparisonOpExpr::Contains("c".to_string().into(),)
                     }
                 ))],
+                return_type: Type::Bool,
             },
             ""
         );
@@ -793,6 +836,27 @@ mod tests {
 
         let expr = FunctionCallArgExpr::lex_with("lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"", &SCHEME);
         assert!(!expr.is_err());
+
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with("len(http.request.headers.names[*])", &SCHEME),
+            FunctionCallExpr {
+                name: "len".into(),
+                function: SCHEME.get_function("len").unwrap(),
+                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    lhs: LhsFieldExpr::Field(
+                        SCHEME
+                            .get_field_index("http.request.headers.names")
+                            .unwrap()
+                    ),
+                    indexes: vec![FieldIndex::MapEach],
+                })],
+                return_type: Type::Int,
+            },
+            ""
+        );
+
+        assert_eq!(expr.args[0].map_each_to(), Some(Type::Bytes));
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Int)));
     }
 
     #[test]

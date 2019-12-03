@@ -463,6 +463,14 @@ mod tests {
         }
     }
 
+    fn len_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        match args.next()? {
+            Ok(LhsValue::Bytes(bytes)) => Some(LhsValue::Int(i32::try_from(bytes.len()).unwrap())),
+            Err(Type::Bytes) => None,
+            _ => unreachable!(),
+        }
+    }
+
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme: Scheme = Scheme! {
@@ -524,6 +532,20 @@ mod tests {
                 .unwrap();
             scheme
                 .add_function("filter".into(), FilterFunction::new())
+                .unwrap();
+            scheme
+                .add_function(
+                    "len".into(),
+                    Function {
+                        params: vec![FunctionParam {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        }],
+                        opt_params: vec![],
+                        return_type: Type::Int,
+                        implementation: FunctionImpl::new(len_function),
+                    },
+                )
                 .unwrap();
             scheme
         };
@@ -1088,6 +1110,7 @@ mod tests {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
                         })],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![],
                 },
@@ -1138,6 +1161,7 @@ mod tests {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
                         })],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![],
                 },
@@ -1332,6 +1356,7 @@ mod tests {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
                         })],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![],
                 },
@@ -1384,6 +1409,7 @@ mod tests {
                                 ".org".to_owned()
                             ))),
                         ],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![],
                 },
@@ -1447,6 +1473,7 @@ mod tests {
                                 indexes: vec![],
                             }),
                         ],
+                        return_type: Type::Array(Box::new(Type::Bytes)),
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
@@ -1526,6 +1553,7 @@ mod tests {
                                 "-cf".to_owned()
                             ))),
                         ],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
@@ -1596,6 +1624,7 @@ mod tests {
                                 "-cf".to_owned()
                             ))),
                         ],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
@@ -1762,6 +1791,7 @@ mod tests {
                                 "-cf".to_owned()
                             ))),
                         ],
+                        return_type: Type::Bytes,
                     }),
                     indexes: vec![FieldIndex::MapEach],
                 },
@@ -1793,6 +1823,68 @@ mod tests {
                 ],
                 "op": "Equal",
                 "rhs": "three-cf"
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let cookies = LhsValue::Array({
+            let mut arr = Array::new(Type::Bytes);
+            arr.insert(0, "one".into()).unwrap();
+            arr.insert(1, "two".into()).unwrap();
+            arr.insert(2, "three".into()).unwrap();
+            arr
+        });
+        ctx.set_field_value("http.cookies", cookies).unwrap();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![false, false, true].into_boxed_slice()
+        );
+    }
+
+    #[test]
+    fn test_map_each_on_array_len_function() {
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"len(http.cookies[*])[*] > 3"#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("len"),
+                        function: SCHEME.get_function("len").unwrap(),
+                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                            lhs: LhsFieldExpr::Field(field("http.cookies")),
+                            indexes: vec![FieldIndex::MapEach],
+                        }),],
+                        return_type: Type::Int,
+                    }),
+                    indexes: vec![FieldIndex::MapEach],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::GreaterThan,
+                    rhs: RhsValue::Int(3),
+                }
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": [
+                    {
+                        "name": "len",
+                        "args": [
+                            {
+                                "kind": "IndexExpr",
+                                "value": ["http.cookies", {"kind": "MapEach"}],
+                            }
+                        ]
+                    },
+                    {"kind": "MapEach"},
+                ],
+                "op": "GreaterThan",
+                "rhs": 3
             }
         );
 
