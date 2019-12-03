@@ -312,10 +312,9 @@ macro_rules! assert_err {
 
 #[cfg(test)]
 macro_rules! assert_json {
-    ($expr:expr, $json:tt) => {
-        assert_eq!(
-            ::serde_json::to_value(&$expr).unwrap(),
-            ::serde_json::json!($json)
-        );
-    };
+    ($expr:expr, $json:tt) => {{
+        let json = ::serde_json::to_value(&$expr).unwrap();
+        assert_eq!(json, ::serde_json::json!($json));
+        json
+    }};
 }

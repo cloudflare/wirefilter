@@ -5,7 +5,9 @@ use crate::{
     strict_partial_ord::StrictPartialOrd,
 };
 use failure::Fail;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::{Deserialize, Serialize, Serializer};
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -287,14 +289,32 @@ macro_rules! declare_types {
     };
 }
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BytesOrString<'a> {
+    BorrowedBytes(#[serde(borrow)] &'a [u8]),
+    OwnedBytes(Vec<u8>),
+    BorrowedString(#[serde(borrow)] &'a str),
+    OwnedString(String),
+}
+
+impl<'a> BytesOrString<'a> {
+    fn into_bytes(self) -> Cow<'a, [u8]> {
+        match self {
+            BytesOrString::BorrowedBytes(slice) => (*slice).into(),
+            BytesOrString::OwnedBytes(vec) => vec.into(),
+            BytesOrString::BorrowedString(str) => str.as_bytes().into(),
+            BytesOrString::OwnedString(str) => str.into_bytes().into(),
+        }
+    }
+}
+
 // Ideally, we would want to use Cow<'a, LhsValue<'a>> here
 // but it doesnt work for unknown reasons
 // See https://github.com/rust-lang/rust/issues/23707#issuecomment-557312736
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum InnerArray<'a> {
-    Owned(#[serde(borrow)] Vec<LhsValue<'a>>),
-    #[serde(skip_deserializing)]
+    Owned(Vec<LhsValue<'a>>),
     Borrowed(&'a [LhsValue<'a>]),
 }
 
@@ -342,10 +362,9 @@ impl<'a> Deref for InnerArray<'a> {
 }
 
 /// An array of [`Type`].
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Array<'a> {
     val_type: Cow<'a, Type>,
-    #[serde(borrow)]
     data: InnerArray<'a>,
 }
 
@@ -505,11 +524,58 @@ impl<'a> Extend<LhsValue<'a>> for Array<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
+impl<'a> Serialize for Array<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for element in self.data.iter() {
+            seq.serialize_element(element)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de, 'a> DeserializeSeed<'de> for &'a mut Array<'de> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ArrayVisitor<'de, 'a>(&'a mut Array<'de>);
+
+        impl<'de, 'a> Visitor<'de> for ArrayVisitor<'de, 'a> {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "an array of lhs value")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                while let Some(elem) = seq.next_element_seed(LhsValueSeed(self.0.value_type()))? {
+                    self.0.push(elem).map_err(|e| {
+                        de::Error::custom(format!(
+                            "invalid type: {:?}, expected {:?}",
+                            e.actual, e.expected
+                        ))
+                    })?;
+                }
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_seq(ArrayVisitor(self))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum InnerMap<'a> {
-    Owned(#[serde(borrow)] HashMap<Box<[u8]>, LhsValue<'a>>),
-    #[serde(skip_deserializing)]
+    Owned(HashMap<Box<[u8]>, LhsValue<'a>>),
     Borrowed(&'a HashMap<Box<[u8]>, LhsValue<'a>>),
 }
 
@@ -547,10 +613,9 @@ impl<'a> Deref for InnerMap<'a> {
 }
 
 /// A map of string to [`Type`].
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Map<'a> {
     val_type: Cow<'a, Type>,
-    #[serde(borrow)]
     data: InnerMap<'a>,
 }
 
@@ -660,6 +725,130 @@ impl<'a> IntoIterator for Map<'a> {
             InnerMap::Owned(map) => map.into_iter(),
             InnerMap::Borrowed(ref_map) => ref_map.clone().into_iter(),
         }
+    }
+}
+
+impl<'a> Serialize for Map<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let to_map = self.data.keys().all(|key| std::str::from_utf8(key).is_ok());
+
+        if to_map {
+            let mut map = serializer.serialize_map(Some(self.len()))?;
+            for (k, v) in self.data.iter() {
+                map.serialize_entry(std::str::from_utf8(k).unwrap(), v)?;
+            }
+            map.end()
+        } else {
+            // Keys have to be sorted in order to have reproducible output
+            let mut keys = Vec::new();
+            for key in self.data.keys() {
+                keys.push(key)
+            }
+            keys.sort();
+            let mut seq = serializer.serialize_seq(Some(self.len()))?;
+            for key in keys {
+                seq.serialize_element(&[
+                    &LhsValue::Bytes((&**key).into()),
+                    self.data.get(key).unwrap(),
+                ])?;
+            }
+            seq.end()
+        }
+    }
+}
+
+struct MapEntrySeed<'a>(&'a Type);
+
+impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
+    type Value = (Cow<'de, [u8]>, LhsValue<'de>);
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MapEntryVisitor<'a>(&'a Type);
+
+        impl<'de, 'a> Visitor<'de> for MapEntryVisitor<'a> {
+            type Value = (Cow<'de, [u8]>, LhsValue<'de>);
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "a [key, lhs value] pair")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let key = seq
+                    .next_element::<BytesOrString>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let value = seq
+                    .next_element_seed(LhsValueSeed(self.0))?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                Ok((key.into_bytes(), value))
+            }
+        }
+
+        deserializer.deserialize_seq(MapEntryVisitor(self.0))
+    }
+}
+
+impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct MapVisitor<'de, 'a>(&'a mut Map<'de>);
+
+        impl<'de, 'a> Visitor<'de> for MapVisitor<'de, 'a> {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(
+                    formatter,
+                    "a map of lhs value or an array of pair of lhs value"
+                )
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                while let Some(key) = access.next_key()? {
+                    let value = access.next_value_seed(LhsValueSeed(self.0.value_type()))?;
+                    self.0.insert(key, value).map_err(|e| {
+                        de::Error::custom(format!(
+                            "invalid type: {:?}, expected {:?}",
+                            e.actual, e.expected
+                        ))
+                    })?;
+                }
+
+                Ok(())
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                while let Some(entry) = seq.next_element_seed(MapEntrySeed(self.0.value_type()))? {
+                    self.0.insert(&entry.0, entry.1).map_err(|e| {
+                        de::Error::custom(format!(
+                            "invalid type: {:?}, expected {:?}",
+                            e.actual, e.expected
+                        ))
+                    })?;
+                }
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_struct("", &[], MapVisitor(self))
     }
 }
 
@@ -830,6 +1019,58 @@ impl<'a> LhsValue<'a> {
     }
 }
 
+impl<'a> Serialize for LhsValue<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            LhsValue::Ip(ip) => ip.serialize(serializer),
+            LhsValue::Bytes(bytes) => {
+                if let Ok(s) = std::str::from_utf8(bytes) {
+                    s.serialize(serializer)
+                } else {
+                    bytes.serialize(serializer)
+                }
+            }
+            LhsValue::Int(num) => num.serialize(serializer),
+            LhsValue::Bool(b) => b.serialize(serializer),
+            LhsValue::Array(arr) => arr.serialize(serializer),
+            LhsValue::Map(map) => map.serialize(serializer),
+        }
+    }
+}
+
+pub(crate) struct LhsValueSeed<'a>(pub &'a Type);
+
+impl<'de, 'a> DeserializeSeed<'de> for LhsValueSeed<'a> {
+    type Value = LhsValue<'de>;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match self.0 {
+            Type::Ip => Ok(LhsValue::Ip(std::net::IpAddr::deserialize(deserializer)?)),
+            Type::Int => Ok(LhsValue::Int(i32::deserialize(deserializer)?)),
+            Type::Bool => Ok(LhsValue::Bool(bool::deserialize(deserializer)?)),
+            Type::Bytes => Ok(LhsValue::Bytes(
+                BytesOrString::deserialize(deserializer)?.into_bytes(),
+            )),
+            Type::Array(ty) => Ok(LhsValue::Array({
+                let mut arr = Array::new((**ty).clone());
+                arr.deserialize(deserializer)?;
+                arr
+            })),
+            Type::Map(ty) => Ok(LhsValue::Map({
+                let mut map = Map::new((**ty).clone());
+                map.deserialize(deserializer)?;
+                map
+            })),
+        }
+    }
+}
+
 pub enum IntoIter<'a> {
     IntoArray(ArrayIterator<'a>),
     IntoMap(MapValuesIntoIter<'a>),
@@ -893,10 +1134,10 @@ declare_types!(
     Bool(bool | UninhabitedBool | UninhabitedBool),
 
     /// An Array of [`Type`].
-    Array[Box<Type>](Array<'a> | UninhabitedArray | UninhabitedArray),
+    Array[Box<Type>](#[serde(skip_deserializing)] Array<'a> | UninhabitedArray | UninhabitedArray),
 
     /// A Map of string to [`Type`].
-    Map[Box<Type>](Map<'a> | UninhabitedMap | UninhabitedMap),
+    Map[Box<Type>](#[serde(skip_deserializing)] Map<'a> | UninhabitedMap | UninhabitedMap),
 );
 
 #[test]
