@@ -132,24 +132,32 @@ void wirefilter_ffi_ctest_filter_uses_field() {
 
     initialize_scheme(scheme);
 
-    wirefilter_parsing_result_t result = wirefilter_parse_filter(
+    wirefilter_parsing_result_t parsing_result = wirefilter_parse_filter(
         scheme,
         wirefilter_string("tcp.port == 80")
     );
-    rust_assert(result.success == 1, "could not parse good filter");
-    rust_assert(result.ok.ast != NULL, "could not parse good filter");
+    rust_assert(parsing_result.success == 1, "could not parse good filter");
+    rust_assert(parsing_result.ok.ast != NULL, "could not parse good filter");
 
-    rust_assert(
-        wirefilter_filter_uses(result.ok.ast, wirefilter_string("tcp.port")) == true,
-        "filter should be using field tcp.port"
+    wirefilter_using_result_t using_result;
+
+    using_result = wirefilter_filter_uses(
+        parsing_result.ok.ast,
+        wirefilter_string("tcp.port")
     );
 
-    rust_assert(
-        wirefilter_filter_uses(result.ok.ast, wirefilter_string("ip.addr")) == false,
-        "filter should not be using field ip.addr"
+    rust_assert(using_result.success == 1, "could not check if filter uses tcp.port field");
+    rust_assert(using_result.ok.value == true, "filter should be using field tcp.port");
+
+    using_result = wirefilter_filter_uses(
+        parsing_result.ok.ast,
+        wirefilter_string("ip.addr")
     );
 
-    wirefilter_free_parsing_result(result);
+    rust_assert(using_result.success == 1, "could not check if filter uses ip.addr field");
+    rust_assert(using_result.ok.value == false, "filter should not be using field ip.addr");
+
+    wirefilter_free_parsing_result(parsing_result);
 
     wirefilter_free_scheme(scheme);
 }
@@ -174,11 +182,15 @@ void wirefilter_ffi_ctest_filter_hash() {
     rust_assert(result2.success == 1, "could not parse good filter");
     rust_assert(result2.ok.ast != NULL, "could not parse good filter");
 
-    uint64_t hash1 = wirefilter_get_filter_hash(result1.ok.ast);
+    wirefilter_hashing_result_t hashing_result;
 
-    uint64_t hash2 = wirefilter_get_filter_hash(result2.ok.ast);
+    hashing_result = wirefilter_get_filter_hash(result1.ok.ast);
+    rust_assert(hashing_result.success == 1, "could not compute hash");
+    uint64_t hash1 = hashing_result.ok.hash;
 
-    rust_assert(hash1 != 0, "could not compute hash");
+    hashing_result = wirefilter_get_filter_hash(result2.ok.ast);
+    rust_assert(hashing_result.success == 1, "could not compute hash");
+    uint64_t hash2 = hashing_result.ok.hash;
 
     rust_assert(hash1 == hash2, "both filters should have the same hash");
 
@@ -202,8 +214,10 @@ void wirefilter_ffi_ctest_filter_serialize() {
     rust_assert(result.success == 1, "could not parse good filter");
     rust_assert(result.ok.ast != NULL, "could not parse good filter");
 
-    wirefilter_rust_allocated_str_t json = wirefilter_serialize_filter_to_json(result.ok.ast);
+    wirefilter_serializing_result_t serializing_result = wirefilter_serialize_filter_to_json(result.ok.ast);
+    rust_assert(serializing_result.success == 1, "could not serialize filter to JSON");
 
+    wirefilter_rust_allocated_str_t json = serializing_result.ok.json;
     rust_assert(json.data != NULL && json.length > 0, "could not serialize filter to JSON");
 
     rust_assert(
@@ -224,8 +238,10 @@ void wirefilter_ffi_ctest_scheme_serialize() {
 
     initialize_scheme(scheme);
 
-    wirefilter_rust_allocated_str_t json = wirefilter_serialize_scheme_to_json(scheme);
+    wirefilter_serializing_result_t serializing_result = wirefilter_serialize_scheme_to_json(scheme);
+    rust_assert(serializing_result.success == 1, "could not serialize scheme to JSON");
 
+    wirefilter_rust_allocated_str_t json = serializing_result.ok.json;
     rust_assert(json.data != NULL && json.length > 0, "could not serialize scheme to JSON");
 
     rust_assert(
@@ -239,10 +255,10 @@ void wirefilter_ffi_ctest_scheme_serialize() {
 }
 
 void wirefilter_ffi_ctest_type_serialize() {
-    wirefilter_rust_allocated_str_t json;
+    wirefilter_serializing_result_t serializing_result = wirefilter_serialize_type_to_json(&WIREFILTER_TYPE_BYTES);
+    rust_assert(serializing_result.success == 1, "could not serialize type to JSON");
 
-    json = wirefilter_serialize_type_to_json(&WIREFILTER_TYPE_BYTES);
-
+    wirefilter_rust_allocated_str_t json = serializing_result.ok.json;
     rust_assert(json.data != NULL && json.length > 0, "could not serialize type to JSON");
 
     rust_assert(
@@ -256,8 +272,10 @@ void wirefilter_ffi_ctest_type_serialize() {
         wirefilter_create_array_type(WIREFILTER_TYPE_BYTES)
     );
 
-    json = wirefilter_serialize_type_to_json(&type);
+    serializing_result = wirefilter_serialize_type_to_json(&type);
+    rust_assert(serializing_result.success == 1, "could not serialize type to JSON");
 
+    json = serializing_result.ok.json;
     rust_assert(json.data != NULL && json.length > 0, "could not serialize type to JSON");
 
     rust_assert(
@@ -464,7 +482,10 @@ void wirefilter_ffi_ctest_match_filter() {
         80
     );
 
-    rust_assert(wirefilter_match(filter, exec_ctx) == true, "could not match filter");
+    wirefilter_matching_result_t matching_result = wirefilter_match(filter, exec_ctx);
+    rust_assert(matching_result.success == 1, "could not match filter");
+
+    rust_assert(matching_result.ok.value == true, "filter should match");
 
     wirefilter_free_execution_context(exec_ctx);
 
@@ -536,7 +557,10 @@ void wirefilter_ffi_ctest_match_map() {
         http_headers
     ) == true, "could not set value for map field http.headers");
 
-    rust_assert(wirefilter_match(filter, exec_ctx) == true, "could not match filter");
+    wirefilter_matching_result_t matching_result = wirefilter_match(filter, exec_ctx);
+    rust_assert(matching_result.success == 1, "could not match filter");
+
+    rust_assert(matching_result.ok.value == true, "filter should match");
 
     wirefilter_free_execution_context(exec_ctx);
 
@@ -626,7 +650,10 @@ void wirefilter_ffi_ctest_match_array() {
         http_cookies
     ) == true, "could not set value for map field http.cookies");
 
-    rust_assert(wirefilter_match(filter, exec_ctx) == true, "could not match filter");
+    wirefilter_matching_result_t matching_result = wirefilter_match(filter, exec_ctx);
+    rust_assert(matching_result.success == 1, "could not match filter");
+
+    rust_assert(matching_result.ok.value == true, "filter should match");
 
     wirefilter_free_execution_context(exec_ctx);
 

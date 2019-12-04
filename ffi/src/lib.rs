@@ -81,10 +81,21 @@ impl From<Type> for CType {
 }
 
 #[repr(u8)]
-pub enum ParsingResult<'s> {
+pub enum CResult<T> {
     Err(RustAllocatedString),
-    Ok(RustBox<FilterAst<'s>>),
+    Ok(T),
 }
+
+impl<T> CResult<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            CResult::Err(err) => panic!("{}", &err as &str),
+            CResult::Ok(ok) => ok,
+        }
+    }
+}
+
+pub type ParsingResult<'s> = CResult<RustBox<FilterAst<'s>>>;
 
 impl<'s> From<FilterAst<'s>> for ParsingResult<'s> {
     fn from(filter_ast: FilterAst<'s>) -> Self {
@@ -98,14 +109,13 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
     }
 }
 
-impl<'s> ParsingResult<'s> {
-    pub fn unwrap(self) -> RustBox<FilterAst<'s>> {
-        match self {
-            ParsingResult::Err(err) => panic!("{}", &err as &str),
-            ParsingResult::Ok(filter) => filter,
-        }
-    }
-}
+type UsingResult = CResult<bool>;
+
+type MatchingResult = CResult<bool>;
+
+type SerializingResult = CResult<RustAllocatedString>;
+
+type HashingResult = CResult<u64>;
 
 #[no_mangle]
 pub extern "C" fn wirefilter_create_scheme() -> RustBox<Scheme> {
@@ -190,45 +200,61 @@ impl<H: Hasher> Write for HasherWrite<H> {
     }
 }
 
-fn unwrap_json_result<T>(filter_ast: &FilterAst<'_>, result: serde_json::Result<T>) -> T {
-    // Filter serialisation must never fail.
-    result.unwrap_or_else(|err| panic!("{} while serializing filter {:#?}", err, filter_ast))
-}
-
 #[no_mangle]
-pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst<'_>) -> u64 {
+pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst<'_>) -> HashingResult {
     let mut hasher = FnvHasher::default();
     // Serialize JSON to our Write-compatible wrapper around FnvHasher,
     // effectively calculating a hash for our filter in a streaming fashion
     // that is as stable as the JSON representation itself
     // (instead of relying on #[derive(Hash)] which would be tied to impl details).
-    let result = serde_json::to_writer(HasherWrite(&mut hasher), filter_ast);
-    unwrap_json_result(filter_ast, result);
-    hasher.finish()
+    match serde_json::to_writer(HasherWrite(&mut hasher), filter_ast) {
+        Ok(_) => HashingResult::Ok(hasher.finish()),
+        Err(err) => {
+            HashingResult::Err(format!("{} while serializing filter {:#?}", err, filter_ast).into())
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_hashing_result(r: HashingResult) {
+    drop(r);
 }
 
 #[no_mangle]
 pub extern "C" fn wirefilter_serialize_filter_to_json(
     filter_ast: &FilterAst<'_>,
-) -> RustAllocatedString {
-    let result = serde_json::to_string(filter_ast);
-    unwrap_json_result(filter_ast, result).into()
+) -> SerializingResult {
+    match serde_json::to_string(filter_ast) {
+        Ok(ok) => SerializingResult::Ok(ok.into()),
+        Err(err) => SerializingResult::Err(
+            format!("{} while serializing filter {:#?}", err, filter_ast).into(),
+        ),
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_serialize_scheme_to_json(scheme: &Scheme) -> RustAllocatedString {
-    let result = serde_json::to_string(scheme);
-    result
-        .unwrap_or_else(|err| panic!("{} while serializing scheme {:#?}", err, scheme))
-        .into()
+pub extern "C" fn wirefilter_serialize_scheme_to_json(scheme: &Scheme) -> SerializingResult {
+    match serde_json::to_string(scheme) {
+        Ok(ok) => SerializingResult::Ok(ok.into()),
+        Err(err) => {
+            SerializingResult::Err(format!("{} while serializing scheme {:#?}", err, scheme).into())
+        }
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_serialize_type_to_json(ty: &CType) -> RustAllocatedString {
-    let result = serde_json::to_string(&Type::from(ty.clone()));
-    result
-        .unwrap_or_else(|err| panic!("{} while serializing type {:#?}", err, ty))
-        .into()
+pub extern "C" fn wirefilter_serialize_type_to_json(ty: &CType) -> SerializingResult {
+    match serde_json::to_string(&Type::from(ty.clone())) {
+        Ok(ok) => SerializingResult::Ok(ok.into()),
+        Err(err) => {
+            SerializingResult::Err(format!("{} while serializing type {:#?}", err, ty).into())
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_serializing_result(r: SerializingResult) {
+    drop(r);
 }
 
 #[no_mangle]
@@ -500,8 +526,16 @@ pub extern "C" fn wirefilter_compile_filter<'s>(
 pub extern "C" fn wirefilter_match<'s>(
     filter: &Filter<'s>,
     exec_context: &ExecutionContext<'s>,
-) -> bool {
-    filter.execute(exec_context).unwrap()
+) -> MatchingResult {
+    match filter.execute(exec_context) {
+        Ok(ok) => MatchingResult::Ok(ok),
+        Err(err) => MatchingResult::Err(RustAllocatedString::from(err.to_string())),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_matching_result(r: MatchingResult) {
+    drop(r);
 }
 
 #[no_mangle]
@@ -513,8 +547,16 @@ pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<Filter<'_>>) {
 pub extern "C" fn wirefilter_filter_uses(
     filter_ast: &FilterAst<'_>,
     field_name: ExternallyAllocatedStr<'_>,
-) -> bool {
-    filter_ast.uses(field_name.into_ref()).unwrap()
+) -> UsingResult {
+    match filter_ast.uses(field_name.into_ref()) {
+        Ok(ok) => UsingResult::Ok(ok),
+        Err(err) => UsingResult::Err(RustAllocatedString::from(err.to_string())),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_using_result(r: UsingResult) {
+    drop(r);
 }
 
 #[no_mangle]
@@ -673,7 +715,7 @@ mod ffi_test {
 
         wirefilter_free_compiled_filter(filter);
 
-        result
+        result.unwrap()
     }
 
     #[test]
@@ -723,7 +765,7 @@ mod ffi_test {
         {
             let filter = parse_filter(&scheme, r#"num1 > 3 && str2 == "abc""#).unwrap();
 
-            let json = wirefilter_serialize_filter_to_json(&filter);
+            let json = wirefilter_serialize_filter_to_json(&filter).unwrap();
 
             assert_eq!(&json as &str, r#"{"op":"And","items":[{"lhs":"num1","op":"GreaterThan","rhs":3},{"lhs":"str2","op":"Equal","rhs":"abc"}]}"#);
 
@@ -738,7 +780,7 @@ mod ffi_test {
     #[test]
     fn scheme_serialize() {
         let scheme = create_scheme();
-        let json = wirefilter_serialize_scheme_to_json(&scheme);
+        let json = wirefilter_serialize_scheme_to_json(&scheme).unwrap();
 
         let expected: String = serde_json::to_string(&*scheme).unwrap();
         assert_eq!(&json as &str, expected);
@@ -798,9 +840,9 @@ mod ffi_test {
 
             let filter3 = parse_filter(&scheme, r#"num1 > 41 && num2 == 1337"#).unwrap();
 
-            let hash1 = wirefilter_get_filter_hash(&filter1);
-            let hash2 = wirefilter_get_filter_hash(&filter2);
-            let hash3 = wirefilter_get_filter_hash(&filter3);
+            let hash1 = wirefilter_get_filter_hash(&filter1).unwrap();
+            let hash2 = wirefilter_get_filter_hash(&filter2).unwrap();
+            let hash3 = wirefilter_get_filter_hash(&filter3).unwrap();
 
             assert_eq!(hash1, hash2);
             assert_ne!(hash2, hash3);
@@ -832,40 +874,23 @@ mod ffi_test {
             )
             .unwrap();
 
-            assert!(wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("num1")
-            ));
+            assert!(wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("num1")).unwrap());
 
-            assert!(wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("ip1")
-            ));
+            assert!(wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("ip1")).unwrap());
 
-            assert!(wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("str2")
-            ));
+            assert!(wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("str2")).unwrap());
 
-            assert!(!wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("str1")
-            ));
+            assert!(
+                !wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("str1")).unwrap()
+            );
 
-            assert!(!wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("ip2")
-            ));
+            assert!(!wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("ip2")).unwrap());
 
-            assert!(wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("map1")
-            ));
+            assert!(wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("map1")).unwrap());
 
-            assert!(!wirefilter_filter_uses(
-                &filter,
-                ExternallyAllocatedStr::from("map2")
-            ));
+            assert!(
+                !wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("map2")).unwrap()
+            );
 
             wirefilter_free_parsed_filter(filter);
         }

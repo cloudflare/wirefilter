@@ -47,6 +47,46 @@ typedef union {
     } ok;
 } wirefilter_parsing_result_t;
 
+typedef union {
+    uint8_t success;
+    struct {
+        uint8_t _res1;
+        wirefilter_rust_allocated_str_t msg;
+    } err;
+    struct {
+        uint8_t _res2;
+        bool value;
+    } ok;
+} wirefilter_boolean_result_t;
+
+typedef wirefilter_boolean_result_t wirefilter_using_result_t;
+
+typedef wirefilter_boolean_result_t wirefilter_matching_result_t;
+
+typedef union {
+    uint8_t success;
+    struct {
+        uint8_t _res1;
+        wirefilter_rust_allocated_str_t msg;
+    } err;
+    struct {
+        uint8_t _res2;
+        wirefilter_rust_allocated_str_t json;
+    } ok;
+} wirefilter_serializing_result_t;
+
+typedef union {
+    uint8_t success;
+    struct {
+        uint8_t _res1;
+        wirefilter_rust_allocated_str_t msg;
+    } err;
+    struct {
+        uint8_t _res2;
+        uint64_t hash;
+    } ok;
+} wirefilter_hashing_result_t;
+
 typedef enum {
     WIREFILTER_TYPE_TAG_IP,
     WIREFILTER_TYPE_TAG_BYTES,
@@ -230,29 +270,35 @@ bool wirefilter_add_array_value_to_array(
 
 void wirefilter_free_array(wirefilter_array_t *array);
 
-bool wirefilter_match(
+wirefilter_matching_result_t wirefilter_match(
     const wirefilter_filter_t *filter,
     const wirefilter_execution_context_t *exec_ctx
 );
 
-bool wirefilter_filter_uses(
+void wirefilter_free_matching_result(wirefilter_matching_result_t result);
+
+wirefilter_using_result_t wirefilter_filter_uses(
     const wirefilter_filter_ast_t *ast,
     wirefilter_externally_allocated_str_t field_name
 );
 
-uint64_t wirefilter_get_filter_hash(const wirefilter_filter_ast_t *ast);
+wirefilter_hashing_result_t wirefilter_get_filter_hash(const wirefilter_filter_ast_t *ast);
 
-wirefilter_rust_allocated_str_t wirefilter_serialize_filter_to_json(
+void wirefilter_free_hashing_result(wirefilter_hashing_result_t result);
+
+wirefilter_serializing_result_t wirefilter_serialize_filter_to_json(
     const wirefilter_filter_ast_t *ast
 );
 
-wirefilter_rust_allocated_str_t wirefilter_serialize_scheme_to_json(
+wirefilter_serializing_result_t wirefilter_serialize_scheme_to_json(
     const wirefilter_scheme_t *scheme
 );
 
-wirefilter_rust_allocated_str_t wirefilter_serialize_type_to_json(
+wirefilter_serializing_result_t wirefilter_serialize_type_to_json(
     const wirefilter_type_t *type
 );
+
+void wirefilter_free_serializing_result(wirefilter_serializing_result_t result);
 
 void wirefilter_free_string(wirefilter_rust_allocated_str_t str);
 
