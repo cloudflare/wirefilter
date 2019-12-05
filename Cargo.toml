@@ -9,5 +9,8 @@ members = [
 ]
 
 [profile.release]
-panic = "abort"
+panic = "unwind"
 lto = true
+
+[profile.dev]
+panic = "unwind"

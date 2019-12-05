@@ -299,10 +299,11 @@ void wirefilter_ffi_ctest_compile_filter() {
     rust_assert(result.success == true, "could not parse good filter");
     rust_assert(result.ok.ast != NULL, "could not parse good filter");
 
-    wirefilter_filter_t *filter = wirefilter_compile_filter(result.ok.ast);
-    rust_assert(filter != NULL, "could not compile filter");
+    wirefilter_compiling_result_t compiling_result = wirefilter_compile_filter(result.ok.ast);
+    rust_assert(compiling_result.success == true, "could not compile filter");
+    rust_assert(compiling_result.ok.filter != NULL, "could not compile filter");
 
-    wirefilter_free_compiled_filter(filter);
+    wirefilter_free_compiled_filter(compiling_result.ok.filter);
 
     wirefilter_free_scheme(scheme);
 }
@@ -448,8 +449,10 @@ void wirefilter_ffi_ctest_match_filter() {
     rust_assert(result.success == true, "could not parse good filter");
     rust_assert(result.ok.ast != NULL, "could not parse good filter");
 
-    wirefilter_filter_t *filter = wirefilter_compile_filter(result.ok.ast);
-    rust_assert(filter != NULL, "could not compile filter");
+    wirefilter_compiling_result_t compiling_result = wirefilter_compile_filter(result.ok.ast);
+    rust_assert(compiling_result.success == true, "could not compile filter");
+    rust_assert(compiling_result.ok.filter != NULL, "could not compile filter");
+    wirefilter_filter_t *filter = compiling_result.ok.filter;
 
     wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -507,8 +510,10 @@ void wirefilter_ffi_ctest_match_map() {
     rust_assert(result.success == true, "could not parse good filter");
     rust_assert(result.ok.ast != NULL, "could not parse good filter");
 
-    wirefilter_filter_t *filter = wirefilter_compile_filter(result.ok.ast);
-    rust_assert(filter != NULL, "could not compile filter");
+    wirefilter_compiling_result_t compiling_result = wirefilter_compile_filter(result.ok.ast);
+    rust_assert(compiling_result.success == true, "could not compile filter");
+    rust_assert(compiling_result.ok.filter != NULL, "could not compile filter");
+    wirefilter_filter_t *filter = compiling_result.ok.filter;
 
     wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -582,8 +587,10 @@ void wirefilter_ffi_ctest_match_array() {
     rust_assert(result.success == true, "could not parse good filter");
     rust_assert(result.ok.ast != NULL, "could not parse good filter");
 
-    wirefilter_filter_t *filter = wirefilter_compile_filter(result.ok.ast);
-    rust_assert(filter != NULL, "could not compile filter");
+    wirefilter_compiling_result_t compiling_result = wirefilter_compile_filter(result.ok.ast);
+    rust_assert(compiling_result.success == true, "could not compile filter");
+    rust_assert(compiling_result.ok.filter != NULL, "could not compile filter");
+    wirefilter_filter_t *filter = compiling_result.ok.filter;
 
     wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");

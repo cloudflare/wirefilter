@@ -6,6 +6,9 @@ use crate::transfer_types::{
 };
 use fnv::FnvHasher;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::cell::{Cell, RefCell};
+use std::panic::UnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     convert::TryFrom,
     hash::Hasher,
@@ -93,6 +96,13 @@ impl<T> CResult<T> {
             CResult::Ok(ok) => ok,
         }
     }
+
+    pub fn into_result(self) -> Result<T, RustAllocatedString> {
+        match self {
+            CResult::Ok(ok) => Ok(ok),
+            CResult::Err(err) => Err(err),
+        }
+    }
 }
 
 pub type ParsingResult<'s> = CResult<RustBox<FilterAst<'s>>>;
@@ -111,11 +121,96 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
 
 type UsingResult = CResult<bool>;
 
+type CompilingResult<'s> = CResult<RustBox<Filter<'s>>>;
+
 type MatchingResult = CResult<bool>;
 
 type SerializingResult = CResult<RustAllocatedString>;
 
 type HashingResult = CResult<u64>;
+
+thread_local! {
+    static PANIC_CATCHER_BACKTRACE : RefCell<String> = RefCell::new(String::new());
+    static PANIC_CATCHER_CATCH: Cell<bool> = Cell::new(false);
+}
+static PANIC_CATCHER_ENABLED: AtomicBool = AtomicBool::new(false);
+static PANIC_CATCHER_HOOK_SET: AtomicBool = AtomicBool::new(false);
+
+#[inline(always)]
+fn catch_panic<F, T>(f: F) -> CResult<T>
+where
+    F: FnOnce() -> CResult<T> + UnwindSafe,
+{
+    if PANIC_CATCHER_ENABLED.load(Ordering::SeqCst) {
+        PANIC_CATCHER_CATCH.with(|b| b.set(true));
+        let result = std::panic::catch_unwind(f);
+        PANIC_CATCHER_CATCH.with(|b| b.set(false));
+        match result {
+            Ok(res) => res,
+            Err(_) => CResult::<T>::Err(RustAllocatedString::from(PANIC_CATCHER_BACKTRACE.with(
+                |bt| {
+                    let bt = bt.borrow();
+                    if bt.is_empty() {
+                        "thread '<unknown>' panicked at '<unknown>' in file '<unknown>' at line 0"
+                            .to_string()
+                    } else {
+                        bt.to_string()
+                    }
+                },
+            ))),
+        }
+    } else {
+        f()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_enable_panic_catcher() {
+    PANIC_CATCHER_ENABLED.store(true, Ordering::SeqCst);
+    if PANIC_CATCHER_HOOK_SET.load(Ordering::SeqCst) {
+        return;
+    }
+    let next = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if PANIC_CATCHER_CATCH.with(|b| b.get()) {
+            PANIC_CATCHER_BACKTRACE.with(|bt| {
+                let mut bt = bt.borrow_mut();
+                let (file, line) = if let Some(location) = info.location() {
+                    (location.file(), location.line())
+                } else {
+                    ("<unknown>", 0)
+                };
+                let payload = if let Some(payload) = info.payload().downcast_ref::<&str>() {
+                    payload
+                } else if let Some(payload) = info.payload().downcast_ref::<String>() {
+                    payload
+                } else {
+                    "<unknown>"
+                };
+                bt.truncate(0);
+                let _ = std::fmt::write(
+                    &mut *bt,
+                    format_args!(
+                        "thread '{}' panicked at '{}' in file '{}' at line {}\n{:?}",
+                        std::thread::current().name().unwrap_or("<unknown>"),
+                        payload,
+                        file,
+                        line,
+                        backtrace::Backtrace::new()
+                    ),
+                );
+            });
+        } else {
+            next(info);
+        }
+    }));
+    PANIC_CATCHER_HOOK_SET.store(true, Ordering::SeqCst);
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_disable_panic_catcher() {
+    PANIC_CATCHER_ENABLED.store(false, Ordering::SeqCst);
+}
 
 #[no_mangle]
 pub extern "C" fn wirefilter_create_scheme() -> RustBox<Scheme> {
@@ -169,10 +264,12 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
     scheme: &'s Scheme,
     input: ExternallyAllocatedStr<'i>,
 ) -> ParsingResult<'s> {
-    match scheme.parse(input.into_ref()) {
-        Ok(filter) => ParsingResult::from(filter),
-        Err(err) => ParsingResult::from(err),
-    }
+    catch_panic(std::panic::AssertUnwindSafe(|| {
+        match scheme.parse(input.into_ref()) {
+            Ok(filter) => ParsingResult::from(filter),
+            Err(err) => ParsingResult::from(err),
+        }
+    }))
 }
 
 #[no_mangle]
@@ -517,9 +614,16 @@ pub extern "C" fn wirefilter_free_array(array: RustBox<LhsValue<'_>>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_compile_filter<'s>(
     filter_ast: RustBox<FilterAst<'s>>,
-) -> RustBox<Filter<'s>> {
-    let filter_ast = filter_ast.into_real_box();
-    filter_ast.compile().into()
+) -> CompilingResult {
+    catch_panic(std::panic::AssertUnwindSafe(|| {
+        let filter_ast = filter_ast.into_real_box();
+        CompilingResult::Ok(filter_ast.compile().into())
+    }))
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult) {
+    drop(r);
 }
 
 #[no_mangle]
@@ -527,10 +631,12 @@ pub extern "C" fn wirefilter_match<'s>(
     filter: &Filter<'s>,
     exec_context: &ExecutionContext<'s>,
 ) -> MatchingResult {
-    match filter.execute(exec_context) {
-        Ok(ok) => MatchingResult::Ok(ok),
-        Err(err) => MatchingResult::Err(RustAllocatedString::from(err.to_string())),
-    }
+    catch_panic(std::panic::AssertUnwindSafe(|| {
+        match filter.execute(exec_context) {
+            Ok(ok) => MatchingResult::Ok(ok),
+            Err(err) => MatchingResult::Err(RustAllocatedString::from(err.to_string())),
+        }
+    }))
 }
 
 #[no_mangle]
@@ -548,10 +654,12 @@ pub extern "C" fn wirefilter_filter_uses(
     filter_ast: &FilterAst<'_>,
     field_name: ExternallyAllocatedStr<'_>,
 ) -> UsingResult {
-    match filter_ast.uses(field_name.into_ref()) {
-        Ok(ok) => UsingResult::Ok(ok),
-        Err(err) => UsingResult::Err(RustAllocatedString::from(err.to_string())),
-    }
+    catch_panic(std::panic::AssertUnwindSafe(|| {
+        match filter_ast.uses(field_name.into_ref()) {
+            Ok(ok) => UsingResult::Ok(ok),
+            Err(err) => UsingResult::Err(RustAllocatedString::from(err.to_string())),
+        }
+    }))
 }
 
 #[no_mangle]
@@ -709,7 +817,7 @@ mod ffi_test {
         exec_context: &ExecutionContext<'_>,
     ) -> bool {
         let filter = parse_filter(scheme, input).unwrap();
-        let filter = wirefilter_compile_filter(filter);
+        let filter = wirefilter_compile_filter(filter).unwrap();
 
         let result = wirefilter_match(&filter, exec_context);
 
