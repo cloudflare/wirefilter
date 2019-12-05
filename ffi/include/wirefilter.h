@@ -61,6 +61,18 @@ typedef union {
 
 typedef wirefilter_boolean_result_t wirefilter_using_result_t;
 
+typedef union {
+    uint8_t success;
+    struct {
+        uint8_t _res1;
+        wirefilter_rust_allocated_str_t msg;
+    } err;
+    struct {
+        uint8_t _res2;
+        wirefilter_filter_t *filter;
+    } ok;
+} wirefilter_compiling_result_t;
+
 typedef wirefilter_boolean_result_t wirefilter_matching_result_t;
 
 typedef union {
@@ -106,6 +118,9 @@ static const wirefilter_type_t WIREFILTER_TYPE_BYTES = {.tag = WIREFILTER_TYPE_T
 static const wirefilter_type_t WIREFILTER_TYPE_INT = {.tag = WIREFILTER_TYPE_TAG_INT, .data = NULL};
 static const wirefilter_type_t WIREFILTER_TYPE_BOOL = {.tag = WIREFILTER_TYPE_TAG_BOOL, .data = NULL};
 
+void wirefilter_enable_panic_catcher();
+void wirefilter_disable_panic_catcher();
+
 wirefilter_scheme_t *wirefilter_create_scheme();
 void wirefilter_free_scheme(wirefilter_scheme_t *scheme);
 
@@ -126,7 +141,10 @@ wirefilter_parsing_result_t wirefilter_parse_filter(
 
 void wirefilter_free_parsing_result(wirefilter_parsing_result_t result);
 
-wirefilter_filter_t *wirefilter_compile_filter(wirefilter_filter_ast_t *ast);
+wirefilter_compiling_result_t wirefilter_compile_filter(wirefilter_filter_ast_t *ast);
+
+void wirefilter_free_compiling_result(wirefilter_compiling_result_t result);
+
 void wirefilter_free_compiled_filter(wirefilter_filter_t *filter);
 
 wirefilter_execution_context_t *wirefilter_create_execution_context(
