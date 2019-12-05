@@ -273,6 +273,11 @@ pub extern "C" fn wirefilter_parse_filter<'s, 'i>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_free_filter_ast(ast: RustBox<FilterAst<'_>>) {
+    drop(ast);
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_free_parsing_result(r: ParsingResult<'_>) {
     drop(r);
 }
