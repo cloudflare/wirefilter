@@ -139,6 +139,8 @@ wirefilter_parsing_result_t wirefilter_parse_filter(
     wirefilter_externally_allocated_str_t input
 );
 
+void wirefilter_free_filter_ast(wirefilter_filter_ast_t *ast);
+
 void wirefilter_free_parsing_result(wirefilter_parsing_result_t result);
 
 wirefilter_compiling_result_t wirefilter_compile_filter(wirefilter_filter_ast_t *ast);
