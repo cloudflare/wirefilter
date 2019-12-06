@@ -132,8 +132,8 @@ type HashingResult = CResult<u64>;
 thread_local! {
     static PANIC_CATCHER_BACKTRACE : RefCell<String> = RefCell::new(String::new());
     static PANIC_CATCHER_CATCH: Cell<bool> = Cell::new(false);
+    static PANIC_CATCHER_ENABLED: Cell<bool> = Cell::new(false);
 }
-static PANIC_CATCHER_ENABLED: AtomicBool = AtomicBool::new(false);
 static PANIC_CATCHER_HOOK_SET: AtomicBool = AtomicBool::new(false);
 
 #[inline(always)]
@@ -141,7 +141,7 @@ fn catch_panic<F, T>(f: F) -> CResult<T>
 where
     F: FnOnce() -> CResult<T> + UnwindSafe,
 {
-    if PANIC_CATCHER_ENABLED.load(Ordering::SeqCst) {
+    if PANIC_CATCHER_ENABLED.with(|b| b.get()) {
         PANIC_CATCHER_CATCH.with(|b| b.set(true));
         let result = std::panic::catch_unwind(f);
         PANIC_CATCHER_CATCH.with(|b| b.set(false));
@@ -166,7 +166,7 @@ where
 
 #[no_mangle]
 pub extern "C" fn wirefilter_enable_panic_catcher() {
-    PANIC_CATCHER_ENABLED.store(true, Ordering::SeqCst);
+    PANIC_CATCHER_ENABLED.with(|b| b.set(true));
     if PANIC_CATCHER_HOOK_SET.load(Ordering::SeqCst) {
         return;
     }
@@ -209,7 +209,7 @@ pub extern "C" fn wirefilter_enable_panic_catcher() {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_disable_panic_catcher() {
-    PANIC_CATCHER_ENABLED.store(false, Ordering::SeqCst);
+    PANIC_CATCHER_ENABLED.with(|b| b.set(false));
 }
 
 #[no_mangle]
