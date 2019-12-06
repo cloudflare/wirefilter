@@ -318,6 +318,10 @@ wirefilter_serializing_result_t wirefilter_serialize_type_to_json(
     const wirefilter_type_t *type
 );
 
+wirefilter_serializing_result_t wirefilter_serialize_execution_context_to_json(
+    const wirefilter_execution_context_t *exec_ctx
+);
+
 void wirefilter_free_serializing_result(wirefilter_serializing_result_t result);
 
 void wirefilter_free_string(wirefilter_rust_allocated_str_t str);
