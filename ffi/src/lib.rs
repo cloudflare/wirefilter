@@ -367,6 +367,22 @@ pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_serialize_execution_context_to_json<'a>(
+    exec_context: &mut ExecutionContext<'a>,
+) -> SerializingResult {
+    match serde_json::to_string(exec_context) {
+        Ok(ok) => SerializingResult::Ok(ok.into()),
+        Err(err) => SerializingResult::Err(
+            format!(
+                "{} while serializing execution context {:#?}",
+                err, exec_context
+            )
+            .into(),
+        ),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<ExecutionContext<'_>>) {
     drop(exec_context);
 }

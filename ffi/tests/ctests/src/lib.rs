@@ -45,6 +45,7 @@ mod ffi_ctest {
         create_execution_context,
         add_values_to_execution_context,
         add_values_to_execution_context_errors,
+        execution_context_serialize,
         match_filter,
         match_map,
         match_array,

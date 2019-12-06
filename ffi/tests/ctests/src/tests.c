@@ -436,6 +436,69 @@ void wirefilter_ffi_ctest_add_values_to_execution_context_errors() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_execution_context_serialize() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_execution_context_t *exec_ctx = wirefilter_create_execution_context(scheme);
+    rust_assert(exec_ctx != NULL, "could not create execution context");
+
+    wirefilter_externally_allocated_byte_arr_t http_host;
+    http_host.data = (unsigned char *)"www.cloudflare.com";
+    http_host.length = strlen((char *)http_host.data);
+    rust_assert(wirefilter_add_bytes_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("http.host"),
+        http_host
+    ) == true, "could not set value for field http.host");
+
+    uint8_t ipv4_addr[4] = {192, 168, 0, 1};
+    rust_assert(wirefilter_add_ipv4_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("ip.addr"),
+        ipv4_addr
+    ) == true, "could not set value for field ip.addr");
+
+    uint8_t ipv6_addr[16] = {20, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    rust_assert(wirefilter_add_ipv4_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("ip.addr"),
+        ipv6_addr
+    ) == true, "could not set value for field ip.addr");
+
+    rust_assert(wirefilter_add_bool_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("ssl"),
+        false
+    ) == true, "could not set value for field ssl");
+
+    rust_assert(wirefilter_add_int_value_to_execution_context(
+        exec_ctx,
+        wirefilter_string("tcp.port"),
+        80
+    ) == true, "could not set value for field tcp.port");
+
+    wirefilter_serializing_result_t serializing_result = wirefilter_serialize_execution_context_to_json(exec_ctx);
+    rust_assert(serializing_result.success == 1, "could not serialize execution context to JSON");
+
+    wirefilter_rust_allocated_str_t json = serializing_result.ok.json;
+    rust_assert(json.data != NULL && json.length > 0, "could not serialize execution context to JSON");
+
+    rust_assert(
+        strncmp(json.data, "{\"http.host\":\"www.cloudflare.com\",\"ip.addr\":\"20.20.0.0\",\"ssl\":false,\"tcp.port\":80}", json.length) == 0,
+        "invalid JSON serialization"
+    );
+
+    wirefilter_free_string(json);
+
+    wirefilter_free_execution_context(exec_ctx);
+
+    wirefilter_free_scheme(scheme);
+}
+
+
 void wirefilter_ffi_ctest_match_filter() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
