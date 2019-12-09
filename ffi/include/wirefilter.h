@@ -118,7 +118,12 @@ static const wirefilter_type_t WIREFILTER_TYPE_BYTES = {.tag = WIREFILTER_TYPE_T
 static const wirefilter_type_t WIREFILTER_TYPE_INT = {.tag = WIREFILTER_TYPE_TAG_INT, .data = NULL};
 static const wirefilter_type_t WIREFILTER_TYPE_BOOL = {.tag = WIREFILTER_TYPE_TAG_BOOL, .data = NULL};
 
-void wirefilter_enable_panic_catcher();
+typedef enum {
+    WIREFILTER_PANIC_CATCHER_FALLBACK_MODE_CONTINUE = 0,
+    WIREFILTER_PANIC_CATCHER_FALLBACK_MODE_ABORT = 1,
+} wirefilter_panic_catcher_fallback_mode_t;
+
+wirefilter_boolean_result_t wirefilter_enable_panic_catcher(uint8_t mode);
 void wirefilter_disable_panic_catcher();
 
 wirefilter_scheme_t *wirefilter_create_scheme();
