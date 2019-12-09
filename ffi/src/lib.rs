@@ -129,10 +129,22 @@ type SerializingResult = CResult<RustAllocatedString>;
 
 type HashingResult = CResult<u64>;
 
+#[repr(u8)]
+#[derive(Clone, Copy, IntoPrimitive, TryFromPrimitive)]
+pub enum PanicCatcherFallbackMode {
+    Continue,
+    Abort,
+}
+
 thread_local! {
+    // String to store last backtrace that is recorded in the panic catcher hook
     static PANIC_CATCHER_BACKTRACE : RefCell<String> = RefCell::new(String::new());
+
+    // Boolean to check if we are currently trying to catch a pnic
     static PANIC_CATCHER_CATCH: Cell<bool> = Cell::new(false);
-    static PANIC_CATCHER_ENABLED: Cell<bool> = Cell::new(false);
+
+    // Status of the panic catcher
+    static PANIC_CATCHER_ENABLED: Cell<Option<PanicCatcherFallbackMode>> = Cell::new(Some(PanicCatcherFallbackMode::Abort));
 }
 static PANIC_CATCHER_HOOK_SET: AtomicBool = AtomicBool::new(false);
 
@@ -141,7 +153,7 @@ fn catch_panic<F, T>(f: F) -> CResult<T>
 where
     F: FnOnce() -> CResult<T> + UnwindSafe,
 {
-    if PANIC_CATCHER_ENABLED.with(|b| b.get()) {
+    if PANIC_CATCHER_ENABLED.with(|b| b.get().is_some()) {
         PANIC_CATCHER_CATCH.with(|b| b.set(true));
         let result = std::panic::catch_unwind(f);
         PANIC_CATCHER_CATCH.with(|b| b.set(false));
@@ -165,14 +177,14 @@ where
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_enable_panic_catcher() {
-    PANIC_CATCHER_ENABLED.with(|b| b.set(true));
+pub extern "C" fn wirefilter_set_panic_catcher_hook() {
     if PANIC_CATCHER_HOOK_SET.load(Ordering::SeqCst) {
         return;
     }
     let next = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        if PANIC_CATCHER_CATCH.with(|b| b.get()) {
+        let enabled = PANIC_CATCHER_ENABLED.with(|enabled| enabled.get());
+        if let Some(fallback_mode) = enabled {
             PANIC_CATCHER_BACKTRACE.with(|bt| {
                 let mut bt = bt.borrow_mut();
                 let (file, line) = if let Some(location) = info.location() {
@@ -199,17 +211,36 @@ pub extern "C" fn wirefilter_enable_panic_catcher() {
                         backtrace::Backtrace::new()
                     ),
                 );
+                if !PANIC_CATCHER_CATCH.with(|b| b.get()) {
+                    match fallback_mode {
+                        PanicCatcherFallbackMode::Continue => {}
+                        PanicCatcherFallbackMode::Abort => {
+                            let _ = io::stderr().write_all(bt.as_bytes());
+                            std::process::abort();
+                        }
+                    }
+                }
             });
-        } else {
-            next(info);
         }
+        next(info)
     }));
     PANIC_CATCHER_HOOK_SET.store(true, Ordering::SeqCst);
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_enable_panic_catcher(fallback_mode: u8) -> CResult<bool> {
+    match PanicCatcherFallbackMode::try_from(fallback_mode) {
+        Ok(fallback_mode) => {
+            PANIC_CATCHER_ENABLED.with(|b| b.set(Some(fallback_mode)));
+            CResult::Ok(true)
+        }
+        Err(err) => CResult::Err(err.to_string().into()),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_disable_panic_catcher() {
-    PANIC_CATCHER_ENABLED.with(|b| b.set(false));
+    PANIC_CATCHER_ENABLED.with(|b| b.set(None));
 }
 
 #[no_mangle]
