@@ -12,6 +12,8 @@ pub use self::{slice::ExternSliceRepr, str::ExternStrRepr};
 pub trait ExternPtrRepr {
     type Repr: Copy + From<*mut Self>;
 
+    /// # Safety
+    ///
     /// This method will be used in places where data behind the pointer
     /// was allocated by Rust side, so implementors may omit potentially
     /// expensive safety checks.
