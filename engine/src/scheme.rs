@@ -402,6 +402,11 @@ impl<'s> Scheme {
     pub fn parse<'i>(&'s self, input: &'i str) -> Result<FilterAst<'s>, ParseError<'i>> {
         complete(FilterAst::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
     }
+
+    /// Iterates over all fields.
+    pub fn iter_fields(&'s self) -> impl ExactSizeIterator<Item = (&'s str, &'s Type)> {
+        self.fields.iter().map(|(field, ty)| (field.as_str(), ty))
+    }
 }
 
 /// A convenience macro for constructing a [`Scheme`](struct@Scheme) with static
@@ -1117,5 +1122,28 @@ fn test_field_lex_indexes() {
     assert_ok!(
         FieldIndex::lex("\"cookies\""),
         FieldIndex::MapKey("cookies".into())
+    );
+}
+
+#[test]
+fn test_scheme_iter_fields() {
+    let scheme = &Scheme! {
+        x: Bytes,
+        x.y.z0: Int,
+        is_TCP: Bool,
+        map: Map(Bytes)
+    };
+
+    let mut fields = scheme.iter_fields().collect::<Vec<_>>();
+    fields.sort_by(|(f1, _), (f2, _)| f1.partial_cmp(f2).unwrap());
+
+    assert_eq!(
+        fields,
+        vec![
+            ("is_TCP", &Type::Bool),
+            ("map", &Type::Map(Box::new(Type::Bytes))),
+            ("x", &Type::Bytes),
+            ("x.y.z0", &Type::Int),
+        ]
     );
 }
