@@ -165,7 +165,7 @@ impl<'s> IndexExpr<'s> {
             },
         );
         if map_each {
-            Some(ty.clone())
+            Some(ty)
         } else {
             None
         }
@@ -264,7 +264,7 @@ impl<'s> GetType for IndexExpr<'s> {
                 (_, _) => unreachable!(),
             }
         }
-        ty.clone()
+        ty
     }
 }
 
