@@ -53,7 +53,7 @@ impl<'s> IndexExpr<'s> {
 
     pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledOneExpr<'s>
     where
-        F: Fn(&LhsValue<'_>) -> bool,
+        F: Fn(&LhsValue<'_>) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
         match lhs {
@@ -76,7 +76,7 @@ impl<'s> IndexExpr<'s> {
 
     pub fn compile_vec_with<F: 's>(self, default: &'s [bool], func: F) -> CompiledVecExpr<'s>
     where
-        F: Fn(&LhsValue<'_>) -> bool,
+        F: Fn(&LhsValue<'_>) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
         match lhs {
@@ -106,7 +106,7 @@ impl<'s> IndexExpr<'s> {
         func: F,
     ) -> CompiledExpr<'s>
     where
-        F: Fn(&LhsValue<'_>) -> bool,
+        F: Fn(&LhsValue<'_>) -> bool + Sync + Send,
     {
         if self.map_each_to().is_some() {
             CompiledExpr::Vec(self.compile_vec_with(default_vec, func))
