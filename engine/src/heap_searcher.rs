@@ -3,8 +3,8 @@ use std::mem::ManuallyDrop;
 
 /// A version of [`TwoWaySearcher`] that owns the needle data.
 pub struct HeapSearcher {
-    // This is an unwrapped `Box` (pointer to a heap-allocated data).
-    bytes: *mut [u8],
+    // This is an `Box` whose lifetime must exceed `searcher`.
+    bytes: ManuallyDrop<Box<[u8]>>,
 
     // We need this because `TwoWaySearcher` wants a lifetime for the data it
     // refers to, but we don't want to tie it to the lifetime of `HeapSearcher`,
@@ -16,10 +16,12 @@ pub struct HeapSearcher {
 
 impl<T: Into<Box<[u8]>>> From<T> for HeapSearcher {
     fn from(bytes: T) -> HeapSearcher {
-        let bytes = Box::leak(bytes.into());
+        let bytes_box = bytes.into();
+        // Convert bytes' contents to the static lifetime.
+        let bytes = unsafe { &*(&*bytes_box as *const [u8]) };
 
         HeapSearcher {
-            bytes,
+            bytes: ManuallyDrop::new(bytes_box),
             searcher: ManuallyDrop::new(TwoWaySearcher::new(bytes)),
         }
     }
@@ -30,8 +32,8 @@ impl Drop for HeapSearcher {
         unsafe {
             // Explicitly drop `searcher` first in case it needs `bytes` to be alive.
             ManuallyDrop::drop(&mut self.searcher);
-            // Then, wrap `bytes` pointer back into a `Box` and drop it too.
-            drop(Box::from_raw(self.bytes));
+            // Then, drop `bytes`.
+            ManuallyDrop::drop(&mut self.bytes);
         }
     }
 }

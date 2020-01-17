@@ -17,11 +17,15 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledOneExpr<'s>(Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's>);
+pub(crate) struct CompiledOneExpr<'s>(
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + Sync + Send + 's>,
+);
 
 impl<'s> CompiledOneExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + 's) -> Self {
+    pub(crate) fn new(
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + Sync + Send + 's,
+    ) -> Self {
         CompiledOneExpr(Box::new(closure))
     }
 
@@ -34,13 +38,13 @@ impl<'s> CompiledOneExpr<'s> {
 type CompiledVecExprResult = Box<[bool]>;
 
 pub(crate) struct CompiledVecExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's>,
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + Sync + Send + 's>,
 );
 
 impl<'s> CompiledVecExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + 's,
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + Sync + Send + 's,
     ) -> Self {
         CompiledVecExpr(Box::new(closure))
     }
@@ -89,13 +93,13 @@ impl<'a> From<Type> for CompiledValueResult<'a> {
 }
 
 pub(crate) struct CompiledValueExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + 's>,
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + Sync + Send + 's>,
 );
 
 impl<'s> CompiledValueExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + 's,
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + Sync + Send + 's,
     ) -> Self {
         CompiledValueExpr(Box::new(closure))
     }
