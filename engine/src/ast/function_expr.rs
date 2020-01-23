@@ -104,8 +104,15 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
         let _initial_input = input;
 
         macro_rules! c_is_field {
+            // characters above F/f in the alphabet mean it can't be a decimal or hex int
             ($c:expr) => {
                 (($c.is_ascii_alphanumeric() && !$c.is_ascii_hexdigit()) || $c == '_')
+            };
+        }
+
+        macro_rules! c_is_field_or_int {
+            ($c:expr) => {
+                ($c.is_ascii_alphanumeric() || $c == '_')
             };
         }
 
@@ -113,7 +120,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
         // This will provide better error reporting in most cases
         let mut chars = input.chars();
         if let Some(c) = chars.next() {
-            // check up to 3 next chars because third char of an hexa-string is either ':'
+            // check up to 3 next chars because third char of a hex-string is either ':'
             // or '-'
             let c2 = chars.next();
             let c3 = chars.next();
@@ -124,8 +131,12 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 return SimpleExpr::lex_with(input, scheme)
                     .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs), input));
             } else if c_is_field!(c)
-                || (c2.is_some() && c_is_field!(c2.unwrap()))
-                || (c3.is_some() && c_is_field!(c3.unwrap()))
+                || (c_is_field_or_int!(c) && c2.is_some() && c_is_field!(c2.unwrap()))
+                || (c_is_field_or_int!(c)
+                    && c2.is_some()
+                    && c_is_field_or_int!(c2.unwrap())
+                    && c3.is_some()
+                    && c_is_field!(c3.unwrap()))
             {
                 let (lhs, input) = IndexExpr::lex_with(input, scheme)?;
                 let lookahead = skip_space(input);
@@ -490,10 +501,16 @@ mod tests {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
-                        opt_params: vec![FunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
-                            default_value: LhsValue::Int(10),
-                        }],
+                        opt_params: vec![
+                            FunctionOptParam {
+                                arg_kind: FunctionArgKind::Literal,
+                                default_value: LhsValue::Int(10),
+                            },
+                            FunctionOptParam {
+                                arg_kind: FunctionArgKind::Literal,
+                                default_value: LhsValue::Int(1),
+                            },
+                        ],
                         return_type: Type::Bytes,
                         implementation: FunctionImpl::new(echo_function),
                     },
@@ -533,6 +550,46 @@ mod tests {
 
     #[test]
     fn test_lex_function_call_expr() {
+        // test that adjacent single digit int literals are parsed properly
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with(r#"echo ( http.host, 1, 2 );"#, &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: vec![
+                    FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                        indexes: vec![],
+                    }),
+                    FunctionCallArgExpr::Literal(RhsValue::Int(1)),
+                    FunctionCallArgExpr::Literal(RhsValue::Int(2)),
+                ],
+                return_type: Type::Bytes,
+            },
+            ";"
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": "http.host"
+                    },
+                    {
+                        "kind": "Literal",
+                        "value": 1
+                    },
+                    {
+                        "kind": "Literal",
+                        "value": 2
+                    }
+                ]
+            }
+        );
+
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("echo ( http.host );", &SCHEME),
             FunctionCallExpr {
@@ -560,11 +617,51 @@ mod tests {
             }
         );
 
+        // test that adjacent single digit int literals are parsed properly (without spaces)
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with(r#"echo (http.host,1,2);"#, &SCHEME),
+            FunctionCallExpr {
+                name: String::from("echo"),
+                function: SCHEME.get_function("echo").unwrap(),
+                args: vec![
+                    FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                        indexes: vec![],
+                    }),
+                    FunctionCallArgExpr::Literal(RhsValue::Int(1)),
+                    FunctionCallArgExpr::Literal(RhsValue::Int(2)),
+                ],
+                return_type: Type::Bytes,
+            },
+            ";"
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "echo",
+                "args": [
+                    {
+                        "kind": "IndexExpr",
+                        "value": "http.host"
+                    },
+                    {
+                        "kind": "Literal",
+                        "value": 1
+                    },
+                    {
+                        "kind": "Literal",
+                        "value": 2
+                    }
+                ]
+            }
+        );
+
         assert_err!(
             FunctionCallExpr::lex_with("echo ( );", &SCHEME),
             LexErrorKind::InvalidArgumentsCount {
                 expected_min: 1,
-                expected_max: Some(2),
+                expected_max: Some(3),
             },
             ");"
         );
@@ -898,10 +995,10 @@ mod tests {
         );
 
         assert_err!(
-            FunctionCallExpr::lex_with("echo ( http.host, 10, \"test\" );", &SCHEME),
+            FunctionCallExpr::lex_with("echo ( http.host, 10, 2, \"test\" );", &SCHEME),
             LexErrorKind::InvalidArgumentsCount {
                 expected_min: 1,
-                expected_max: Some(2),
+                expected_max: Some(3),
             },
             "\"test\" );"
         );
