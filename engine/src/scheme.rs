@@ -17,6 +17,12 @@ use std::{
     ptr,
 };
 
+/// An error that occurs if two underlying [schemes](struct@Scheme)
+/// don't match.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "underlying schemes do not match")]
+pub struct SchemeMismatchError;
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
 /// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
@@ -80,7 +86,8 @@ pub struct IndexAccessError {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub(crate) struct Field<'s> {
+/// A structure to represent a field inside a [`Scheme`](struct@Scheme).
+pub struct Field<'s> {
     scheme: &'s Scheme,
     index: usize,
 }
@@ -116,7 +123,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
         let name = span(initial_input, input);
 
         let field = scheme
-            .get_field_index(name)
+            .get_field(name)
             .map_err(|err| (LexErrorKind::UnknownField(err), name))?;
 
         Ok((field, input))
@@ -124,14 +131,16 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
 }
 
 impl<'s> Field<'s> {
+    /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
     pub fn name(&self) -> &'s str {
         self.scheme.fields.get_index(self.index).unwrap().0
     }
 
-    pub fn index(&self) -> usize {
+    pub(crate) fn index(&self) -> usize {
         self.index
     }
 
+    /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
     pub fn scheme(&self) -> &'s Scheme {
         self.scheme
     }
@@ -332,7 +341,8 @@ impl<'s> Scheme {
         Ok(scheme)
     }
 
-    pub(crate) fn get_field_index(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
+    /// Returns the [`field`](struct@Field) with name [`name`]
+    pub fn get_field(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
         match self.fields.get_full(name) {
             Some((index, ..)) => Ok(Field {
                 scheme: self,
@@ -404,8 +414,11 @@ impl<'s> Scheme {
     }
 
     /// Iterates over all fields.
-    pub fn iter_fields(&'s self) -> impl ExactSizeIterator<Item = (&'s str, &'s Type)> {
-        self.fields.iter().map(|(field, ty)| (field.as_str(), ty))
+    pub fn iter_fields(&self) -> impl ExactSizeIterator<Item = Field<'_>> {
+        (0..self.fields.len()).map(move |index| Field {
+            scheme: self,
+            index,
+        })
     }
 }
 
@@ -1059,19 +1072,19 @@ fn test_field() {
 
     assert_ok!(
         Field::lex_with("x;", scheme),
-        scheme.get_field_index("x").unwrap(),
+        scheme.get_field("x").unwrap(),
         ";"
     );
 
     assert_ok!(
         Field::lex_with("x.y.z0-", scheme),
-        scheme.get_field_index("x.y.z0").unwrap(),
+        scheme.get_field("x.y.z0").unwrap(),
         "-"
     );
 
     assert_ok!(
         Field::lex_with("is_TCP", scheme),
-        scheme.get_field_index("is_TCP").unwrap(),
+        scheme.get_field("is_TCP").unwrap(),
         ""
     );
 
@@ -1135,15 +1148,15 @@ fn test_scheme_iter_fields() {
     };
 
     let mut fields = scheme.iter_fields().collect::<Vec<_>>();
-    fields.sort_by(|(f1, _), (f2, _)| f1.partial_cmp(f2).unwrap());
+    fields.sort_by(|f1, f2| f1.name().partial_cmp(f2.name()).unwrap());
 
     assert_eq!(
         fields,
         vec![
-            ("is_TCP", &Type::Bool),
-            ("map", &Type::Map(Box::new(Type::Bytes))),
-            ("x", &Type::Bytes),
-            ("x.y.z0", &Type::Int),
+            scheme.get_field("is_TCP").unwrap(),
+            scheme.get_field("map").unwrap(),
+            scheme.get_field("x").unwrap(),
+            scheme.get_field("x.y.z0").unwrap(),
         ]
     );
 }

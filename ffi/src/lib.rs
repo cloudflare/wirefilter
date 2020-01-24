@@ -309,7 +309,11 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'_>,
     value: i32,
 ) -> bool {
-    exec_context.set_field_value(name.into_ref(), value).is_ok()
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    exec_context.set_field_value(field, value).is_ok()
 }
 
 #[no_mangle]
@@ -319,7 +323,11 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     value: ExternallyAllocatedByteArr<'a>,
 ) -> bool {
     let slice: &[u8] = value.into_ref();
-    exec_context.set_field_value(name.into_ref(), slice).is_ok()
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    exec_context.set_field_value(field, slice).is_ok()
 }
 
 #[no_mangle]
@@ -328,8 +336,12 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 16],
 ) -> bool {
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
     exec_context
-        .set_field_value(name.into_ref(), IpAddr::from(*value))
+        .set_field_value(field, IpAddr::from(*value))
         .is_ok()
 }
 
@@ -339,8 +351,12 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: &[u8; 4],
 ) -> bool {
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
     exec_context
-        .set_field_value(name.into_ref(), IpAddr::from(*value))
+        .set_field_value(field, IpAddr::from(*value))
         .is_ok()
 }
 
@@ -350,7 +366,11 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     name: ExternallyAllocatedStr<'_>,
     value: bool,
 ) -> bool {
-    exec_context.set_field_value(name.into_ref(), value).is_ok()
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    exec_context.set_field_value(field, value).is_ok()
 }
 
 #[no_mangle]
@@ -359,8 +379,12 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'_>,
     value: RustBox<LhsValue<'a>>,
 ) -> bool {
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
     exec_context
-        .set_field_value(name.into_ref(), *value.into_real_box())
+        .set_field_value(field, *value.into_real_box())
         .is_ok()
 }
 
@@ -370,8 +394,12 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
     name: ExternallyAllocatedStr<'_>,
     value: RustBox<LhsValue<'a>>,
 ) -> bool {
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
     exec_context
-        .set_field_value(name.into_ref(), *value.into_real_box())
+        .set_field_value(field, *value.into_real_box())
         .is_ok()
 }
 

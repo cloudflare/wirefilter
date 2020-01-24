@@ -130,7 +130,9 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                             let filter = filter.compile();
 
                             let mut exec_ctx = ExecutionContext::new(&scheme);
-                            exec_ctx.set_field_value(field, *value).unwrap();
+                            exec_ctx
+                                .set_field_value(scheme.get_field(field).unwrap(), *value)
+                                .unwrap();
 
                             b.iter(|| filter.execute(&exec_ctx));
                         }
