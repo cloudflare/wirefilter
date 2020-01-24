@@ -558,7 +558,7 @@ mod tests {
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                        lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                         indexes: vec![],
                     }),
                     FunctionCallArgExpr::Literal(RhsValue::Int(1)),
@@ -596,7 +596,7 @@ mod tests {
                 name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                     indexes: vec![],
                 })],
                 return_type: Type::Bytes,
@@ -625,7 +625,7 @@ mod tests {
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                        lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                         indexes: vec![],
                     }),
                     FunctionCallArgExpr::Literal(RhsValue::Int(1)),
@@ -688,7 +688,7 @@ mod tests {
                         name: String::from("echo"),
                         function: SCHEME.get_function("echo").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                            lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.host").unwrap()),
+                            lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                             indexes: vec![],
                         })],
                         return_type: Type::Bytes,
@@ -737,9 +737,7 @@ mod tests {
                             LogicalExpr::Simple(SimpleExpr::Comparison(ComparisonExpr {
                                 lhs: IndexExpr {
                                     lhs: LhsFieldExpr::Field(
-                                        SCHEME
-                                            .get_field_index("http.request.headers.is_empty")
-                                            .unwrap()
+                                        SCHEME.get_field("http.request.headers.is_empty").unwrap()
                                     ),
                                     indexes: vec![],
                                 },
@@ -748,9 +746,7 @@ mod tests {
                             LogicalExpr::Simple(SimpleExpr::Comparison(ComparisonExpr {
                                 lhs: IndexExpr {
                                     lhs: LhsFieldExpr::Field(
-                                        SCHEME
-                                            .get_field_index("http.request.headers.is_empty")
-                                            .unwrap()
+                                        SCHEME.get_field("http.request.headers.is_empty").unwrap()
                                     ),
                                     indexes: vec![],
                                 },
@@ -796,9 +792,7 @@ mod tests {
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
-                        SCHEME
-                            .get_field_index("http.request.headers.names")
-                            .unwrap()
+                        SCHEME.get_field("http.request.headers.names").unwrap()
                     ),
                     indexes: vec![FieldIndex::MapEach],
                 })],
@@ -826,7 +820,7 @@ mod tests {
                 name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("http.headers").unwrap()),
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field("http.headers").unwrap()),
                     indexes: vec![FieldIndex::MapEach],
                 })],
                 return_type: Type::Bytes,
@@ -854,9 +848,7 @@ mod tests {
             FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::Field(
-                        SCHEME
-                            .get_field_index("http.request.headers.names")
-                            .unwrap()
+                        SCHEME.get_field("http.request.headers.names").unwrap()
                     ),
                     indexes: vec![FieldIndex::MapEach],
                 },
@@ -884,9 +876,7 @@ mod tests {
                                 function: SCHEME.get_function("lower").unwrap(),
                                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                                     lhs: LhsFieldExpr::Field(
-                                        SCHEME
-                                            .get_field_index("http.request.headers.names")
-                                            .unwrap()
+                                        SCHEME.get_field("http.request.headers.names").unwrap()
                                     ),
                                     indexes: vec![FieldIndex::MapEach],
                                 })],
@@ -941,9 +931,7 @@ mod tests {
                 function: SCHEME.get_function("len").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
-                        SCHEME
-                            .get_field_index("http.request.headers.names")
-                            .unwrap()
+                        SCHEME.get_field("http.request.headers.names").unwrap()
                     ),
                     indexes: vec![FieldIndex::MapEach],
                 })],

@@ -72,7 +72,7 @@ impl<'s> FilterAst<'s> {
     /// This is useful to lazily initialise expensive fields only if necessary.
     pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
         self.scheme
-            .get_field_index(field_name)
+            .get_field(field_name)
             .map(|field| self.op.uses(field))
     }
 

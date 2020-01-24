@@ -37,20 +37,20 @@ fn main() -> Result<(), failure::Error> {
     // Set runtime field values to test the filter against.
     let mut ctx = ExecutionContext::new(&scheme);
 
-    ctx.set_field_value("http.method", "GET")?;
+    ctx.set_field_value(scheme.get_field("http.method").unwrap(), "GET")?;
 
     ctx.set_field_value(
-        "http.ua",
+        scheme.get_field("http.ua").unwrap(),
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
     )?;
 
-    ctx.set_field_value("port", 443)?;
+    ctx.set_field_value(scheme.get_field("port").unwrap(), 443)?;
 
     // Execute the filter with given runtime values.
     println!("Filter matches: {:?}", filter.execute(&ctx)?); // true
 
     // Amend one of the runtime values and execute the filter again.
-    ctx.set_field_value("port", 8080)?;
+    ctx.set_field_value(scheme.get_field("port").unwrap(), 8080)?;
 
     println!("Filter matches: {:?}", filter.execute(&ctx)?); // false
 

@@ -552,7 +552,7 @@ mod tests {
     }
 
     fn field(name: &'static str) -> Field<'static> {
-        SCHEME.get_field_index(name).unwrap()
+        SCHEME.get_field(name).unwrap()
     }
 
     #[test]
@@ -579,10 +579,10 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("ssl", true).unwrap();
+        ctx.set_field_value(field("ssl"), true).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("ssl", false).unwrap();
+        ctx.set_field_value(field("ssl"), false).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -616,25 +616,25 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value(
-            "ip.addr",
+            field("ip.addr"),
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80]),
         )
         .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
         ctx.set_field_value(
-            "ip.addr",
+            field("ip.addr"),
             IpAddr::from([0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x81]),
         )
         .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([127, 0, 0, 1]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
@@ -721,10 +721,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.com").unwrap();
+        ctx.set_field_value(field("http.host"), "example.com")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -756,10 +758,10 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("tcp.port", 80).unwrap();
+        ctx.set_field_value(field("tcp.port"), 80).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("tcp.port", 443).unwrap();
+        ctx.set_field_value(field("tcp.port"), 443).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -792,25 +794,25 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("tcp.port", 80).unwrap();
+        ctx.set_field_value(field("tcp.port"), 80).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("tcp.port", 8080).unwrap();
+        ctx.set_field_value(field("tcp.port"), 8080).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("tcp.port", 443).unwrap();
+        ctx.set_field_value(field("tcp.port"), 443).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("tcp.port", 2081).unwrap();
+        ctx.set_field_value(field("tcp.port"), 2081).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("tcp.port", 2082).unwrap();
+        ctx.set_field_value(field("tcp.port"), 2082).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("tcp.port", 2083).unwrap();
+        ctx.set_field_value(field("tcp.port"), 2083).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("tcp.port", 2084).unwrap();
+        ctx.set_field_value(field("tcp.port"), 2084).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -847,13 +849,16 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.com").unwrap();
+        ctx.set_field_value(field("http.host"), "example.com")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("http.host", "example.net").unwrap();
+        ctx.set_field_value(field("http.host"), "example.net")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -895,23 +900,23 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 1]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([127, 0, 0, 1]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([127, 0, 0, 3]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([127, 0, 0, 3]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([255, 255, 255, 255]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([255, 255, 255, 255]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([0, 0, 0, 0, 0, 0, 0, 1]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("ip.addr", IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]))
+        ctx.set_field_value(field("ip.addr"), IpAddr::from([0, 0, 0, 0, 0, 0, 0, 2]))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
@@ -941,10 +946,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("http.host", "abc.net.au").unwrap();
+        ctx.set_field_value(field("http.host"), "abc.net.au")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -973,10 +980,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.com").unwrap();
+        ctx.set_field_value(field("http.host"), "example.com")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -1008,10 +1017,10 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("tcp.port", 80).unwrap();
+        ctx.set_field_value(field("tcp.port"), 80).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("tcp.port", 8080).unwrap();
+        ctx.set_field_value(field("tcp.port"), 8080).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -1037,7 +1046,7 @@ mod tests {
             arr
         });
 
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
         let cookies = LhsValue::Array({
@@ -1046,7 +1055,7 @@ mod tests {
             arr
         });
 
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -1084,7 +1093,7 @@ mod tests {
             map
         });
 
-        ctx.set_field_value("http.headers", headers).unwrap();
+        ctx.set_field_value(field("http.headers"), headers).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
         let headers = LhsValue::Map({
@@ -1093,7 +1102,7 @@ mod tests {
             map
         });
 
-        ctx.set_field_value("http.headers", headers).unwrap();
+        ctx.set_field_value(field("http.headers"), headers).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -1141,10 +1150,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.com").unwrap();
+        ctx.set_field_value(field("http.host"), "example.com")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -1192,10 +1203,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "EXAMPLE.COM").unwrap();
+        ctx.set_field_value(field("http.host"), "EXAMPLE.COM")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        ctx.set_field_value("http.host", "EXAMPLE.ORG").unwrap();
+        ctx.set_field_value(field("http.host"), "EXAMPLE.ORG")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
@@ -1230,7 +1243,7 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
+        ctx.set_field_value(field("http.cookies"), Array::new(Type::Bytes))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
@@ -1266,7 +1279,7 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.cookies", Array::new(Type::Bytes))
+        ctx.set_field_value(field("http.cookies"), Array::new(Type::Bytes))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
@@ -1302,7 +1315,7 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.headers", Map::new(Type::Bytes))
+        ctx.set_field_value(field("http.headers"), Map::new(Type::Bytes))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
@@ -1338,7 +1351,7 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.headers", Map::new(Type::Bytes))
+        ctx.set_field_value(field("http.headers"), Map::new(Type::Bytes))
             .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
@@ -1387,10 +1400,12 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example.org").unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("http.host", "example.co.uk").unwrap();
+        ctx.set_field_value(field("http.host"), "example.co.uk")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
         let expr = assert_ok!(
@@ -1444,10 +1459,11 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value("http.host", "example").unwrap();
+        ctx.set_field_value(field("http.host"), "example").unwrap();
         assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value("http.host", "cloudflare").unwrap();
+        ctx.set_field_value(field("http.host"), "cloudflare")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), false);
     }
 
@@ -1518,7 +1534,7 @@ mod tests {
             arr.insert(2, "three".into()).unwrap();
             arr
         });
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
 
         let booleans = LhsValue::Array({
             let mut arr = Array::new(Type::Bool);
@@ -1527,7 +1543,8 @@ mod tests {
             arr.insert(2, true.into()).unwrap();
             arr
         });
-        ctx.set_field_value("array.of.bool", booleans).unwrap();
+        ctx.set_field_value(field("array.of.bool"), booleans)
+            .unwrap();
 
         assert_eq!(expr.execute_one(ctx), true);
     }
@@ -1598,7 +1615,7 @@ mod tests {
             arr.insert(2, "three".into()).unwrap();
             arr
         });
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
 
         assert_eq!(expr.execute_one(ctx), true);
     }
@@ -1670,7 +1687,7 @@ mod tests {
             map.insert(b"2", "three".into()).unwrap();
             map
         });
-        ctx.set_field_value("http.headers", headers).unwrap();
+        ctx.set_field_value(field("http.headers"), headers).unwrap();
 
         assert_eq!(expr.execute_one(ctx), true);
     }
@@ -1710,7 +1727,7 @@ mod tests {
             arr.insert(2, "three".into()).unwrap();
             arr
         });
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
 
         assert_eq!(
             expr.execute_vec(ctx),
@@ -1755,7 +1772,7 @@ mod tests {
             map.insert(b"2", "three".into()).unwrap();
             map
         });
-        ctx.set_field_value("http.headers", headers).unwrap();
+        ctx.set_field_value(field("http.headers"), headers).unwrap();
 
         let mut true_count = 0;
         let mut false_count = 0;
@@ -1836,7 +1853,7 @@ mod tests {
             arr.insert(2, "three".into()).unwrap();
             arr
         });
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
 
         assert_eq!(
             expr.execute_vec(ctx),
@@ -1898,7 +1915,7 @@ mod tests {
             arr.insert(2, "three".into()).unwrap();
             arr
         });
-        ctx.set_field_value("http.cookies", cookies).unwrap();
+        ctx.set_field_value(field("http.cookies"), cookies).unwrap();
 
         assert_eq!(
             expr.execute_vec(ctx),

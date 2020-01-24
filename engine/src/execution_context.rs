@@ -1,7 +1,6 @@
 use crate::{
-    scheme::{Field, Scheme},
+    scheme::{Field, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
-    UnknownFieldError,
 };
 use failure::Fail;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
@@ -16,9 +15,9 @@ pub enum SetFieldValueError {
     #[fail(display = "{}", _0)]
     TypeMismatchError(#[cause] TypeMismatchError),
 
-    /// An error that occurs when trying to set the value of a field not already in the Scheme.
+    /// An error that occurs when trying to set the value of a field from a different scheme.
     #[fail(display = "{}", _0)]
-    UnknownFieldError(#[cause] UnknownFieldError),
+    SchemeMismatchError(#[cause] SchemeMismatchError),
 }
 
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
@@ -68,13 +67,12 @@ impl<'e> ExecutionContext<'e> {
     /// Sets a runtime value for a given field name.
     pub fn set_field_value<'v: 'e, V: Into<LhsValue<'v>>>(
         &mut self,
-        name: &str,
+        field: Field<'e>,
         value: V,
     ) -> Result<(), SetFieldValueError> {
-        let field = self
-            .scheme
-            .get_field_index(name)
-            .map_err(SetFieldValueError::UnknownFieldError)?;
+        if !std::ptr::eq(self.scheme, field.scheme()) {
+            return Err(SetFieldValueError::SchemeMismatchError(SchemeMismatchError));
+        }
         let value = value.into();
 
         let field_type = field.get_type();
@@ -116,18 +114,21 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
                     let field = self
                         .0
                         .scheme
-                        .get_field_index(&key)
+                        .get_field(&key)
                         .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
                     let value =
                         access.next_value_seed::<LhsValueSeed>(LhsValueSeed(&field.get_type()))?;
-                    self.0.set_field_value(&key, value).map_err(|e| match e {
-                        SetFieldValueError::UnknownFieldError(_) => {
-                            de::Error::custom(format!("unknown field: {}", key))
-                        }
+                    let field = self
+                        .0
+                        .scheme()
+                        .get_field(&key)
+                        .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
+                    self.0.set_field_value(field, value).map_err(|e| match e {
                         SetFieldValueError::TypeMismatchError(e) => de::Error::custom(format!(
                             "invalid type: {:?}, expected {:?}",
                             e.actual, e.expected
                         )),
+                        SetFieldValueError::SchemeMismatchError(_) => unreachable!(),
                     })?;
                 }
 
@@ -164,7 +165,7 @@ fn test_field_value_type_mismatch() {
     let mut ctx = ExecutionContext::new(&scheme);
 
     assert_eq!(
-        ctx.set_field_value("foo", LhsValue::Bool(false)),
+        ctx.set_field_value(scheme.get_field("foo").unwrap(), LhsValue::Bool(false)),
         Err(SetFieldValueError::TypeMismatchError(TypeMismatchError {
             expected: Type::Int.into(),
             actual: Type::Bool,
@@ -173,14 +174,18 @@ fn test_field_value_type_mismatch() {
 }
 
 #[test]
-fn test_field_value_not_found() {
-    let scheme = Scheme::new();
+fn test_scheme_mismatch() {
+    let scheme = Scheme! { foo: Bool };
 
     let mut ctx = ExecutionContext::new(&scheme);
 
+    let scheme2 = Scheme! { foo: Bool };
+
     assert_eq!(
-        ctx.set_field_value("foo", LhsValue::Bool(false)),
-        Err(SetFieldValueError::UnknownFieldError(UnknownFieldError {}))
+        ctx.set_field_value(scheme2.get_field("foo").unwrap(), LhsValue::Bool(false)),
+        Err(SetFieldValueError::SchemeMismatchError(
+            SchemeMismatchError {}
+        ))
     );
 }
 
@@ -205,20 +210,35 @@ fn test_serde() {
 
     let mut ctx = ExecutionContext::new(&scheme);
 
-    assert_eq!(ctx.set_field_value("bool", LhsValue::Bool(false)), Ok(()),);
-
     assert_eq!(
-        ctx.set_field_value("ip", LhsValue::Ip(IpAddr::from_str("127.0.0.1").unwrap())),
+        ctx.set_field_value(scheme.get_field("bool").unwrap(), LhsValue::Bool(false)),
         Ok(()),
     );
 
-    assert_eq!(ctx.set_field_value("str", "a string"), Ok(()),);
-    assert_eq!(ctx.set_field_value("bytes", &b"a\xFF\xFFb"[..]), Ok(()),);
-
-    assert_eq!(ctx.set_field_value("num", 42), Ok(()),);
+    assert_eq!(
+        ctx.set_field_value(
+            scheme.get_field("ip").unwrap(),
+            LhsValue::Ip(IpAddr::from_str("127.0.0.1").unwrap())
+        ),
+        Ok(()),
+    );
 
     assert_eq!(
-        ctx.set_field_value("arr", {
+        ctx.set_field_value(scheme.get_field("str").unwrap(), "a string"),
+        Ok(()),
+    );
+    assert_eq!(
+        ctx.set_field_value(scheme.get_field("bytes").unwrap(), &b"a\xFF\xFFb"[..]),
+        Ok(()),
+    );
+
+    assert_eq!(
+        ctx.set_field_value(scheme.get_field("num").unwrap(), 42),
+        Ok(()),
+    );
+
+    assert_eq!(
+        ctx.set_field_value(scheme.get_field("arr").unwrap(), {
             let mut arr = Array::new(Type::Bool);
             arr.push(false.into()).unwrap();
             arr.push(true.into()).unwrap();
@@ -228,7 +248,7 @@ fn test_serde() {
     );
 
     assert_eq!(
-        ctx.set_field_value("map", {
+        ctx.set_field_value(scheme.get_field("map").unwrap(), {
             let mut map = Map::new(Type::Int);
             map.insert(b"leet", 1337.into()).unwrap();
             map.insert(b"tabs", 25.into()).unwrap();
@@ -270,7 +290,7 @@ fn test_serde() {
     assert_eq!(ctx, ctx3);
 
     assert_eq!(
-        ctx.set_field_value("map", {
+        ctx.set_field_value(scheme.get_field("map").unwrap(), {
             let mut map = Map::new(Type::Int);
             map.insert(b"leet", 1337.into()).unwrap();
             map.insert(b"tabs", 25.into()).unwrap();

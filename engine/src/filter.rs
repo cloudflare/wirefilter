@@ -1,15 +1,8 @@
 use crate::{
     execution_context::ExecutionContext,
-    scheme::Scheme,
+    scheme::{Scheme, SchemeMismatchError},
     types::{LhsValue, Type},
 };
-use failure::Fail;
-
-/// An error that occurs if filter and provided [`ExecutionContext`] have
-/// different [schemes](struct@Scheme).
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "execution context doesn't match the scheme with which filter was parsed")]
-pub struct SchemeMismatchError;
 
 // Each AST expression node gets compiled into CompiledExpr. Therefore, Filter
 // essentialy is a public API facade for a tree of CompiledExprs. When filter

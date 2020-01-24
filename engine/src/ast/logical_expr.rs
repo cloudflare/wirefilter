@@ -261,9 +261,11 @@ fn test() {
 
     assert_ok!(LogicalExpr::lex_with("at", scheme), at_expr());
 
-    ctx.set_field_value("t", true).unwrap();
-    ctx.set_field_value("f", false).unwrap();
-    ctx.set_field_value("at", {
+    ctx.set_field_value(scheme.get_field("t").unwrap(), true)
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("f").unwrap(), false)
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("at").unwrap(), {
         let mut arr = Array::new(Type::Bool);
         arr.push(true.into()).unwrap();
         arr.push(false.into()).unwrap();
@@ -271,7 +273,7 @@ fn test() {
         arr
     })
     .unwrap();
-    ctx.set_field_value("af", {
+    ctx.set_field_value(scheme.get_field("af").unwrap(), {
         let mut arr = Array::new(Type::Bool);
         arr.push(false.into()).unwrap();
         arr.push(false.into()).unwrap();

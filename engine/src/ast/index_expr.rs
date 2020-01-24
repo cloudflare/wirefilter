@@ -308,7 +308,7 @@ mod tests {
             assert_ok!(
                 IndexExpr::lex_with(&filter, &SCHEME),
                 IndexExpr {
-                    lhs: LhsFieldExpr::Field(SCHEME.get_field_index("test").unwrap()),
+                    lhs: LhsFieldExpr::Field(SCHEME.get_field("test").unwrap()),
                     indexes: vec![FieldIndex::ArrayIndex(i as u32)],
                 }
             );

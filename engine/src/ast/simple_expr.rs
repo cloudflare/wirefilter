@@ -99,8 +99,9 @@ fn test() {
     };
 
     let ctx = &mut ExecutionContext::new(scheme);
-    ctx.set_field_value("t", true).unwrap();
-    ctx.set_field_value("at", {
+    ctx.set_field_value(scheme.get_field("t").unwrap(), true)
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("at").unwrap(), {
         let mut arr = Array::new(Type::Bool);
         arr.push(true.into()).unwrap();
         arr.push(false.into()).unwrap();
