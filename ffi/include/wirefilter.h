@@ -123,7 +123,9 @@ typedef enum {
     WIREFILTER_PANIC_CATCHER_FALLBACK_MODE_ABORT = 1,
 } wirefilter_panic_catcher_fallback_mode_t;
 
-wirefilter_boolean_result_t wirefilter_enable_panic_catcher(uint8_t mode);
+void wirefilter_set_panic_catcher_hook();
+wirefilter_boolean_result_t wirefilter_set_panic_catcher_fallback_mode(uint8_t mode);
+void wirefilter_enable_panic_catcher();
 void wirefilter_disable_panic_catcher();
 
 wirefilter_scheme_t *wirefilter_create_scheme();
