@@ -144,7 +144,7 @@ thread_local! {
     static PANIC_CATCHER_CATCH: Cell<bool> = Cell::new(false);
 
     // Status of the panic catcher
-    static PANIC_CATCHER_ENABLED: Cell<Option<PanicCatcherFallbackMode>> = Cell::new(Some(PanicCatcherFallbackMode::Abort));
+    static PANIC_CATCHER_ENABLED: Cell<Option<PanicCatcherFallbackMode>> = Cell::new(None);
 }
 static PANIC_CATCHER_HOOK_SET: AtomicBool = AtomicBool::new(false);
 
@@ -203,7 +203,7 @@ pub extern "C" fn wirefilter_set_panic_catcher_hook() {
                 let _ = std::fmt::write(
                     &mut *bt,
                     format_args!(
-                        "thread '{}' panicked at '{}' in file '{}' at line {}\n{:?}",
+                        "thread '{}' panicked at '{}' in file '{}' at line {}\n{:?}\n",
                         std::thread::current().name().unwrap_or("<unknown>"),
                         payload,
                         file,
@@ -1059,5 +1059,21 @@ mod ffi_test {
         }
 
         wirefilter_free_scheme(scheme);
+    }
+
+    #[test]
+    #[should_panic(expected = r#"Hello World!"#)]
+    fn test_panic_catcher_set_panic_hook_can_still_panic() {
+        wirefilter_set_panic_catcher_hook();
+        panic!("Hello World!");
+    }
+
+    #[test]
+    #[should_panic(expected = r#"Hello World!"#)]
+    fn test_panic_catcher_enabled_disabled_can_still_panic() {
+        wirefilter_set_panic_catcher_hook();
+        wirefilter_enable_panic_catcher(1);
+        wirefilter_disable_panic_catcher();
+        panic!("Hello World!");
     }
 }
