@@ -66,6 +66,11 @@ pub enum LexErrorKind {
     #[fail(display = "{}", _0)]
     UnknownFunction(#[cause] UnknownFunctionError),
 
+    /// The next token refers to an Identifier that is not present in the Scheme
+    /// ie: neither as a Field or as a Function
+    #[fail(display = "unknown identifier")]
+    UnknownIdentifier,
+
     /// The operation cannot be performed on this Field
     #[fail(display = "cannot perform this operation on type {:?}", lhs_type)]
     UnsupportedOp {

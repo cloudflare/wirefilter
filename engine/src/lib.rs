@@ -87,8 +87,8 @@ pub use self::{
     lhs_types::{Array, Map},
     list_matcher::ListMatcher,
     scheme::{
-        Field, FieldIndex, FieldRedefinitionError, ItemRedefinitionError, ParseError, Scheme,
-        SchemeMismatchError, UnknownFieldError,
+        Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
+        IdentifierRedefinitionError, ParseError, Scheme, SchemeMismatchError, UnknownFieldError,
     },
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };

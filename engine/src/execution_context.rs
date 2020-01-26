@@ -44,7 +44,7 @@ impl<'e> ExecutionContext<'e> {
     pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self {
         ExecutionContext {
             scheme,
-            values: vec![None; scheme.get_field_count()].into(),
+            values: vec![None; scheme.len()].into(),
             list_data: Default::default(),
         }
     }
@@ -169,8 +169,11 @@ impl<'e> Serialize for ExecutionContext<'e> {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(self.values.len()))?;
-        for (name, _) in self.scheme().iter_fields() {
-            let field = self.scheme().get_field_index(name).unwrap();
+        for (name, field) in self
+            .scheme()
+            .iter()
+            .filter_map(|(name, item)| item.into_field().map(|f| (name, f)))
+        {
             if let Some(Some(value)) = self.values.get(field.index()) {
                 map.serialize_entry(name, value)?;
             }
