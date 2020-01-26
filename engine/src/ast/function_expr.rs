@@ -10,9 +10,9 @@ use crate::{
         ExactSizeChain, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
         FunctionParamError,
     },
-    lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, Lex, LexError, LexErrorKind, LexResult, LexWith},
     lhs_types::Array,
-    scheme::{Field, Scheme},
+    scheme::{Field, Function, Scheme},
     types::{GetType, LhsValue, RhsValue, Type},
 };
 use derivative::Derivative;
@@ -214,8 +214,7 @@ pub(crate) struct FunctionCallExpr<'s> {
     pub name: String,
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
-    #[allow(clippy::borrowed_box)]
-    pub function: &'s Box<dyn FunctionDefinition>,
+    pub function: &'s dyn FunctionDefinition,
     #[serde(skip)]
     pub return_type: Type,
     pub args: Vec<FunctionCallArgExpr<'s>>,
@@ -224,10 +223,9 @@ pub(crate) struct FunctionCallExpr<'s> {
 }
 
 impl<'s> FunctionCallExpr<'s> {
-    #[allow(clippy::borrowed_box)]
     pub fn new(
         name: &str,
-        function: &'s Box<dyn FunctionDefinition>,
+        function: &'s dyn FunctionDefinition,
         args: Vec<FunctionCallArgExpr<'s>>,
         context: Option<FunctionDefinitionContext>,
     ) -> Self {
@@ -296,56 +294,25 @@ impl<'s> FunctionCallExpr<'s> {
             })
         }
     }
-}
 
-#[allow(clippy::borrowed_box)]
-fn invalid_args_count<'i>(function: &Box<dyn FunctionDefinition>, input: &'i str) -> LexError<'i> {
-    let (mandatory, optional) = function.arg_count();
-    (
-        LexErrorKind::InvalidArgumentsCount {
-            expected_min: mandatory,
-            expected_max: optional.map(|v| mandatory + v),
-        },
-        input,
-    )
-}
+    pub fn lex_with_function<'i>(input: &'i str, function: Function<'s>) -> LexResult<'i, Self> {
+        let scheme = function.scheme();
+        let name = function.name();
+        let definition = function.as_definition();
 
-impl<'s> GetType for FunctionCallExpr<'s> {
-    fn get_type(&self) -> Type {
-        let ty = self.return_type.clone();
-        if !self.args.is_empty() && self.args[0].map_each_to().is_some() {
-            Type::Array(Box::new(ty))
-        } else {
-            ty
-        }
-    }
-}
-
-impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
-    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
-        let initial_input = input;
-
-        let (name, mut input) = take_while(input, "function character", |c| {
-            c.is_ascii_alphanumeric() || c == '_'
-        })?;
-
-        let function = scheme
-            .get_function(name)
-            .map_err(|err| (LexErrorKind::UnknownFunction(err), initial_input))?;
-
-        input = skip_space(input);
+        let mut input = skip_space(input);
 
         input = expect(input, "(")?;
 
         input = skip_space(input);
 
-        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
+        let (mandatory_arg_count, optional_arg_count) = definition.arg_count();
 
         let mut args: Vec<FunctionCallArgExpr<'s>> = Vec::new();
 
         let mut index = 0;
 
-        let mut ctx = function.context();
+        let mut ctx = definition.context();
 
         while let Some(c) = input.chars().next() {
             if c == ')' {
@@ -372,10 +339,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             if optional_arg_count.is_some()
                 && index >= (mandatory_arg_count + optional_arg_count.unwrap())
             {
-                return Err(invalid_args_count(&function, input));
+                return Err(invalid_args_count(definition, input));
             }
 
-            function
+            definition
                 .check_param(
                     &mut (&args).iter().map(|arg| arg.into()),
                     &next_param,
@@ -413,14 +380,44 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
         }
 
         if args.len() < mandatory_arg_count {
-            return Err(invalid_args_count(&function, input));
+            return Err(invalid_args_count(definition, input));
         }
 
         input = expect(input, ")")?;
 
-        let function_call = FunctionCallExpr::new(name, function, args, ctx);
+        let function_call = FunctionCallExpr::new(name, definition, args, ctx);
 
         Ok((function_call, input))
+    }
+}
+
+fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> LexError<'i> {
+    let (mandatory, optional) = function.arg_count();
+    (
+        LexErrorKind::InvalidArgumentsCount {
+            expected_min: mandatory,
+            expected_max: optional.map(|v| mandatory + v),
+        },
+        input,
+    )
+}
+
+impl<'s> GetType for FunctionCallExpr<'s> {
+    fn get_type(&self) -> Type {
+        let ty = self.return_type.clone();
+        if !self.args.is_empty() && self.args[0].map_each_to().is_some() {
+            Type::Array(Box::new(ty))
+        } else {
+            ty
+        }
+    }
+}
+
+impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        let (function, rest) = Function::lex_with(input, scheme)?;
+
+        Self::lex_with_function(rest, function)
     }
 }
 
@@ -436,7 +433,7 @@ mod tests {
             FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, SimpleFunctionDefinition,
             SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         },
-        scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
+        scheme::{FieldIndex, IndexAccessError},
         types::{RhsValues, Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
@@ -569,7 +566,7 @@ mod tests {
             FunctionCallExpr::lex_with(r#"echo ( http.host, 1, 2 );"#, &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
@@ -609,7 +606,7 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( http.host );", &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                     indexes: vec![],
@@ -638,7 +635,7 @@ mod tests {
             FunctionCallExpr::lex_with(r#"echo (http.host,1,2);"#, &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
@@ -699,11 +696,11 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( echo ( http.host ) );", &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("echo"),
-                        function: SCHEME.get_function("echo").unwrap(),
+                        function: SCHEME.get_function("echo").unwrap().as_definition(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
                             indexes: vec![],
@@ -748,7 +745,7 @@ mod tests {
             ),
             FunctionCallExpr {
                 name: String::from("any"),
-                function: SCHEME.get_function("any").unwrap(),
+                function: SCHEME.get_function("any").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Parenthesized(
                     Box::new(LogicalExpr::Combining {
                         op: LogicalOp::Or,
@@ -809,7 +806,7 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( http.request.headers.names[*] );", &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
                         SCHEME.get_field("http.request.headers.names").unwrap()
@@ -839,7 +836,7 @@ mod tests {
             FunctionCallExpr::lex_with("echo ( http.headers[*] );", &SCHEME),
             FunctionCallExpr {
                 name: String::from("echo"),
-                function: SCHEME.get_function("echo").unwrap(),
+                function: SCHEME.get_function("echo").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field("http.headers").unwrap()),
                     indexes: vec![FieldIndex::MapEach],
@@ -889,13 +886,13 @@ mod tests {
             ),
             FunctionCallExpr {
                 name: "any".into(),
-                function: SCHEME.get_function("any").unwrap(),
+                function: SCHEME.get_function("any").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
                     ComparisonExpr {
                         lhs: IndexExpr {
                             lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                                 name: "lower".into(),
-                                function: SCHEME.get_function("lower").unwrap(),
+                                function: SCHEME.get_function("lower").unwrap().as_definition(),
                                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                                     lhs: LhsFieldExpr::Field(
                                         SCHEME.get_field("http.request.headers.names").unwrap()
@@ -952,7 +949,7 @@ mod tests {
             FunctionCallExpr::lex_with("len(http.request.headers.names[*])", &SCHEME),
             FunctionCallExpr {
                 name: "len".into(),
-                function: SCHEME.get_function("len").unwrap(),
+                function: SCHEME.get_function("len").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
                         SCHEME.get_field("http.request.headers.names").unwrap()
@@ -978,7 +975,7 @@ mod tests {
             ),
             FunctionCallExpr {
                 name: "any".into(),
-                function: SCHEME.get_function("any").unwrap(),
+                function: SCHEME.get_function("any").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
                     op: UnaryOp::Not,
                     arg: Box::new(SimpleExpr::Parenthesized(Box::new(LogicalExpr::Simple(
@@ -1037,7 +1034,7 @@ mod tests {
             ),
             FunctionCallExpr {
                 name: "any".into(),
-                function: SCHEME.get_function("any").unwrap(),
+                function: SCHEME.get_function("any").unwrap().as_definition(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
                     op: UnaryOp::Not,
                     arg: Box::new(SimpleExpr::Parenthesized(Box::new(LogicalExpr::Simple(
@@ -1139,13 +1136,13 @@ mod tests {
 
         assert_err!(
             FunctionCallExpr::lex_with("echo ( http.test );", &SCHEME),
-            LexErrorKind::UnknownField(UnknownFieldError),
+            LexErrorKind::UnknownIdentifier,
             "http.test"
         );
 
         assert_err!(
             FunctionCallExpr::lex_with("echo ( echo ( http.test ) );", &SCHEME),
-            LexErrorKind::UnknownField(UnknownFieldError),
+            LexErrorKind::UnknownIdentifier,
             "http.test"
         );
 

@@ -13,6 +13,7 @@ lex_enum!(UnaryOp {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum SimpleExpr<'s> {
     Comparison(ComparisonExpr<'s>),
     Parenthesized(Box<LogicalExpr<'s>>),

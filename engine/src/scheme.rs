@@ -7,9 +7,11 @@ use crate::{
 use failure::Fail;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     cmp::{max, min},
+    collections::HashMap,
     convert::TryFrom,
     error::Error,
     fmt::{self, Debug, Display, Formatter},
@@ -105,6 +107,129 @@ impl<'s> Debug for Field<'s> {
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        match Identifier::lex_with(input, scheme) {
+            Ok((Identifier::Field(f), rest)) => Ok((f, rest)),
+            Ok((Identifier::Function(_), rest)) => Err((
+                LexErrorKind::UnknownField(UnknownFieldError),
+                span(input, rest),
+            )),
+            Err((LexErrorKind::UnknownIdentifier, s)) => {
+                Err((LexErrorKind::UnknownField(UnknownFieldError), s))
+            }
+            Err(err) => Err(err),
+        }
+    }
+}
+
+impl<'s> Field<'s> {
+    /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
+    pub fn name(&self) -> &'s str {
+        self.scheme.items.get_index(self.index).unwrap().0
+    }
+
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
+    pub fn scheme(&self) -> &'s Scheme {
+        self.scheme
+    }
+}
+
+impl<'s> GetType for Field<'s> {
+    fn get_type(&self) -> Type {
+        match self.scheme.items.get_index(self.index).unwrap().1 {
+            SchemeItem::Field(ty) => ty.clone(),
+            SchemeItem::Function(_) => unreachable!(),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+/// A structure to represent a function inside a [`Scheme`](struct@Scheme).
+pub struct Function<'s> {
+    scheme: &'s Scheme,
+    index: usize,
+}
+
+impl<'s> Serialize for Function<'s> {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.name().serialize(ser)
+    }
+}
+
+impl<'s> Debug for Function<'s> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl<'i, 's> LexWith<'i, &'s Scheme> for Function<'s> {
+    fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
+        match Identifier::lex_with(input, scheme) {
+            Ok((Identifier::Function(f), rest)) => Ok((f, rest)),
+            Ok((Identifier::Field(_), rest)) => Err((
+                LexErrorKind::UnknownFunction(UnknownFunctionError),
+                span(input, rest),
+            )),
+            Err((LexErrorKind::UnknownIdentifier, s)) => {
+                Err((LexErrorKind::UnknownFunction(UnknownFunctionError), s))
+            }
+            Err(err) => Err(err),
+        }
+    }
+}
+
+impl<'s> Function<'s> {
+    /// Returns the function's name as recorded in the [`Scheme`](struct@Scheme).
+    pub fn name(&self) -> &'s str {
+        self.scheme.items.get_index(self.index).unwrap().0
+    }
+
+    /// Returns the [`Scheme`](struct@Scheme) to which this function belongs to.
+    pub fn scheme(&self) -> &'s Scheme {
+        self.scheme
+    }
+
+    pub(crate) fn as_definition(&self) -> &'s dyn FunctionDefinition {
+        match self.scheme.items.get_index(self.index).unwrap().1 {
+            SchemeItem::Field(_) => unreachable!(),
+            SchemeItem::Function(func) => &**func,
+        }
+    }
+}
+
+/// An enum to represent an entry inside a [`Scheme`](struct@Scheme).
+/// It can be either a [`Field`](struct@Field) or a [`Function`](struct@Function).
+#[derive(Debug)]
+pub enum Identifier<'s> {
+    /// Identifier is a [`Field`](struct@Field)
+    Field(Field<'s>),
+    /// Identifier is a [`Function`](struct@Function)
+    Function(Function<'s>),
+}
+
+impl<'s> Identifier<'s> {
+    /// Converts the identifier into a [`Field`](struct@Field) if possible.
+    pub fn into_field(self) -> Option<Field<'s>> {
+        match self {
+            Self::Field(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    /// Converts the identifier into a [`Function`](struct@Function) if possible.
+    pub fn into_function(self) -> Option<Function<'s>> {
+        match self {
+            Self::Function(f) => Some(f),
+            _ => None,
+        }
+    }
+}
+
+impl<'i, 's> LexWith<'i, &'s Scheme> for Identifier<'s> {
     fn lex_with(mut input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         let initial_input = input;
 
@@ -123,32 +248,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
         let name = span(initial_input, input);
 
         let field = scheme
-            .get_field(name)
-            .map_err(|err| (LexErrorKind::UnknownField(err), name))?;
+            .get(name)
+            .ok_or((LexErrorKind::UnknownIdentifier, name))?;
 
         Ok((field, input))
-    }
-}
-
-impl<'s> Field<'s> {
-    /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
-    pub fn name(&self) -> &'s str {
-        self.scheme.fields.get_index(self.index).unwrap().0
-    }
-
-    pub(crate) fn index(&self) -> usize {
-        self.index
-    }
-
-    /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
-    pub fn scheme(&self) -> &'s Scheme {
-        self.scheme
-    }
-}
-
-impl<'s> GetType for Field<'s> {
-    fn get_type(&self) -> Type {
-        self.scheme.fields.get_index(self.index).unwrap().1.clone()
     }
 }
 
@@ -176,7 +279,7 @@ pub struct FunctionRedefinitionError(String);
 
 /// An error that occurs when trying to redefine a field or function.
 #[derive(Debug, PartialEq, Fail)]
-pub enum ItemRedefinitionError {
+pub enum IdentifierRedefinitionError {
     /// An error that occurs when previously defined field gets redefined.
     #[fail(display = "{}", _0)]
     Field(#[cause] FieldRedefinitionError),
@@ -275,17 +378,20 @@ impl<'i> Display for ParseError<'i> {
     }
 }
 
+#[derive(Debug)]
+enum SchemeItem {
+    Field(Type),
+    Function(Box<dyn FunctionDefinition>),
+}
+
 /// The main registry for fields and their associated types.
 ///
 /// This is necessary to provide typechecking for runtime values provided
 /// to the [execution context](::ExecutionContext) and also to aid parser
 /// in ambiguous contexts.
-#[derive(Default, Debug, Deserialize, Serialize)]
-#[serde(transparent)]
+#[derive(Default, Debug)]
 pub struct Scheme {
-    fields: IndexMap<String, Type, FnvBuildHasher>,
-    #[serde(skip)]
-    functions: IndexMap<String, Box<dyn FunctionDefinition>, FnvBuildHasher>,
+    items: IndexMap<String, SchemeItem, FnvBuildHasher>,
 }
 
 impl PartialEq for Scheme {
@@ -296,6 +402,32 @@ impl PartialEq for Scheme {
 
 impl Eq for Scheme {}
 
+impl Serialize for Scheme {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.len()))?;
+        for (k, v) in self.iter().filter_map(|(key, val)| match val {
+            Identifier::Field(field) => Some((key, field)),
+            Identifier::Function(_) => None,
+        }) {
+            map.serialize_entry(k, &v.get_type())?;
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Scheme {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map: HashMap<String, Type> = HashMap::<String, Type>::deserialize(deserializer)?;
+        Ok(Self::try_from_iter(map.into_iter()).unwrap())
+    }
+}
+
 impl<'s> Scheme {
     /// Creates a new scheme.
     pub fn new() -> Self {
@@ -305,24 +437,39 @@ impl<'s> Scheme {
     /// Creates a new scheme with capacity for `n` fields.
     pub fn with_capacity(n: usize) -> Self {
         Scheme {
-            fields: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
-            functions: Default::default(),
+            items: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
         }
     }
 
+    /// Returns the [`identifier`](struct@Identifier) with name [`name`]
+    pub fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
+        self.items
+            .get_full(name)
+            .map(move |(index, _, item)| match item {
+                SchemeItem::Field(_) => Identifier::Field(Field {
+                    scheme: self,
+                    index,
+                }),
+                SchemeItem::Function(_) => Identifier::Function(Function {
+                    scheme: self,
+                    index,
+                }),
+            })
+    }
+
     /// Registers a field and its corresponding type.
-    pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), ItemRedefinitionError> {
-        if self.functions.contains_key(&name) {
-            return Err(ItemRedefinitionError::Function(FunctionRedefinitionError(
-                name,
-            )));
-        };
-        match self.fields.entry(name) {
-            Entry::Occupied(entry) => Err(ItemRedefinitionError::Field(FieldRedefinitionError(
-                entry.key().to_string(),
-            ))),
+    pub fn add_field(&mut self, name: String, ty: Type) -> Result<(), IdentifierRedefinitionError> {
+        match self.items.entry(name) {
+            Entry::Occupied(entry) => match entry.get() {
+                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
+                    FieldRedefinitionError(entry.key().to_string()),
+                )),
+                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
+                    FunctionRedefinitionError(entry.key().to_string()),
+                )),
+            },
             Entry::Vacant(entry) => {
-                entry.insert(ty);
+                entry.insert(SchemeItem::Field(ty));
                 Ok(())
             }
         }
@@ -331,7 +478,7 @@ impl<'s> Scheme {
     /// Registers a series of fields from an iterable, reporting any conflicts.
     pub fn try_from_iter(
         iter: impl IntoIterator<Item = (String, Type)>,
-    ) -> Result<Self, ItemRedefinitionError> {
+    ) -> Result<Self, IdentifierRedefinitionError> {
         let iter = iter.into_iter();
         let (low, _) = iter.size_hint();
         let mut scheme = Scheme::with_capacity(low);
@@ -343,17 +490,20 @@ impl<'s> Scheme {
 
     /// Returns the [`field`](struct@Field) with name [`name`]
     pub fn get_field(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
-        match self.fields.get_full(name) {
-            Some((index, ..)) => Ok(Field {
-                scheme: self,
-                index,
-            }),
-            None => Err(UnknownFieldError),
+        match self.get(name) {
+            Some(Identifier::Field(f)) => Ok(f),
+            _ => Err(UnknownFieldError),
         }
     }
 
-    pub(crate) fn get_field_count(&self) -> usize {
-        self.fields.len()
+    /// Returns the number of element in the [`scheme`](struct@Scheme)
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Returns true if the [`scheme`](struct@Scheme) is empty
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
     }
 
     /// Registers a function
@@ -361,16 +511,18 @@ impl<'s> Scheme {
         &mut self,
         name: String,
         function: impl FunctionDefinition + 'static,
-    ) -> Result<(), ItemRedefinitionError> {
-        if self.fields.contains_key(&name) {
-            return Err(ItemRedefinitionError::Field(FieldRedefinitionError(name)));
-        };
-        match self.functions.entry(name) {
-            Entry::Occupied(entry) => Err(ItemRedefinitionError::Function(
-                FunctionRedefinitionError(entry.key().to_string()),
-            )),
+    ) -> Result<(), IdentifierRedefinitionError> {
+        match self.items.entry(name) {
+            Entry::Occupied(entry) => match entry.get() {
+                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
+                    FieldRedefinitionError(entry.key().to_string()),
+                )),
+                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
+                    FunctionRedefinitionError(entry.key().to_string()),
+                )),
+            },
             Entry::Vacant(entry) => {
-                entry.insert(Box::new(function));
+                entry.insert(SchemeItem::Function(Box::new(function)));
                 Ok(())
             }
         }
@@ -380,19 +532,19 @@ impl<'s> Scheme {
     pub fn add_functions(
         &mut self,
         functions: impl IntoIterator<Item = (String, impl FunctionDefinition + 'static)>,
-    ) -> Result<(), ItemRedefinitionError> {
+    ) -> Result<(), IdentifierRedefinitionError> {
         for (name, func) in functions {
             self.add_function(name, func)?;
         }
         Ok(())
     }
 
-    #[allow(clippy::borrowed_box)]
-    pub(crate) fn get_function(
-        &'s self,
-        name: &str,
-    ) -> Result<&'s Box<dyn FunctionDefinition>, UnknownFunctionError> {
-        self.functions.get(name).ok_or(UnknownFunctionError)
+    /// Returns the [`function`](struct@Function) with name [`name`]
+    pub fn get_function(&'s self, name: &str) -> Result<Function<'s>, UnknownFunctionError> {
+        match self.get(name) {
+            Some(Identifier::Function(f)) => Ok(f),
+            _ => Err(UnknownFunctionError),
+        }
     }
 
     /// Parses a filter into an AST form.
@@ -400,12 +552,27 @@ impl<'s> Scheme {
         complete(FilterAst::lex_with(input.trim(), self)).map_err(|err| ParseError::new(input, err))
     }
 
-    /// Iterates over all fields.
-    pub fn iter_fields(&self) -> impl ExactSizeIterator<Item = Field<'_>> {
-        (0..self.fields.len()).map(move |index| Field {
-            scheme: self,
-            index,
-        })
+    /// Iterates over all items.
+    pub fn iter(&'s self) -> impl ExactSizeIterator<Item = (&'s str, Identifier<'s>)> {
+        self.items
+            .iter()
+            .enumerate()
+            .map(move |(index, (name, item))| match item {
+                SchemeItem::Field(_) => (
+                    name.as_str(),
+                    Identifier::Field(Field {
+                        scheme: self,
+                        index,
+                    }),
+                ),
+                SchemeItem::Function(_) => (
+                    name.as_str(),
+                    Identifier::Function(Function {
+                        scheme: self,
+                        index,
+                    }),
+                ),
+            })
     }
 }
 
@@ -445,7 +612,7 @@ fn test_parse_error() {
         assert_eq!(
             err,
             ParseError {
-                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                kind: LexErrorKind::UnknownIdentifier,
                 input: "xyz",
                 line_number: 0,
                 span_start: 0,
@@ -458,7 +625,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (1:1):
                 xyz
-                ^^^ unknown field
+                ^^^ unknown identifier
                 "#
             )
         );
@@ -469,7 +636,7 @@ fn test_parse_error() {
         assert_eq!(
             err,
             ParseError {
-                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                kind: LexErrorKind::UnknownIdentifier,
                 input: "xyz",
                 line_number: 0,
                 span_start: 0,
@@ -482,7 +649,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (1:1):
                 xyz
-                ^^^ unknown field
+                ^^^ unknown identifier
                 "#
             )
         );
@@ -493,7 +660,7 @@ fn test_parse_error() {
         assert_eq!(
             err,
             ParseError {
-                kind: LexErrorKind::UnknownField(UnknownFieldError),
+                kind: LexErrorKind::UnknownIdentifier,
                 input: "    xyz",
                 line_number: 2,
                 span_start: 4,
@@ -506,7 +673,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (3:5):
                     xyz
-                    ^^^ unknown field
+                    ^^^ unknown identifier
                 "#
             )
         );
@@ -1106,7 +1273,7 @@ fn test_field_type_override() {
 
     assert_eq!(
         scheme.add_field("foo".into(), Type::Bytes).unwrap_err(),
-        ItemRedefinitionError::Field(FieldRedefinitionError("foo".into()))
+        IdentifierRedefinitionError::Field(FieldRedefinitionError("foo".into()))
     )
 }
 
@@ -1134,7 +1301,10 @@ fn test_scheme_iter_fields() {
         map: Map(Bytes)
     };
 
-    let mut fields = scheme.iter_fields().collect::<Vec<_>>();
+    let mut fields = scheme
+        .iter()
+        .filter_map(|(_, item)| item.into_field())
+        .collect::<Vec<_>>();
     fields.sort_by(|f1, f2| f1.name().partial_cmp(f2.name()).unwrap());
 
     assert_eq!(
