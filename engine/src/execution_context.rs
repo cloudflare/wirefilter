@@ -169,10 +169,10 @@ impl<'e> Serialize for ExecutionContext<'e> {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(self.values.len()))?;
-        for (idx, val) in self.values.iter().enumerate() {
-            if let Some(val) = val {
-                let key = self.scheme.get_field_from_index(idx).unwrap().name();
-                map.serialize_entry(key, val)?;
+        for (name, _) in self.scheme().iter_fields() {
+            let field = self.scheme().get_field_index(name).unwrap();
+            if let Some(Some(value)) = self.values.get(field.index()) {
+                map.serialize_entry(name, value)?;
             }
         }
         map.end()

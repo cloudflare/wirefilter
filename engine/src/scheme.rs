@@ -352,19 +352,6 @@ impl<'s> Scheme {
         }
     }
 
-    pub(crate) fn get_field_from_index(
-        &'s self,
-        index: usize,
-    ) -> Result<Field<'s>, UnknownFieldError> {
-        match self.fields.get_index(index) {
-            Some(_) => Ok(Field {
-                scheme: self,
-                index,
-            }),
-            None => Err(UnknownFieldError),
-        }
-    }
-
     pub(crate) fn get_field_count(&self) -> usize {
         self.fields.len()
     }
