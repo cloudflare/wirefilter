@@ -29,28 +29,46 @@ thread_local! {
 }
 static PANIC_CATCHER_HOOK_SET: AtomicBool = AtomicBool::new(false);
 
+pub fn panic_catcher_start_catching() -> bool {
+    if PANIC_CATCHER_ENABLED.with(|b| b.get()) {
+        PANIC_CATCHER_CATCH.with(|b| b.set(true));
+        true
+    } else {
+        false
+    }
+}
+
+pub fn panic_catcher_stop_catching() {
+    PANIC_CATCHER_CATCH.with(|b| b.set(false));
+}
+
+pub fn panic_catcher_get_backtrace() -> Option<String> {
+    PANIC_CATCHER_BACKTRACE.with(|bt| {
+        let bt = bt.borrow();
+        if bt.is_empty() {
+            None
+        } else {
+            Some(bt.to_string())
+        }
+    })
+}
+
 #[inline(always)]
 pub fn catch_panic<F, T>(f: F) -> CResult<T>
 where
     F: FnOnce() -> CResult<T> + UnwindSafe,
 {
-    if PANIC_CATCHER_ENABLED.with(|b| b.get()) {
-        PANIC_CATCHER_CATCH.with(|b| b.set(true));
+    if panic_catcher_start_catching() {
         let result = std::panic::catch_unwind(f);
-        PANIC_CATCHER_CATCH.with(|b| b.set(false));
+        panic_catcher_stop_catching();
         match result {
             Ok(res) => res,
-            Err(_) => CResult::<T>::Err(RustAllocatedString::from(PANIC_CATCHER_BACKTRACE.with(
-                |bt| {
-                    let bt = bt.borrow();
-                    if bt.is_empty() {
-                        "thread '<unknown>' panicked at '<unknown>' in file '<unknown>' at line 0"
-                            .to_string()
-                    } else {
-                        bt.to_string()
-                    }
-                },
-            ))),
+            Err(_) => CResult::<T>::Err(RustAllocatedString::from(
+                panic_catcher_get_backtrace().unwrap_or_else(|| {
+                    "thread '<unknown>' panicked at '<unknown>' in file '<unknown>' at line 0"
+                        .to_string()
+                }),
+            )),
         }
     } else {
         f()
