@@ -660,7 +660,7 @@ mod tests {
                 op: FieldOp::OneOf(RhsValues::Bytes(
                     ["example.org", "example.com",]
                         .iter()
-                        .map(|s| s.to_string().into())
+                        .map(|&s| s.to_string().into())
                         .collect()
                 )),
             }

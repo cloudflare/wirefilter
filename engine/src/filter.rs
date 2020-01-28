@@ -13,16 +13,16 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext<'s>) -> bool>);
+pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext) -> bool>);
 
 impl<'s> CompiledExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext<'s>) -> bool) -> Self {
+    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext) -> bool) -> Self {
         CompiledExpr(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> bool {
+    pub fn execute(&self, ctx: &ExecutionContext) -> bool {
         self.0(ctx)
     }
 }

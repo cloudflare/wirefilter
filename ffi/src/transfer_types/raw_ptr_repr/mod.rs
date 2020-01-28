@@ -13,8 +13,12 @@ pub trait ExternPtrRepr {
     type Repr: Copy + From<*mut Self>;
 
     /// This method will be used in places where data behind the pointer
-    /// was allocated by Rust side,, so implementors may omit potentially
+    /// was allocated by Rust side, so implementors may omit potentially
     /// expensive safety checks.
+    ///
+    /// # Safety
+    ///
+    /// This function should not be called for objects allocated outside of Rust code.
     unsafe fn from_extern_repr_unchecked(repr: Self::Repr) -> *mut Self;
 
     /// This method will be used for pointers to data allocated by the FFI
