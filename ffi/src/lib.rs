@@ -387,7 +387,10 @@ mod ffi_test {
 
             let json = wirefilter_serialize_filter_to_json(&filter);
 
-            assert_eq!(&json as &str, r#"{"op":"And","items":[{"lhs":"num1","op":"GreaterThan","rhs":3},{"lhs":"str2","op":"Equal","rhs":"abc"}]}"#);
+            assert_eq!(
+                &json as &str,
+                r#"{"op":"And","items":[{"lhs":"num1","op":"GreaterThan","rhs":3},{"lhs":"str2","op":"Equal","rhs":"abc"}]}"#
+            );
 
             wirefilter_free_string(json);
 

@@ -1,5 +1,5 @@
-use std::fmt;
 use failure::Fail;
+use std::fmt;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Fail)]
