@@ -1,43 +1,43 @@
 use memmem::{Searcher, TwoWaySearcher};
-use std::mem::ManuallyDrop;
+use std::marker::PhantomPinned;
+use std::pin::Pin;
+use std::ptr::NonNull;
 
 /// A version of [`TwoWaySearcher`] that owns the needle data.
 pub struct HeapSearcher {
-    // This is an unwrapped `Box` (pointer to a heap-allocated data).
-    bytes: *mut [u8],
-
-    // We need this because `TwoWaySearcher` wants a lifetime for the data it
-    // refers to, but we don't want to tie it to the lifetime of `HeapSearcher`,
-    // since our data is heap-allocated and is guaranteed to deref to the same
-    // address across moves of the container. Hence, we use `static` as a
-    // substitute lifetime and it points to the same the data as `bytes`.
-    searcher: ManuallyDrop<TwoWaySearcher<'static>>,
+    bytes: Box<[u8]>,
+    inner: Option<TwoWaySearcher<'static>>,
+    _pin: PhantomPinned,
 }
 
-impl<T: Into<Box<[u8]>>> From<T> for HeapSearcher {
-    fn from(bytes: T) -> HeapSearcher {
-        let bytes = Box::leak(bytes.into());
+impl HeapSearcher {
+    pub fn new(bytes: impl Into<Box<[u8]>>) -> Pin<Box<Self>> {
+        // NOTE: first put bytes into the structure and pin them all together
+        // on the heap.
+        let mut heap_searcher = Box::pin(HeapSearcher {
+            bytes: bytes.into(),
+            inner: None,
+            _pin: PhantomPinned,
+        });
 
-        HeapSearcher {
-            bytes,
-            searcher: ManuallyDrop::new(TwoWaySearcher::new(bytes)),
-        }
-    }
-}
+        // NOTE: obtain a pointer for pinned bytes and create a pin
+        // for the mutable reference of the searcher. This can be later
+        // used in `Pin::get_unchecked_mut` which consumes the pin.
+        let bytes = NonNull::from(&heap_searcher.bytes);
+        let mut_pin = heap_searcher.as_mut();
 
-impl Drop for HeapSearcher {
-    fn drop(&mut self) {
         unsafe {
-            // Explicitly drop `searcher` first in case it needs `bytes` to be alive.
-            ManuallyDrop::drop(&mut self.searcher);
-            // Then, wrap `bytes` pointer back into a `Box` and drop it too.
-            drop(Box::from_raw(self.bytes));
+            let inner = TwoWaySearcher::new(&*bytes.as_ptr());
+
+            Pin::get_unchecked_mut(mut_pin).inner = Some(inner);
         }
+
+        heap_searcher
     }
 }
 
 impl Searcher for HeapSearcher {
     fn search_in(&self, haystack: &[u8]) -> Option<usize> {
-        self.searcher.search_in(haystack)
+        self.inner.as_ref().unwrap().search_in(haystack)
     }
 }
