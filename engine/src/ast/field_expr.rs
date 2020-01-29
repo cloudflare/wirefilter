@@ -141,7 +141,7 @@ impl<'s> LhsFieldExpr<'s> {
 
     fn compile_with<F: 's>(self, func: F) -> CompiledExpr<'s>
     where
-        F: Fn(LhsValue<'_>) -> bool,
+        F: Fn(LhsValue<'_>) -> bool + Send + Sync,
     {
         match self {
             LhsFieldExpr::FunctionCallExpr(call) => {
@@ -264,7 +264,7 @@ impl<'s> Expr<'s> for FieldExpr<'s> {
                 rhs,
             } => lhs.compile_with(move |x| cast_value!(x, Int) & rhs != 0),
             FieldOp::Contains(bytes) => {
-                let searcher = HeapSearcher::from(bytes);
+                let searcher = HeapSearcher::new(bytes);
 
                 lhs.compile_with(move |x| searcher.search_in(&cast_value!(x, Bytes)).is_some())
             }

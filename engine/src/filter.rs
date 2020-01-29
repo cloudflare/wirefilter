@@ -13,11 +13,11 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext) -> bool>);
+pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext) -> bool + Sync + Send>);
 
 impl<'s> CompiledExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext) -> bool) -> Self {
+    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext) -> bool + Sync + Send) -> Self {
         CompiledExpr(Box::new(closure))
     }
 
@@ -65,7 +65,7 @@ impl<'s> Filter<'s> {
 
 #[cfg(test)]
 mod tests {
-    use super::SchemeMismatchError;
+    use super::{Filter, SchemeMismatchError};
     use crate::execution_context::ExecutionContext;
 
     #[test]
@@ -76,5 +76,14 @@ mod tests {
         let ctx = ExecutionContext::new(&scheme2);
 
         assert_eq!(filter.execute(&ctx), Err(SchemeMismatchError));
+    }
+
+    #[test]
+    fn ensure_send_and_sync() {
+        fn is_send<T: Send>() {}
+        fn is_sync<T: Sync>() {}
+
+        is_send::<Filter>();
+        is_sync::<Filter>();
     }
 }
