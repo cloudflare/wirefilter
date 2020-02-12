@@ -431,7 +431,7 @@ mod tests {
         }
 
         fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
-            params.next().unwrap().val_type.clone()
+            params.next().unwrap().val_type
         }
 
         /// Number of arguments needed by the function.
@@ -826,7 +826,7 @@ mod tests {
                 op: ComparisonOpExpr::OneOf(RhsValues::Bytes(
                     ["example.org", "example.com",]
                         .iter()
-                        .map(|&s| s.to_string().into())
+                        .map(|s| (*s).to_string().into())
                         .collect()
                 )),
             }
