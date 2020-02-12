@@ -6,6 +6,7 @@ use crate::{
 use failure::Fail;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::borrow::Cow;
 use std::fmt;
 
 /// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
@@ -111,15 +112,15 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
             where
                 M: MapAccess<'de>,
             {
-                while let Some(key) = access.next_key::<&str>()? {
+                while let Some(key) = access.next_key::<Cow<'_, str>>()? {
                     let field = self
                         .0
                         .scheme
-                        .get_field_index(key)
+                        .get_field_index(&key)
                         .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
                     let value =
                         access.next_value_seed::<LhsValueSeed>(LhsValueSeed(&field.get_type()))?;
-                    self.0.set_field_value(key, value).map_err(|e| match e {
+                    self.0.set_field_value(&key, value).map_err(|e| match e {
                         SetFieldValueError::UnknownFieldError(_) => {
                             de::Error::custom(format!("unknown field: {}", key))
                         }
@@ -263,6 +264,11 @@ fn test_serde() {
     ctx2.deserialize(&mut deserializer).unwrap();
     assert_eq!(ctx, ctx2);
 
+    let mut ctx3 = ExecutionContext::new(&scheme);
+    let mut deserializer = serde_json::Deserializer::from_reader(json.as_bytes());
+    ctx3.deserialize(&mut deserializer).unwrap();
+    assert_eq!(ctx, ctx3);
+
     assert_eq!(
         ctx.set_field_value("map", {
             let mut map = Map::new(Type::Int);
@@ -301,4 +307,9 @@ fn test_serde() {
     let mut deserializer = serde_json::Deserializer::from_slice(json.as_bytes());
     ctx2.deserialize(&mut deserializer).unwrap();
     assert_eq!(ctx, ctx2);
+
+    let mut ctx3 = ExecutionContext::new(&scheme);
+    let mut deserializer = serde_json::Deserializer::from_reader(json.as_bytes());
+    ctx3.deserialize(&mut deserializer).unwrap();
+    assert_eq!(ctx, ctx3);
 }
