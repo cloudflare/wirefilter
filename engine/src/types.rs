@@ -819,9 +819,9 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
             where
                 M: MapAccess<'de>,
             {
-                while let Some(key) = access.next_key()? {
+                while let Some(key) = access.next_key::<Cow<'_, str>>()? {
                     let value = access.next_value_seed(LhsValueSeed(self.0.value_type()))?;
-                    self.0.insert(key, value).map_err(|e| {
+                    self.0.insert(key.as_bytes(), value).map_err(|e| {
                         de::Error::custom(format!(
                             "invalid type: {:?}, expected {:?}",
                             e.actual, e.expected
