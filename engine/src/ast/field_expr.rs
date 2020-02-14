@@ -358,7 +358,6 @@ mod tests {
     use crate::{
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
-        filter::CompiledValueResult,
         functions::{
             Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionArg,
             FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
@@ -442,22 +441,24 @@ mod tests {
             (2, Some(0))
         }
 
-        /// Execute the real implementation.
-        fn execute<'a>(
-            &self,
-            args: &mut dyn ExactSizeIterator<Item = CompiledValueResult<'a>>,
-        ) -> Option<LhsValue<'a>> {
-            let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
-            let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
-            let mut output = Array::new(value_array.value_type().clone());
-            let mut i = 0;
-            for (value, keep) in value_array.into_iter().zip(keep_array) {
-                if bool::try_from(keep).unwrap() {
-                    output.insert(i, value).unwrap();
-                    i += 1;
+        fn compile<'s>(
+            &'s self,
+            _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>
+        {
+            Box::new(|args| {
+                let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
+                let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
+                let mut output = Array::new(value_array.value_type().clone());
+                let mut i = 0;
+                for (value, keep) in value_array.into_iter().zip(keep_array) {
+                    if bool::try_from(keep).unwrap() {
+                        output.insert(i, value).unwrap();
+                        i += 1;
+                    }
                 }
-            }
-            Some(LhsValue::Array(output))
+                Some(LhsValue::Array(output))
+            })
         }
     }
 

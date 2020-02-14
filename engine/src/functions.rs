@@ -257,8 +257,12 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
     fn arg_count(&self) -> (usize, Option<usize>);
-    /// Execute the real implementation.
-    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
+    /// Compile the function definition down to a closure that is going to be called
+    /// during filter execution. 
+    fn compile<'s>(
+        &'s self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+    ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
 /// Defines a function.
@@ -304,14 +308,18 @@ impl FunctionDefinition for Function {
         (self.params.len(), Some(self.opt_params.len()))
     }
 
-    fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        let arg_count = args.len();
-        let opts_args = &self.opt_params[(arg_count - self.params.len())..];
-        self.implementation.execute(&mut ExactSizeChain::new(
-            args,
-            opts_args
-                .iter()
-                .map(|opt_arg| Ok(opt_arg.default_value.to_owned())),
-        ))
+    fn compile<'s>(
+        &'s self,
+        _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+    ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's> {
+        Box::new(move |args| {
+            let opts_args = &self.opt_params[(args.len() - self.params.len())..];
+            self.implementation.execute(&mut ExactSizeChain::new(
+                args,
+                opts_args
+                    .iter()
+                    .map(|opt_arg| Ok(opt_arg.default_value.to_owned())),
+            ))
+        })
     }
 }
