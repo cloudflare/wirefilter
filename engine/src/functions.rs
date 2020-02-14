@@ -9,8 +9,69 @@ use std::{
     iter::once,
 };
 
+pub(crate) struct ExactSizeChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = <A as Iterator>::Item>,
+{
+    chain: std::iter::Chain<A, B>,
+    len_a: usize,
+    len_b: usize,
+}
+
+impl<A, B> ExactSizeChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = <A as Iterator>::Item>,
+{
+    #[inline]
+    pub(crate) fn new(a: A, b: B) -> ExactSizeChain<A, B> {
+        let len_a = a.len();
+        let len_b = b.len();
+        ExactSizeChain {
+            chain: a.chain(b),
+            len_a,
+            len_b,
+        }
+    }
+}
+
+impl<A, B> Iterator for ExactSizeChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = <A as Iterator>::Item>,
+{
+    type Item = A::Item;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.chain.next() {
+            None => None,
+            Some(elem) => {
+                if self.len_a > 0 {
+                    self.len_a -= 1;
+                } else if self.len_b > 0 {
+                    self.len_b -= 1;
+                }
+                Some(elem)
+            }
+        }
+    }
+}
+
+impl<A, B> ExactSizeIterator for ExactSizeChain<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator<Item = <A as Iterator>::Item>,
+{
+    #[inline]
+    fn len(&self) -> usize {
+        self.len_a + self.len_b
+    }
+}
+
 /// An iterator over function arguments as [`LhsValue`]s.
-pub type FunctionArgs<'i, 'a> = &'i mut dyn Iterator<Item = CompiledValueResult<'a>>;
+pub type FunctionArgs<'i, 'a> = &'i mut dyn ExactSizeIterator<Item = CompiledValueResult<'a>>;
 
 type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 
@@ -196,8 +257,6 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
     fn arg_count(&self) -> (usize, Option<usize>);
-    /// Get default value for optional arguments.
-    fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>>;
     /// Execute the real implementation.
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 }
@@ -245,13 +304,14 @@ impl FunctionDefinition for Function {
         (self.params.len(), Some(self.opt_params.len()))
     }
 
-    fn default_value<'e>(&self, index: usize) -> Option<LhsValue<'e>> {
-        self.opt_params
-            .get(index - self.params.len())
-            .map(|opt_param| opt_param.default_value.to_owned())
-    }
-
     fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        self.implementation.execute(args)
+        let arg_count = args.len();
+        let opts_args = &self.opt_params[(arg_count - self.params.len())..];
+        self.implementation.execute(&mut ExactSizeChain::new(
+            args,
+            opts_args
+                .iter()
+                .map(|opt_arg| Ok(opt_arg.default_value.to_owned())),
+        ))
     }
 }

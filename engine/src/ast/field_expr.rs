@@ -442,15 +442,10 @@ mod tests {
             (2, Some(0))
         }
 
-        /// Get default value for optional arguments.
-        fn default_value<'e>(&self, _: usize) -> Option<LhsValue<'e>> {
-            None
-        }
-
         /// Execute the real implementation.
         fn execute<'a>(
             &self,
-            args: &mut dyn Iterator<Item = CompiledValueResult<'a>>,
+            args: &mut dyn ExactSizeIterator<Item = CompiledValueResult<'a>>,
         ) -> Option<LhsValue<'a>> {
             let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
             let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
