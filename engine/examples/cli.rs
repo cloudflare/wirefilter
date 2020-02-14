@@ -1,6 +1,6 @@
 use std::env::args;
 use wirefilter::{
-    FunctionArgKind, FunctionArgs, FunctionImpl, LhsValue, Scheme, SimpleFunctionDefinition,
+    FunctionArgKind, FunctionArgs, LhsValue, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl,
     SimpleFunctionOptParam, SimpleFunctionParam, Type,
 };
 
@@ -36,7 +36,7 @@ fn main() {
                     default_value: "".into(),
                 }],
                 return_type: Type::Bytes,
-                implementation: FunctionImpl::new(panic_function),
+                implementation: SimpleFunctionImpl::new(panic_function),
             },
         )
         .unwrap();

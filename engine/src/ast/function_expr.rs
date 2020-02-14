@@ -403,8 +403,8 @@ mod tests {
             logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
-            FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl,
-            SimpleFunctionDefinition, SimpleFunctionOptParam, SimpleFunctionParam,
+            FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, SimpleFunctionDefinition,
+            SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         },
         scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
         types::{Array, Type, TypeMismatchError},
@@ -473,7 +473,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Bool,
-                        implementation: FunctionImpl::new(any_function),
+                        implementation: SimpleFunctionImpl::new(any_function),
                     },
                 )
                 .unwrap();
@@ -496,7 +496,7 @@ mod tests {
                             },
                         ],
                         return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(echo_function),
+                        implementation: SimpleFunctionImpl::new(echo_function),
                     },
                 )
                 .unwrap();
@@ -510,7 +510,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(lower_function),
+                        implementation: SimpleFunctionImpl::new(lower_function),
                     },
                 )
                 .unwrap();
@@ -524,7 +524,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Int,
-                        implementation: FunctionImpl::new(len_function),
+                        implementation: SimpleFunctionImpl::new(len_function),
                     },
                 )
                 .unwrap();
