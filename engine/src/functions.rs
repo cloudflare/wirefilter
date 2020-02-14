@@ -116,9 +116,12 @@ pub enum FunctionParamError {
     InvalidConstant(#[cause] FunctionArgInvalidConstant),
 }
 
+/// Function parameter
 #[derive(Clone, Debug)]
 pub enum FunctionParam<'a> {
+    /// Contant function parameter (literal value)
     Constant(LhsValue<'a>),
+    /// Variable function parameter (field, or complex expressions)
     Variable(Type),
 }
 
