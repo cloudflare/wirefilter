@@ -10,8 +10,8 @@ use criterion::{
 };
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, FunctionImpl, GetType, LhsValue,
-    Scheme, SimpleFunctionDefinition, SimpleFunctionParam, Type,
+    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, Scheme,
+    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
 };
 
 fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
@@ -219,7 +219,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(lowercase),
+                    implementation: SimpleFunctionImpl::new(lowercase),
                 },
             ),
             (
@@ -231,7 +231,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(uppercase),
+                    implementation: SimpleFunctionImpl::new(uppercase),
                 },
             ),
         ],

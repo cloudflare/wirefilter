@@ -359,8 +359,8 @@ mod tests {
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
         functions::{
-            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl, FunctionParam,
-            FunctionParamError, SimpleFunctionDefinition, SimpleFunctionOptParam,
+            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionParam, FunctionParamError,
+            SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam,
             SimpleFunctionParam,
         },
         rhs_types::IpRange,
@@ -492,7 +492,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(echo_function),
+                        implementation: SimpleFunctionImpl::new(echo_function),
                     },
                 )
                 .unwrap();
@@ -506,7 +506,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(lowercase_function),
+                        implementation: SimpleFunctionImpl::new(lowercase_function),
                     },
                 )
                 .unwrap();
@@ -526,7 +526,7 @@ mod tests {
                             },
                         ],
                         return_type: Type::Bytes,
-                        implementation: FunctionImpl::new(concat_function),
+                        implementation: SimpleFunctionImpl::new(concat_function),
                     },
                 )
                 .unwrap();
@@ -543,7 +543,7 @@ mod tests {
                         }],
                         opt_params: vec![],
                         return_type: Type::Int,
-                        implementation: FunctionImpl::new(len_function),
+                        implementation: SimpleFunctionImpl::new(len_function),
                     },
                 )
                 .unwrap();

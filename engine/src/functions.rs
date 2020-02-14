@@ -73,40 +73,6 @@ where
 /// An iterator over function arguments as [`LhsValue`]s.
 pub type FunctionArgs<'i, 'a> = &'i mut dyn ExactSizeIterator<Item = CompiledValueResult<'a>>;
 
-type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
-
-/// Wrapper around a function pointer providing the runtime implementation.
-#[derive(Clone)]
-pub struct FunctionImpl(FunctionPtr);
-
-impl FunctionImpl {
-    /// Creates a new wrapper around a function pointer.
-    pub fn new(func: FunctionPtr) -> Self {
-        Self(func)
-    }
-
-    /// Calls the wrapped function pointer.
-    pub fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        (self.0)(args)
-    }
-}
-
-impl fmt::Debug for FunctionImpl {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_tuple("FunctionImpl")
-            .field(&(self.0 as *const ()))
-            .finish()
-    }
-}
-
-impl PartialEq for FunctionImpl {
-    fn eq(&self, other: &FunctionImpl) -> bool {
-        self.0 as *const () == other.0 as *const ()
-    }
-}
-
-impl Eq for FunctionImpl {}
-
 /// Defines what kind of argument a function expects.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum FunctionArgKind {
@@ -244,6 +210,42 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
+/// Simple function API
+
+type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
+
+/// Wrapper around a function pointer providing the runtime implementation.
+#[derive(Clone)]
+pub struct SimpleFunctionImpl(FunctionPtr);
+
+impl SimpleFunctionImpl {
+    /// Creates a new wrapper around a function pointer.
+    pub fn new(func: FunctionPtr) -> Self {
+        Self(func)
+    }
+
+    /// Calls the wrapped function pointer.
+    pub fn execute<'a>(&self, args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        (self.0)(args)
+    }
+}
+
+impl fmt::Debug for SimpleFunctionImpl {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_tuple("SimpleFunctionImpl")
+            .field(&(self.0 as *const ()))
+            .finish()
+    }
+}
+
+impl PartialEq for SimpleFunctionImpl {
+    fn eq(&self, other: &SimpleFunctionImpl) -> bool {
+        self.0 as *const () == other.0 as *const ()
+    }
+}
+
+impl Eq for SimpleFunctionImpl {}
+
 /// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SimpleFunctionParam {
@@ -272,7 +274,7 @@ pub struct SimpleFunctionDefinition {
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.
-    pub implementation: FunctionImpl,
+    pub implementation: SimpleFunctionImpl,
 }
 
 impl FunctionDefinition for SimpleFunctionDefinition {

@@ -5,7 +5,7 @@ extern crate wirefilter;
 extern crate lazy_static;
 
 use wirefilter::{
-    FunctionArgKind, FunctionArgs, FunctionImpl, LhsValue, SimpleFunctionDefinition,
+    FunctionArgKind, FunctionArgs, LhsValue, SimpleFunctionDefinition, SimpleFunctionImpl,
     SimpleFunctionParam, Type,
 };
 
@@ -67,6 +67,6 @@ lazy_static! {
         }],
         opt_params: vec![],
         return_type: Type::Bytes,
-        implementation: FunctionImpl::new(first_impl)
+        implementation: SimpleFunctionImpl::new(first_impl)
     };
 }
