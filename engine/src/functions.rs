@@ -150,24 +150,6 @@ pub enum FunctionParamError {
     InvalidConstant(#[cause] FunctionArgInvalidConstant),
 }
 
-/// Defines a mandatory function argument.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionParam {
-    /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
-    /// The type of its associated value.
-    pub val_type: Type,
-}
-
-/// Defines an optional function argument.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionOptParam {
-    /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
-    /// The default value if the argument is missing.
-    pub default_value: LhsValue<'static>,
-}
-
 #[derive(Clone, Debug)]
 pub enum FunctionDefinitionArg<'a> {
     Constant(LhsValue<'a>),
@@ -258,27 +240,45 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// (N, None) means N mandatory arguments and unlimited optional arguments
     fn arg_count(&self) -> (usize, Option<usize>);
     /// Compile the function definition down to a closure that is going to be called
-    /// during filter execution. 
+    /// during filter execution.
     fn compile<'s>(
         &'s self,
         params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
-/// Defines a function.
+/// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Function {
+pub struct SimpleFunctionParam {
+    /// How the argument can be specified when calling a function.
+    pub arg_kind: FunctionArgKind,
+    /// The type of its associated value.
+    pub val_type: Type,
+}
+
+/// Defines an optional function argument.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct SimpleFunctionOptParam {
+    /// How the argument can be specified when calling a function.
+    pub arg_kind: FunctionArgKind,
+    /// The default value if the argument is missing.
+    pub default_value: LhsValue<'static>,
+}
+
+/// Simple interface to define a function.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct SimpleFunctionDefinition {
     /// List of mandatory arguments.
-    pub params: Vec<FunctionParam>,
+    pub params: Vec<SimpleFunctionParam>,
     /// List of optional arguments that can be specified after manatory ones.
-    pub opt_params: Vec<FunctionOptParam>,
+    pub opt_params: Vec<SimpleFunctionOptParam>,
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.
     pub implementation: FunctionImpl,
 }
 
-impl FunctionDefinition for Function {
+impl FunctionDefinition for SimpleFunctionDefinition {
     fn check_arg(
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,

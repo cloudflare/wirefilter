@@ -407,8 +407,8 @@ mod tests {
             logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
-            Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl,
-            FunctionOptParam, FunctionParam,
+            FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl,
+            SimpleFunctionDefinition, SimpleFunctionOptParam, SimpleFunctionParam,
         },
         scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
         types::{Array, Type, TypeMismatchError},
@@ -470,8 +470,8 @@ mod tests {
             scheme
                 .add_function(
                     "any".into(),
-                    Function {
-                        params: vec![FunctionParam {
+                    SimpleFunctionDefinition {
+                        params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Array(Box::new(Type::Bool)),
                         }],
@@ -484,17 +484,17 @@ mod tests {
             scheme
                 .add_function(
                     "echo".into(),
-                    Function {
-                        params: vec![FunctionParam {
+                    SimpleFunctionDefinition {
+                        params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
                         opt_params: vec![
-                            FunctionOptParam {
+                            SimpleFunctionOptParam {
                                 arg_kind: FunctionArgKind::Literal,
                                 default_value: LhsValue::Int(10),
                             },
-                            FunctionOptParam {
+                            SimpleFunctionOptParam {
                                 arg_kind: FunctionArgKind::Literal,
                                 default_value: LhsValue::Int(1),
                             },
@@ -507,8 +507,8 @@ mod tests {
             scheme
                 .add_function(
                     "lower".into(),
-                    Function {
-                        params: vec![FunctionParam {
+                    SimpleFunctionDefinition {
+                        params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],
@@ -521,8 +521,8 @@ mod tests {
             scheme
                 .add_function(
                     "len".into(),
-                    Function {
-                        params: vec![FunctionParam {
+                    SimpleFunctionDefinition {
+                        params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
                         }],

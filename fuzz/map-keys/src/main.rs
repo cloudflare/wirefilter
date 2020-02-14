@@ -5,7 +5,8 @@ extern crate wirefilter;
 extern crate lazy_static;
 
 use wirefilter::{
-    Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionParam, LhsValue, Type,
+    FunctionArgKind, FunctionArgs, FunctionImpl, LhsValue, SimpleFunctionDefinition,
+    SimpleFunctionParam, Type,
 };
 
 #[cfg(fuzzing)]
@@ -59,8 +60,8 @@ fn first_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
 lazy_static! {
     // ANY_FN is a function which returns true if any arguments passed to the
     // function are true.
-    pub static ref FIRST_FN: Function = Function {
-        params: vec![FunctionParam {
+    pub static ref FIRST_FN: SimpleFunctionDefinition = SimpleFunctionDefinition {
+        params: vec![SimpleFunctionParam {
             arg_kind: FunctionArgKind::Field,
             val_type: Type::Map(Box::new(Type::Bytes)),
         }],

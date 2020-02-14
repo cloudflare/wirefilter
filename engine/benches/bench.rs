@@ -10,8 +10,8 @@ use criterion::{
 };
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, Function, FunctionArgKind, FunctionArgs, FunctionImpl,
-    FunctionParam, GetType, LhsValue, Scheme, Type,
+    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, FunctionImpl, GetType, LhsValue,
+    Scheme, SimpleFunctionDefinition, SimpleFunctionParam, Type,
 };
 
 fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
@@ -50,7 +50,7 @@ fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
 
 struct FieldBench<'a, T: 'static> {
     field: &'static str,
-    functions: &'a [(&'static str, Function)],
+    functions: &'a [(&'static str, SimpleFunctionDefinition)],
     filters: &'static [&'static str],
     values: &'a [T],
 }
@@ -212,8 +212,8 @@ fn bench_string_function_comparison(c: &mut Criterion) {
         functions: &[
             (
                 "lowercase",
-                Function {
-                    params: vec![FunctionParam {
+                SimpleFunctionDefinition {
+                    params: vec![SimpleFunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
@@ -224,8 +224,8 @@ fn bench_string_function_comparison(c: &mut Criterion) {
             ),
             (
                 "uppercase",
-                Function {
-                    params: vec![FunctionParam {
+                SimpleFunctionDefinition {
+                    params: vec![SimpleFunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
