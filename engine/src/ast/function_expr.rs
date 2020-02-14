@@ -6,7 +6,7 @@ use crate::{
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
-    functions::{FunctionDefinition, FunctionDefinitionArg, FunctionParamError},
+    functions::{ExactSizeChain, FunctionDefinition, FunctionDefinitionArg, FunctionParamError},
     lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{Array, GetType, LhsValue, RhsValue, Type},
@@ -247,8 +247,6 @@ impl<'s> FunctionCallExpr<'s> {
             .map(FunctionCallArgExpr::compile)
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        let (mandatory_arg_count, optional_arg_count) = function.arg_count();
-        let max_args = optional_arg_count.map_or_else(|| args.len(), |v| mandatory_arg_count + v);
         if map_each.is_some() {
             CompiledValueExpr::new(move |ctx| {
                 // Create the output array
@@ -258,26 +256,18 @@ impl<'s> FunctionCallExpr<'s> {
                     // Apply the function for each element contained
                     // in the first argument and extend output array
                     output.extend(first.into_iter().filter_map(|elem| {
-                        function.execute(
-                            &mut once(Ok(elem)).chain(
-                                args[1..].iter().map(|arg| arg.execute(ctx)).chain(
-                                    (args.len()..max_args)
-                                        .map(|index| Ok(function.default_value(index).unwrap())),
-                                ),
-                            ),
-                        )
+                        function.execute(&mut ExactSizeChain::new(
+                            once(Ok(elem)),
+                            args[1..].iter().map(|arg| arg.execute(ctx)),
+                        ))
                     }));
                 }
                 Ok(LhsValue::Array(output))
             })
         } else {
             CompiledValueExpr::new(move |ctx| {
-                if let Some(value) = function.execute(
-                    &mut args.iter().map(|arg| arg.execute(ctx)).chain(
-                        (args.len()..max_args)
-                            .map(|index| Ok(function.default_value(index).unwrap())),
-                    ),
-                ) {
+                if let Some(value) = function.execute(&mut args.iter().map(|arg| arg.execute(ctx)))
+                {
                     debug_assert!(value.get_type() == ty);
                     Ok(value)
                 } else {
