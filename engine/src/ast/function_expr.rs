@@ -6,7 +6,7 @@ use crate::{
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
-    functions::{FunctionArgKind, FunctionDefinition, FunctionParam, FunctionParamError},
+    functions::{FunctionDefinition, FunctionDefinitionArg, FunctionParamError},
     lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{Array, GetType, LhsValue, RhsValue, Type},
@@ -36,14 +36,6 @@ impl<'s> FunctionCallArgExpr<'s> {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
             FunctionCallArgExpr::SimpleExpr(simple_expr) => simple_expr.uses(field),
-        }
-    }
-
-    pub fn get_kind(&self) -> FunctionArgKind {
-        match self {
-            FunctionCallArgExpr::IndexExpr(_) => FunctionArgKind::Field,
-            FunctionCallArgExpr::Literal(_) => FunctionArgKind::Literal,
-            FunctionCallArgExpr::SimpleExpr(_) => FunctionArgKind::Field,
         }
     }
 
@@ -194,6 +186,20 @@ impl<'s> GetType for FunctionCallArgExpr<'s> {
     }
 }
 
+impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionDefinitionArg<'a> {
+    fn from(arg_expr: &'a FunctionCallArgExpr<'s>) -> Self {
+        match arg_expr {
+            FunctionCallArgExpr::IndexExpr(expr) => {
+                FunctionDefinitionArg::Variable(expr.get_type())
+            }
+            FunctionCallArgExpr::SimpleExpr(expr) => {
+                FunctionDefinitionArg::Variable(expr.get_type())
+            }
+            FunctionCallArgExpr::Literal(value) => FunctionDefinitionArg::Constant(value.into()),
+        }
+    }
+}
+
 #[derive(Derivative, Serialize)]
 #[derivative(Debug, PartialEq, Eq, Clone)]
 pub(crate) struct FunctionCallExpr<'s> {
@@ -214,10 +220,7 @@ impl<'s> FunctionCallExpr<'s> {
         function: &'s Box<dyn FunctionDefinition>,
         args: Vec<FunctionCallArgExpr<'s>>,
     ) -> Self {
-        let return_type = function.return_type(&mut (&args).iter().map(|arg| FunctionParam {
-            arg_kind: arg.get_kind(),
-            val_type: arg.get_type(),
-        }));
+        let return_type = function.return_type(&mut (&args).iter().map(|arg| arg.into()));
         Self {
             name: name.into(),
             function,
@@ -328,8 +331,6 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let (mandatory_arg_count, optional_arg_count) = function.arg_count();
 
-        let mut params = Vec::new();
-
         let mut args: Vec<FunctionCallArgExpr<'s>> = Vec::new();
 
         let mut index = 0;
@@ -354,10 +355,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                 return Err((LexErrorKind::InvalidMapEachAccess, span(input, rest)));
             }
 
-            let next_param = FunctionParam {
-                arg_kind: arg.get_kind(),
-                val_type: arg.get_type(),
-            };
+            let next_param = (&arg).into();
 
             if optional_arg_count.is_some()
                 && index >= (mandatory_arg_count + optional_arg_count.unwrap())
@@ -366,15 +364,9 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             }
 
             function
-                .check_param(
-                    &mut (&args).iter().map(|arg| FunctionParam {
-                        arg_kind: arg.get_kind(),
-                        val_type: arg.get_type(),
-                    }),
-                    &next_param,
-                )
+                .check_arg(&mut (&args).iter().map(|arg| arg.into()), &next_param)
                 .map_err(|err| match err {
-                    FunctionParamError::FunctionArgKindMismatch(err) => (
+                    FunctionParamError::KindMismatch(err) => (
                         LexErrorKind::InvalidArgumentKind {
                             index,
                             mismatch: err,
@@ -388,9 +380,14 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
                         },
                         span(input, rest),
                     ),
+                    FunctionParamError::InvalidConstant(err) => (
+                        LexErrorKind::InvalidArgumentValue {
+                            index,
+                            invalid: err,
+                        },
+                        span(input, rest),
+                    ),
                 })?;
-
-            params.push(next_param);
 
             args.push(arg);
 
@@ -420,7 +417,8 @@ mod tests {
             logical_expr::{LogicalExpr, LogicalOp},
         },
         functions::{
-            Function, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl, FunctionOptParam,
+            Function, FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionImpl,
+            FunctionOptParam, FunctionParam,
         },
         scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
         types::{Array, Type, TypeMismatchError},

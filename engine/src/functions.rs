@@ -68,6 +68,13 @@ pub struct FunctionArgKindMismatchError {
     pub actual: FunctionArgKind,
 }
 
+/// An error that occurs on a kind mismatch.
+#[derive(Debug, PartialEq, Fail)]
+#[fail(display = "invalid argument: {:?}", msg)]
+pub struct FunctionArgInvalidConstant {
+    msg: String,
+}
+
 /// An error that occurs for a bad function parameter
 #[derive(Debug, PartialEq, Fail)]
 pub enum FunctionParamError {
@@ -76,7 +83,10 @@ pub enum FunctionParamError {
     TypeMismatch(#[cause] TypeMismatchError),
     /// Function parameter argument kind has a different kind than expected
     #[fail(display = "expected {}", _0)]
-    FunctionArgKindMismatch(#[cause] FunctionArgKindMismatchError),
+    KindMismatch(#[cause] FunctionArgKindMismatchError),
+    /// Function parameter constant value is invalid
+    #[fail(display = "{}", _0)]
+    InvalidConstant(#[cause] FunctionArgInvalidConstant),
 }
 
 /// Defines a mandatory function argument.
@@ -88,19 +98,53 @@ pub struct FunctionParam {
     pub val_type: Type,
 }
 
-impl FunctionParam {
+/// Defines an optional function argument.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionOptParam {
+    /// How the argument can be specified when calling a function.
+    pub arg_kind: FunctionArgKind,
+    /// The default value if the argument is missing.
+    pub default_value: LhsValue<'static>,
+}
+
+#[derive(Clone, Debug)]
+pub enum FunctionDefinitionArg<'a> {
+    Constant(LhsValue<'a>),
+    Variable(Type),
+}
+
+impl From<&FunctionDefinitionArg<'_>> for FunctionArgKind {
+    fn from(arg: &FunctionDefinitionArg<'_>) -> Self {
+        match arg {
+            FunctionDefinitionArg::Constant(_) => FunctionArgKind::Literal,
+            FunctionDefinitionArg::Variable(_) => FunctionArgKind::Field,
+        }
+    }
+}
+
+impl<'a> GetType for FunctionDefinitionArg<'a> {
+    fn get_type(&self) -> Type {
+        match self {
+            FunctionDefinitionArg::Constant(value) => value.get_type(),
+            FunctionDefinitionArg::Variable(ty) => ty.clone(),
+        }
+    }
+}
+
+impl<'a> FunctionDefinitionArg<'a> {
     /// Check if the arg_kind of current paramater matches the expected_arg_kind
     pub fn expect_arg_kind(
         &self,
         expected_arg_kind: FunctionArgKind,
     ) -> Result<(), FunctionParamError> {
-        if self.arg_kind == expected_arg_kind {
+        let kind = self.into();
+        if kind == expected_arg_kind {
             Ok(())
         } else {
-            Err(FunctionParamError::FunctionArgKindMismatch(
+            Err(FunctionParamError::KindMismatch(
                 FunctionArgKindMismatchError {
                     expected: expected_arg_kind,
-                    actual: self.arg_kind,
+                    actual: kind,
                 },
             ))
         }
@@ -111,15 +155,16 @@ impl FunctionParam {
         &self,
         expected_types: impl Iterator<Item = ExpectedType>,
     ) -> Result<(), FunctionParamError> {
+        let ty = self.get_type();
         let mut types = HashSet::new();
         for expected_type in expected_types {
-            match (&expected_type, &self.val_type) {
+            match (&expected_type, &ty) {
                 (ExpectedType::Array, Type::Array(_)) => return Ok(()),
                 (ExpectedType::Array, _) => {}
                 (ExpectedType::Map, Type::Map(_)) => return Ok(()),
                 (ExpectedType::Map, _) => {}
                 (ExpectedType::Type(val_type), _) => {
-                    if self.val_type == *val_type {
+                    if ty == *val_type {
                         return Ok(());
                     }
                 }
@@ -128,31 +173,25 @@ impl FunctionParam {
         }
         Err(FunctionParamError::TypeMismatch(TypeMismatchError {
             expected: types,
-            actual: self.val_type.clone(),
+            actual: ty,
         }))
     }
-}
-
-/// Defines an optional function argument.
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionOptParam {
-    /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
-    /// The default value if the argument is missing.
-    pub default_value: LhsValue<'static>,
 }
 
 /// Trait to implement function
 pub trait FunctionDefinition: Debug + Sync + Send {
     /// Given a slice of already checked parameters, checks that next_param is
     /// correct. Return the expected the parameter definition.
-    fn check_param(
+    fn check_arg(
         &self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
-        next_param: &FunctionParam,
+        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        next_param: &FunctionDefinitionArg<'_>,
     ) -> Result<(), FunctionParamError>;
     /// Function return type.
-    fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type;
+    fn return_type(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+    ) -> Type;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -177,10 +216,10 @@ pub struct Function {
 }
 
 impl FunctionDefinition for Function {
-    fn check_param(
+    fn check_arg(
         &self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
-        next_param: &FunctionParam,
+        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        next_param: &FunctionDefinitionArg<'_>,
     ) -> Result<(), FunctionParamError> {
         let index = params.len();
         if index < self.params.len() {
@@ -198,7 +237,7 @@ impl FunctionDefinition for Function {
         Ok(())
     }
 
-    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
+    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>) -> Type {
         self.return_type.clone()
     }
 
