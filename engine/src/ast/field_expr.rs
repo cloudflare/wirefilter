@@ -360,8 +360,8 @@ mod tests {
         execution_context::ExecutionContext,
         filter::CompiledValueResult,
         functions::{
-            Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl,
-            FunctionOptParam, FunctionParam, FunctionParamError,
+            Function, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionArg,
+            FunctionImpl, FunctionOptParam, FunctionParam, FunctionParamError,
         },
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
@@ -409,10 +409,10 @@ mod tests {
     }
 
     impl FunctionDefinition for FilterFunction {
-        fn check_param(
+        fn check_arg(
             &self,
-            params: &mut dyn ExactSizeIterator<Item = FunctionParam>,
-            next_param: &FunctionParam,
+            params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+            next_param: &FunctionDefinitionArg<'_>,
         ) -> Result<(), FunctionParamError> {
             match params.len() {
                 0 => {
@@ -430,8 +430,11 @@ mod tests {
             Ok(())
         }
 
-        fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam>) -> Type {
-            params.next().unwrap().val_type
+        fn return_type(
+            &self,
+            params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        ) -> Type {
+            params.next().unwrap().get_type()
         }
 
         /// Number of arguments needed by the function.
