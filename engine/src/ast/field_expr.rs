@@ -359,7 +359,7 @@ mod tests {
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
         functions::{
-            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionArg, FunctionImpl,
+            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionImpl, FunctionParam,
             FunctionParamError, SimpleFunctionDefinition, SimpleFunctionOptParam,
             SimpleFunctionParam,
         },
@@ -409,10 +409,10 @@ mod tests {
     }
 
     impl FunctionDefinition for FilterFunction {
-        fn check_arg(
+        fn check_param(
             &self,
-            params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
-            next_param: &FunctionDefinitionArg<'_>,
+            params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            next_param: &FunctionParam<'_>,
         ) -> Result<(), FunctionParamError> {
             match params.len() {
                 0 => {
@@ -432,7 +432,7 @@ mod tests {
 
         fn return_type(
             &self,
-            params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+            params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ) -> Type {
             params.next().unwrap().get_type()
         }
@@ -444,7 +444,7 @@ mod tests {
 
         fn compile<'s>(
             &'s self,
-            _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>
         {
             Box::new(|args| {

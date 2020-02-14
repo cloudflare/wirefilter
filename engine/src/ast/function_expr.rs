@@ -6,7 +6,7 @@ use crate::{
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
-    functions::{ExactSizeChain, FunctionDefinition, FunctionDefinitionArg, FunctionParamError},
+    functions::{ExactSizeChain, FunctionDefinition, FunctionParam, FunctionParamError},
     lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{Array, GetType, LhsValue, RhsValue, Type},
@@ -186,16 +186,12 @@ impl<'s> GetType for FunctionCallArgExpr<'s> {
     }
 }
 
-impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionDefinitionArg<'a> {
+impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionParam<'a> {
     fn from(arg_expr: &'a FunctionCallArgExpr<'s>) -> Self {
         match arg_expr {
-            FunctionCallArgExpr::IndexExpr(expr) => {
-                FunctionDefinitionArg::Variable(expr.get_type())
-            }
-            FunctionCallArgExpr::SimpleExpr(expr) => {
-                FunctionDefinitionArg::Variable(expr.get_type())
-            }
-            FunctionCallArgExpr::Literal(value) => FunctionDefinitionArg::Constant(value.into()),
+            FunctionCallArgExpr::IndexExpr(expr) => FunctionParam::Variable(expr.get_type()),
+            FunctionCallArgExpr::SimpleExpr(expr) => FunctionParam::Variable(expr.get_type()),
+            FunctionCallArgExpr::Literal(value) => FunctionParam::Constant(value.into()),
         }
     }
 }
@@ -354,7 +350,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             }
 
             function
-                .check_arg(&mut (&args).iter().map(|arg| arg.into()), &next_param)
+                .check_param(&mut (&args).iter().map(|arg| arg.into()), &next_param)
                 .map_err(|err| match err {
                     FunctionParamError::KindMismatch(err) => (
                         LexErrorKind::InvalidArgumentKind {
