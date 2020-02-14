@@ -242,6 +242,7 @@ impl<'s> FunctionCallExpr<'s> {
             ..
         } = self;
         let map_each = args.get(0).and_then(|arg| arg.map_each_to());
+        let call = function.compile(&mut (&args).iter().map(|arg| arg.into()));
         let args = args
             .into_iter()
             .map(FunctionCallArgExpr::compile)
@@ -256,7 +257,7 @@ impl<'s> FunctionCallExpr<'s> {
                     // Apply the function for each element contained
                     // in the first argument and extend output array
                     output.extend(first.into_iter().filter_map(|elem| {
-                        function.execute(&mut ExactSizeChain::new(
+                        call(&mut ExactSizeChain::new(
                             once(Ok(elem)),
                             args[1..].iter().map(|arg| arg.execute(ctx)),
                         ))
@@ -266,8 +267,7 @@ impl<'s> FunctionCallExpr<'s> {
             })
         } else {
             CompiledValueExpr::new(move |ctx| {
-                if let Some(value) = function.execute(&mut args.iter().map(|arg| arg.execute(ctx)))
-                {
+                if let Some(value) = call(&mut args.iter().map(|arg| arg.execute(ctx))) {
                     debug_assert!(value.get_type() == ty);
                     Ok(value)
                 } else {
