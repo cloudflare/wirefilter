@@ -151,30 +151,30 @@ pub enum FunctionParamError {
 }
 
 #[derive(Clone, Debug)]
-pub enum FunctionDefinitionArg<'a> {
+pub enum FunctionParam<'a> {
     Constant(LhsValue<'a>),
     Variable(Type),
 }
 
-impl From<&FunctionDefinitionArg<'_>> for FunctionArgKind {
-    fn from(arg: &FunctionDefinitionArg<'_>) -> Self {
+impl From<&FunctionParam<'_>> for FunctionArgKind {
+    fn from(arg: &FunctionParam<'_>) -> Self {
         match arg {
-            FunctionDefinitionArg::Constant(_) => FunctionArgKind::Literal,
-            FunctionDefinitionArg::Variable(_) => FunctionArgKind::Field,
+            FunctionParam::Constant(_) => FunctionArgKind::Literal,
+            FunctionParam::Variable(_) => FunctionArgKind::Field,
         }
     }
 }
 
-impl<'a> GetType for FunctionDefinitionArg<'a> {
+impl<'a> GetType for FunctionParam<'a> {
     fn get_type(&self) -> Type {
         match self {
-            FunctionDefinitionArg::Constant(value) => value.get_type(),
-            FunctionDefinitionArg::Variable(ty) => ty.clone(),
+            FunctionParam::Constant(value) => value.get_type(),
+            FunctionParam::Variable(ty) => ty.clone(),
         }
     }
 }
 
-impl<'a> FunctionDefinitionArg<'a> {
+impl<'a> FunctionParam<'a> {
     /// Check if the arg_kind of current paramater matches the expected_arg_kind
     pub fn expect_arg_kind(
         &self,
@@ -225,16 +225,13 @@ impl<'a> FunctionDefinitionArg<'a> {
 pub trait FunctionDefinition: Debug + Sync + Send {
     /// Given a slice of already checked parameters, checks that next_param is
     /// correct. Return the expected the parameter definition.
-    fn check_arg(
+    fn check_param(
         &self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
-        next_param: &FunctionDefinitionArg<'_>,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        next_param: &FunctionParam<'_>,
     ) -> Result<(), FunctionParamError>;
     /// Function return type.
-    fn return_type(
-        &self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
-    ) -> Type;
+    fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>) -> Type;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -243,7 +240,7 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     /// during filter execution.
     fn compile<'s>(
         &'s self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
@@ -279,10 +276,10 @@ pub struct SimpleFunctionDefinition {
 }
 
 impl FunctionDefinition for SimpleFunctionDefinition {
-    fn check_arg(
+    fn check_param(
         &self,
-        params: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
-        next_param: &FunctionDefinitionArg<'_>,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        next_param: &FunctionParam<'_>,
     ) -> Result<(), FunctionParamError> {
         let index = params.len();
         if index < self.params.len() {
@@ -300,7 +297,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         Ok(())
     }
 
-    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>) -> Type {
+    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>) -> Type {
         self.return_type.clone()
     }
 
@@ -310,7 +307,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
 
     fn compile<'s>(
         &'s self,
-        _: &mut dyn ExactSizeIterator<Item = FunctionDefinitionArg<'_>>,
+        _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's> {
         Box::new(move |args| {
             let opts_args = &self.opt_params[(args.len() - self.params.len())..];
