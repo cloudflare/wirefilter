@@ -866,6 +866,20 @@ impl<'a> From<&'a str> for LhsValue<'a> {
     }
 }
 
+impl<'a> TryFrom<&'a LhsValue<'a>> for &'a [u8] {
+    type Error = TypeMismatchError;
+
+    fn try_from(value: &'a LhsValue<'_>) -> Result<Self, TypeMismatchError> {
+        match value {
+            LhsValue::Bytes(value) => Ok(&*value),
+            _ => Err(TypeMismatchError {
+                expected: Type::Bytes.into(),
+                actual: value.get_type(),
+            }),
+        }
+    }
+}
+
 impl<'a> From<&'a RhsValue> for LhsValue<'a> {
     fn from(rhs_value: &'a RhsValue) -> Self {
         match rhs_value {
