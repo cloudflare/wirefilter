@@ -875,10 +875,17 @@ impl<'a> From<&'a str> for LhsValue<'a> {
     }
 }
 
-impl From<String> for LhsValue<'static> {
-    #[inline]
-    fn from(s: String) -> Self {
-        s.into_bytes().into()
+impl<'a> TryFrom<&'a LhsValue<'a>> for &'a [u8] {
+    type Error = TypeMismatchError;
+
+    fn try_from(value: &'a LhsValue<'_>) -> Result<Self, TypeMismatchError> {
+        match value {
+            LhsValue::Bytes(value) => Ok(&*value),
+            _ => Err(TypeMismatchError {
+                expected: Type::Bytes.into(),
+                actual: value.get_type(),
+            }),
+        }
     }
 }
 

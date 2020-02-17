@@ -3,6 +3,7 @@ use crate::{
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
 use failure::Fail;
+use std::convert::TryFrom;
 use std::{
     collections::HashSet,
     fmt::{self, Debug},
@@ -187,6 +188,31 @@ impl<'a> FunctionParam<'a> {
             expected: types,
             actual: ty,
         }))
+    }
+
+    /// Checks that the parameter is a constant of a certain type
+    /// and call the closure `op` to verify its value
+    pub fn expect_const_value<
+        'b,
+        U: TryFrom<&'b LhsValue<'a>, Error = TypeMismatchError>,
+        F: FnOnce(U) -> Result<(), String>,
+    >(
+        &'b self,
+        op: F,
+    ) -> Result<(), FunctionParamError> {
+        match self {
+            Self::Constant(value) => {
+                op(U::try_from(value).map_err(FunctionParamError::TypeMismatch)?).map_err(|msg| {
+                    FunctionParamError::InvalidConstant(FunctionArgInvalidConstantError { msg })
+                })
+            }
+            Self::Variable(_) => Err(FunctionParamError::KindMismatch(
+                FunctionArgKindMismatchError {
+                    expected: FunctionArgKind::Literal,
+                    actual: FunctionArgKind::Field,
+                },
+            )),
+        }
     }
 }
 
