@@ -1,5 +1,5 @@
 use crate::{
-    functions::{FunctionArgInvalidConstant, FunctionArgKindMismatchError},
+    functions::{FunctionArgInvalidConstantError, FunctionArgKindMismatchError},
     rhs_types::RegexError,
     scheme::{IndexAccessError, UnknownFieldError, UnknownFunctionError},
     types::{Type, TypeMismatchError},
@@ -118,7 +118,7 @@ pub enum LexErrorKind {
         index: usize,
         /// The error message that explains why the value is invalid
         #[cause]
-        invalid: FunctionArgInvalidConstant,
+        invalid: FunctionArgInvalidConstantError,
     },
 
     /// The index is invalid

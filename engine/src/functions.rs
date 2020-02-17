@@ -98,7 +98,7 @@ pub struct FunctionArgKindMismatchError {
 /// An error that occurs on a kind mismatch.
 #[derive(Debug, PartialEq, Fail)]
 #[fail(display = "invalid argument: {:?}", msg)]
-pub struct FunctionArgInvalidConstant {
+pub struct FunctionArgInvalidConstantError {
     msg: String,
 }
 
@@ -113,7 +113,7 @@ pub enum FunctionParamError {
     KindMismatch(#[cause] FunctionArgKindMismatchError),
     /// Function parameter constant value is invalid
     #[fail(display = "{}", _0)]
-    InvalidConstant(#[cause] FunctionArgInvalidConstant),
+    InvalidConstant(#[cause] FunctionArgInvalidConstantError),
 }
 
 /// Function parameter
