@@ -77,8 +77,9 @@ pub use self::{
     filter::Filter,
     functions::{
         FunctionArgInvalidConstantError, FunctionArgKind, FunctionArgKindMismatchError,
-        FunctionArgs, FunctionDefinition, FunctionParam, FunctionParamError,
-        SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
+        FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
+        FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam,
+        SimpleFunctionParam,
     },
     lex::LexErrorKind,
     scheme::{
