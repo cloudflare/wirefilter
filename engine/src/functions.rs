@@ -3,6 +3,7 @@ use crate::{
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
 use failure::Fail;
+use std::any::Any;
 use std::convert::TryFrom;
 use std::{
     collections::HashSet,
@@ -216,14 +217,128 @@ impl<'a> FunctionParam<'a> {
     }
 }
 
+/// Context that can be created and used
+/// when parsing a function call
+pub struct FunctionDefinitionContext {
+    inner: Box<dyn Any + Send>,
+    clone_cb: fn(&(dyn Any + Send)) -> Box<dyn Any + Send>,
+    eq_cb: fn(&(dyn Any + Send), &(dyn Any + Send)) -> bool,
+    fmt_cb: fn(&(dyn Any + Send), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
+}
+
+impl FunctionDefinitionContext {
+    fn clone_any<T: Any + Clone + Send>(t: &(dyn Any + Send)) -> Box<dyn Any + Send> {
+        Box::new(t.downcast_ref::<T>().unwrap().clone())
+    }
+
+    fn eq_any<T: Any + PartialEq + Send>(t1: &(dyn Any + Send), t2: &(dyn Any + Send)) -> bool {
+        let t1 = t1.downcast_ref::<T>().unwrap();
+        match t2.downcast_ref::<T>() {
+            Some(t2) => t1.eq(t2),
+            None => false,
+        }
+    }
+
+    fn fmt_any<T: Any + Debug + Send>(
+        t: &(dyn Any + Send),
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        t.downcast_ref::<T>().unwrap().fmt(f)
+    }
+
+    /// Creates a new FunctionDefinitionContext object containing user-defined
+    /// object of type `T`
+    pub fn new<T: Any + Clone + Debug + PartialEq + Send>(t: T) -> Self {
+        Self {
+            inner: Box::new(t),
+            clone_cb: Self::clone_any::<T>,
+            eq_cb: Self::eq_any::<T>,
+            fmt_cb: Self::fmt_any::<T>,
+        }
+    }
+    /// Returns a reference to the underlying Any object
+    pub fn as_any_ref(&self) -> &(dyn Any + Send) {
+        &*self.inner
+    }
+    /// Returns a mutable reference to the underlying Any object
+    pub fn as_any_mut(&mut self) -> &mut (dyn Any + Send) {
+        &mut *self.inner
+    }
+    /// Converts current `FunctionDefinitionContext` to `Box<dyn Dy>`
+    pub fn into_any(self) -> Box<dyn Any + Send> {
+        let Self { inner, .. } = self;
+        inner
+    }
+    /// Attempt to downcast the context to a concrete type.
+    pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
+        let Self {
+            inner,
+            clone_cb,
+            eq_cb,
+            fmt_cb,
+        } = self;
+        inner.downcast::<T>().map_err(|inner| Self {
+            inner,
+            clone_cb,
+            eq_cb,
+            fmt_cb,
+        })
+    }
+}
+
+impl<T: Any> std::convert::AsRef<T> for FunctionDefinitionContext {
+    fn as_ref(&self) -> &T {
+        self.inner.downcast_ref::<T>().unwrap()
+    }
+}
+
+impl<T: Any> std::convert::AsMut<T> for FunctionDefinitionContext {
+    fn as_mut(&mut self) -> &mut T {
+        self.inner.downcast_mut::<T>().unwrap()
+    }
+}
+
+impl Clone for FunctionDefinitionContext {
+    fn clone(&self) -> Self {
+        Self {
+            inner: (self.clone_cb)(&*self.inner),
+            clone_cb: self.clone_cb,
+            eq_cb: self.eq_cb,
+            fmt_cb: self.fmt_cb,
+        }
+    }
+}
+
+impl std::fmt::Debug for FunctionDefinitionContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FunctionDefinitionContext(")?;
+        (self.fmt_cb)(&*self.inner, f)?;
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+impl Eq for FunctionDefinitionContext {}
+
+impl PartialEq for FunctionDefinitionContext {
+    fn eq(&self, other: &Self) -> bool {
+        (self.eq_cb)(&*self.inner, &*other.inner)
+    }
+}
+
 /// Trait to implement function
 pub trait FunctionDefinition: Debug + Sync + Send {
+    /// Custom context to store information during parsing
+    fn context(&self) -> Option<FunctionDefinitionContext> {
+        None
+    }
     /// Given a slice of already checked parameters, checks that next_param is
     /// correct. Return the expected the parameter definition.
     fn check_param(
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         next_param: &FunctionParam<'_>,
+        ctx: Option<&mut FunctionDefinitionContext>,
     ) -> Result<(), FunctionParamError>;
     /// Function return type.
     fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>) -> Type;
@@ -236,6 +351,7 @@ pub trait FunctionDefinition: Debug + Sync + Send {
     fn compile<'s>(
         &'s self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<FunctionDefinitionContext>,
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
@@ -311,6 +427,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         next_param: &FunctionParam<'_>,
+        _: Option<&mut FunctionDefinitionContext>,
     ) -> Result<(), FunctionParamError> {
         let index = params.len();
         if index < self.params.len() {
@@ -339,6 +456,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
     fn compile<'s>(
         &'s self,
         _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        _: Option<FunctionDefinitionContext>,
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's> {
         Box::new(move |args| {
             let opts_args = &self.opt_params[(args.len() - self.params.len())..];
@@ -349,5 +467,33 @@ impl FunctionDefinition for SimpleFunctionDefinition {
                     .map(|opt_arg| Ok(opt_arg.default_value.to_owned())),
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_function_definition_context() {
+        let ctx1 = FunctionDefinitionContext::new(Some(42));
+
+        assert_eq!(
+            "FunctionDefinitionContext(Some(42))".to_owned(),
+            format!("{:?}", ctx1)
+        );
+
+        assert_eq!(ctx1, ctx1.clone());
+
+        let ctx2 = FunctionDefinitionContext::new("Hello world!\n");
+
+        assert_eq!(
+            "FunctionDefinitionContext(\"Hello world!\\n\")".to_owned(),
+            format!("{:?}", ctx2)
+        );
+
+        assert_eq!(ctx2, ctx2.clone());
+
+        assert!(ctx1 != ctx2);
     }
 }

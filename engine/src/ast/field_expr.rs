@@ -359,9 +359,9 @@ mod tests {
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         execution_context::ExecutionContext,
         functions::{
-            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionParam, FunctionParamError,
-            SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam,
-            SimpleFunctionParam,
+            FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
+            FunctionParam, FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl,
+            SimpleFunctionOptParam, SimpleFunctionParam,
         },
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
@@ -413,6 +413,7 @@ mod tests {
             &self,
             params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
             next_param: &FunctionParam<'_>,
+            _: Option<&mut FunctionDefinitionContext>,
         ) -> Result<(), FunctionParamError> {
             match params.len() {
                 0 => {
@@ -445,6 +446,7 @@ mod tests {
         fn compile<'s>(
             &'s self,
             _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<FunctionDefinitionContext>,
         ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>
         {
             Box::new(|args| {
@@ -1120,6 +1122,7 @@ mod tests {
                             indexes: vec![],
                         })],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![],
                 },
@@ -1173,6 +1176,7 @@ mod tests {
                             indexes: vec![],
                         })],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![],
                 },
@@ -1370,6 +1374,7 @@ mod tests {
                             indexes: vec![],
                         })],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![],
                 },
@@ -1425,6 +1430,7 @@ mod tests {
                             ))),
                         ],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![],
                 },
@@ -1490,6 +1496,7 @@ mod tests {
                             }),
                         ],
                         return_type: Type::Array(Box::new(Type::Bytes)),
+                        context: None,
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
@@ -1571,6 +1578,7 @@ mod tests {
                             ))),
                         ],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
@@ -1642,6 +1650,7 @@ mod tests {
                             ))),
                         ],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
@@ -1809,6 +1818,7 @@ mod tests {
                             ))),
                         ],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![FieldIndex::MapEach],
                 },
@@ -1875,6 +1885,7 @@ mod tests {
                             indexes: vec![FieldIndex::MapEach],
                         }),],
                         return_type: Type::Int,
+                        context: None,
                     }),
                     indexes: vec![FieldIndex::MapEach],
                 },

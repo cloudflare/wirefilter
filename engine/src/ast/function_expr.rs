@@ -6,7 +6,10 @@ use crate::{
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
-    functions::{ExactSizeChain, FunctionDefinition, FunctionParam, FunctionParamError},
+    functions::{
+        ExactSizeChain, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
+        FunctionParamError,
+    },
     lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
     types::{Array, GetType, LhsValue, RhsValue, Type},
@@ -207,6 +210,8 @@ pub(crate) struct FunctionCallExpr<'s> {
     #[serde(skip)]
     pub return_type: Type,
     pub args: Vec<FunctionCallArgExpr<'s>>,
+    #[serde(skip)]
+    pub context: Option<FunctionDefinitionContext>,
 }
 
 impl<'s> FunctionCallExpr<'s> {
@@ -215,6 +220,7 @@ impl<'s> FunctionCallExpr<'s> {
         name: &str,
         function: &'s Box<dyn FunctionDefinition>,
         args: Vec<FunctionCallArgExpr<'s>>,
+        context: Option<FunctionDefinitionContext>,
     ) -> Self {
         let return_type = function.return_type(&mut (&args).iter().map(|arg| arg.into()));
         Self {
@@ -222,6 +228,7 @@ impl<'s> FunctionCallExpr<'s> {
             function,
             args,
             return_type,
+            context,
         }
     }
 
@@ -235,10 +242,11 @@ impl<'s> FunctionCallExpr<'s> {
             function,
             args,
             return_type,
+            context,
             ..
         } = self;
         let map_each = args.get(0).and_then(|arg| arg.map_each_to());
-        let call = function.compile(&mut (&args).iter().map(|arg| arg.into()));
+        let call = function.compile(&mut (&args).iter().map(|arg| arg.into()), context);
         let args = args
             .into_iter()
             .map(FunctionCallArgExpr::compile)
@@ -321,6 +329,8 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         let mut index = 0;
 
+        let mut ctx = function.context();
+
         while let Some(c) = input.chars().next() {
             if c == ')' {
                 break;
@@ -350,7 +360,11 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
             }
 
             function
-                .check_param(&mut (&args).iter().map(|arg| arg.into()), &next_param)
+                .check_param(
+                    &mut (&args).iter().map(|arg| arg.into()),
+                    &next_param,
+                    ctx.as_mut(),
+                )
                 .map_err(|err| match err {
                     FunctionParamError::KindMismatch(err) => (
                         LexErrorKind::InvalidArgumentKind {
@@ -388,7 +402,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallExpr<'s> {
 
         input = expect(input, ")")?;
 
-        let function_call = FunctionCallExpr::new(name, function, args);
+        let function_call = FunctionCallExpr::new(name, function, args, ctx);
 
         Ok((function_call, input))
     }
@@ -549,6 +563,7 @@ mod tests {
                     FunctionCallArgExpr::Literal(RhsValue::Int(2)),
                 ],
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -584,6 +599,7 @@ mod tests {
                     indexes: vec![],
                 })],
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -616,6 +632,7 @@ mod tests {
                     FunctionCallArgExpr::Literal(RhsValue::Int(2)),
                 ],
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -676,11 +693,13 @@ mod tests {
                             indexes: vec![],
                         })],
                         return_type: Type::Bytes,
+                        context: None,
                     }),
                     indexes: vec![],
                 })]
                 .to_vec(),
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -740,6 +759,7 @@ mod tests {
                     })
                 ))],
                 return_type: Type::Bool,
+                context: None,
             },
             ""
         );
@@ -781,6 +801,7 @@ mod tests {
                     indexes: vec![FieldIndex::MapEach],
                 })],
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -808,6 +829,7 @@ mod tests {
                     indexes: vec![FieldIndex::MapEach],
                 })],
                 return_type: Type::Bytes,
+                context: None,
             },
             ";"
         );
@@ -865,6 +887,7 @@ mod tests {
                                     indexes: vec![FieldIndex::MapEach],
                                 })],
                                 return_type: Type::Bytes,
+                                context: None,
                             }),
                             indexes: vec![FieldIndex::MapEach],
                         },
@@ -872,6 +895,7 @@ mod tests {
                     }
                 ))],
                 return_type: Type::Bool,
+                context: None,
             },
             ""
         );
@@ -920,6 +944,7 @@ mod tests {
                     indexes: vec![FieldIndex::MapEach],
                 })],
                 return_type: Type::Int,
+                context: None,
             },
             ""
         );
