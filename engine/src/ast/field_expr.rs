@@ -434,6 +434,7 @@ mod tests {
         fn return_type(
             &self,
             params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<&FunctionDefinitionContext>,
         ) -> Type {
             params.next().unwrap().get_type()
         }

@@ -222,7 +222,10 @@ impl<'s> FunctionCallExpr<'s> {
         args: Vec<FunctionCallArgExpr<'s>>,
         context: Option<FunctionDefinitionContext>,
     ) -> Self {
-        let return_type = function.return_type(&mut (&args).iter().map(|arg| arg.into()));
+        let return_type = function.return_type(
+            &mut (&args).iter().map(|arg| arg.into()),
+            (&context).as_ref(),
+        );
         Self {
             name: name.into(),
             function,
