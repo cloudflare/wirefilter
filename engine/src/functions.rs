@@ -341,7 +341,11 @@ pub trait FunctionDefinition: Debug + Sync + Send {
         ctx: Option<&mut FunctionDefinitionContext>,
     ) -> Result<(), FunctionParamError>;
     /// Function return type.
-    fn return_type(&self, params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>) -> Type;
+    fn return_type(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<&FunctionDefinitionContext>,
+    ) -> Type;
     /// Number of mandatory arguments and number of optional arguments
     /// (N, Some(0)) means N mandatory arguments and no optional arguments
     /// (N, None) means N mandatory arguments and unlimited optional arguments
@@ -445,7 +449,11 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         Ok(())
     }
 
-    fn return_type(&self, _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>) -> Type {
+    fn return_type(
+        &self,
+        _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        _: Option<&FunctionDefinitionContext>,
+    ) -> Type {
         self.return_type.clone()
     }
 
