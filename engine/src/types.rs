@@ -185,17 +185,33 @@ macro_rules! declare_types {
     };
 }
 
-// special case for simply passing bytes
+// special cases for simply passing owned and borrowed bytes
 impl<'a> From<&'a [u8]> for LhsValue<'a> {
+    #[inline]
     fn from(b: &'a [u8]) -> Self {
         LhsValue::Bytes(Cow::Borrowed(b))
     }
 }
 
-// special case for simply passing strings
+impl From<Vec<u8>> for LhsValue<'static> {
+    #[inline]
+    fn from(b: Vec<u8>) -> Self {
+        LhsValue::Bytes(Cow::Owned(b))
+    }
+}
+
+// special cases for simply passing strings and string slices
 impl<'a> From<&'a str> for LhsValue<'a> {
+    #[inline]
     fn from(s: &'a str) -> Self {
         s.as_bytes().into()
+    }
+}
+
+impl From<String> for LhsValue<'static> {
+    #[inline]
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
     }
 }
 
