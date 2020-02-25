@@ -2,7 +2,7 @@ use crate::{
     ast::{
         field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
         index_expr::IndexExpr,
-        simple_expr::SimpleExpr,
+        simple_expr::{SimpleExpr, UnaryOp},
         Expr,
     },
     filter::{CompiledExpr, CompiledValueExpr},
@@ -122,7 +122,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
             if c == '"' {
                 return RhsValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input));
-            } else if c == '(' {
+            } else if c == '(' || UnaryOp::lex(input).is_ok() {
                 return SimpleExpr::lex_with(input, scheme)
                     .map(|(lhs, input)| (FunctionCallArgExpr::SimpleExpr(lhs), input));
             } else if c_is_field!(c)
@@ -424,7 +424,7 @@ mod tests {
             SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         },
         scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
-        types::{Array, Type, TypeMismatchError},
+        types::{Array, RhsValues, Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
     use std::convert::TryFrom;
@@ -954,6 +954,127 @@ mod tests {
 
         assert_eq!(expr.args[0].map_each_to(), Some(Type::Bytes));
         assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Int)));
+    }
+
+    #[test]
+    fn test_lex_function_with_unary_expression_as_argument() {
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with(
+                "any(not(http.request.headers.names[*] in {\"Cookie\" \"Cookies\"}))",
+                &SCHEME
+            ),
+            FunctionCallExpr {
+                name: "any".into(),
+                function: SCHEME.get_function("any").unwrap(),
+                args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
+                    op: UnaryOp::Not,
+                    arg: Box::new(SimpleExpr::Parenthesized(Box::new(LogicalExpr::Simple(
+                        SimpleExpr::Comparison(ComparisonExpr {
+                            lhs: IndexExpr {
+                                lhs: LhsFieldExpr::Field(
+                                    SCHEME.get_field("http.request.headers.names").unwrap()
+                                ),
+                                indexes: vec![FieldIndex::MapEach],
+                            },
+                            op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
+                                "Cookie".to_owned().into(),
+                                "Cookies".to_owned().into(),
+                            ])),
+                        })
+                    ))))
+                })],
+                return_type: Type::Bool,
+                context: None,
+            },
+            ""
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "any",
+                "args": [
+                    {
+                        "kind": "SimpleExpr",
+                        "value": {
+                            "op": "Not",
+                            "arg": {
+                                "lhs": [
+                                    "http.request.headers.names",
+                                    {
+                                        "kind": "MapEach"
+                                    }
+                                ],
+                                "op": "OneOf",
+                                "rhs": [
+                                    "Cookie",
+                                    "Cookies"
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        );
+
+        let expr = assert_ok!(
+            FunctionCallExpr::lex_with(
+                "any(!(http.request.headers.names[*] in {\"Cookie\" \"Cookies\"}))",
+                &SCHEME
+            ),
+            FunctionCallExpr {
+                name: "any".into(),
+                function: SCHEME.get_function("any").unwrap(),
+                args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
+                    op: UnaryOp::Not,
+                    arg: Box::new(SimpleExpr::Parenthesized(Box::new(LogicalExpr::Simple(
+                        SimpleExpr::Comparison(ComparisonExpr {
+                            lhs: IndexExpr {
+                                lhs: LhsFieldExpr::Field(
+                                    SCHEME.get_field("http.request.headers.names").unwrap()
+                                ),
+                                indexes: vec![FieldIndex::MapEach],
+                            },
+                            op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
+                                "Cookie".to_owned().into(),
+                                "Cookies".to_owned().into(),
+                            ])),
+                        })
+                    ))))
+                })],
+                return_type: Type::Bool,
+                context: None,
+            },
+            ""
+        );
+
+        assert_json!(
+            expr,
+            {
+                "name": "any",
+                "args": [
+                    {
+                        "kind": "SimpleExpr",
+                        "value": {
+                            "op": "Not",
+                            "arg": {
+                                "lhs": [
+                                    "http.request.headers.names",
+                                    {
+                                        "kind": "MapEach"
+                                    }
+                                ],
+                                "op": "OneOf",
+                                "rhs": [
+                                    "Cookie",
+                                    "Cookies"
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        );
     }
 
     #[test]
