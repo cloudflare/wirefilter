@@ -2,11 +2,12 @@
 use super::{function_expr::FunctionCallExpr, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr},
     heap_searcher::HeapSearcher,
-    lex::{skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    list_matcher::ListMatcher,
     range_set::RangeSet,
-    rhs_types::{Bytes, ExplicitIpRange, Regex},
+    rhs_types::{Bytes, ExplicitIpRange, List, Regex},
     scheme::{Field, Scheme},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
@@ -90,6 +91,9 @@ pub(crate) enum ComparisonOpExpr {
 
     #[serde(serialize_with = "serialize_one_of")]
     OneOf(RhsValues),
+
+    #[serde(serialize_with = "serialize_list")]
+    InList(List),
 }
 
 fn serialize_op_rhs<T: Serialize, S: Serializer>(
@@ -123,6 +127,10 @@ fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Err
 
 fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("OneOf", rhs, ser)
+}
+
+fn serialize_list<S: Serializer>(rhs: &List, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("InList", rhs, ser)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -225,8 +233,13 @@ impl<'s> ComparisonExpr<'s> {
                 (Type::Ip, ComparisonOp::In)
                 | (Type::Bytes, ComparisonOp::In)
                 | (Type::Int, ComparisonOp::In) => {
-                    let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
-                    (ComparisonOpExpr::OneOf(rhs), input)
+                    if expect(input, "$").is_ok() {
+                        let (list, input) = List::lex(input)?;
+                        (ComparisonOpExpr::InList(list), input)
+                    } else {
+                        let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
+                        (ComparisonOpExpr::OneOf(rhs), input)
+                    }
                 }
                 (Type::Ip, ComparisonOp::Ordering(op))
                 | (Type::Bytes, ComparisonOp::Ordering(op))
@@ -348,6 +361,16 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Map(_) => unreachable!(),
                 RhsValues::Array(_) => unreachable!(),
             },
+            ComparisonOpExpr::InList(list) => {
+                let lhs = lhs.compile();
+                CompiledExpr::One(CompiledOneExpr::new(move |ctx| match lhs.execute(ctx) {
+                    Ok(val) => ctx
+                        .get_list_matcher(&val.get_type())
+                        .expect("no list matcher for required type")
+                        .match_value(list.name(), &val),
+                    Err(_) => false,
+                }))
+            }
         }
     }
 }
@@ -367,6 +390,7 @@ mod tests {
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
         types::ExpectedType,
+        ListMatcherWrapper,
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
@@ -1973,5 +1997,102 @@ mod tests {
             }),
             "[*]"
         );
+    }
+
+    #[test]
+    fn test_number_in_list() {
+        #[derive(Debug, PartialEq, Clone)]
+        pub struct NumMatcher {
+            // TODO: metadata: HashMap<String, ListMetadata>
+        // ListMetadata {
+        //     id: [u8; 16],
+        // }
+        }
+
+        impl ListMatcher for NumMatcher {
+            fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool {
+                // Ideally this would lookup list_name in metadata
+                let list_id = if list_name == "even" {
+                    [0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                } else {
+                    [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                };
+
+                match val {
+                    LhsValue::Int(num) => self.num_matches(*num, list_id),
+                    _ => unreachable!(), // TODO: is this unreachable?
+                }
+            }
+        }
+
+        /// Match IPs (v4 and v6) in lists.
+        ///
+        /// ```text
+        /// ip.src in $whitelist and not origin.ip in $whitelist
+        /// ```
+        impl NumMatcher {
+            pub fn new() -> Self {
+                NumMatcher {}
+            }
+
+            fn num_matches(&self, num: i32, list_id: [u8; 16]) -> bool {
+                let remainder = if list_id == [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] {
+                    1
+                } else {
+                    0
+                };
+
+                num % 2 == remainder
+            }
+        }
+
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"tcp.port in $even"#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("tcp.port")),
+                    indexes: vec![],
+                },
+                op: ComparisonOpExpr::InList(List::from("even".to_string()))
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "tcp.port",
+                "op": "InList",
+                "rhs": "even"
+            }
+        );
+
+        // EVEN list
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let list_matcher = NumMatcher::new();
+        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+
+        ctx.set_field_value(field("tcp.port"), 1000).unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
+
+        ctx.set_field_value(field("tcp.port"), 1001).unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
+
+        // ODD list
+        let expr = ComparisonExpr::lex_with(r#"tcp.port in $odd"#, &SCHEME)
+            .unwrap()
+            .0;
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let list_matcher = NumMatcher::new();
+        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+
+        ctx.set_field_value(field("tcp.port"), 1000).unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
+
+        ctx.set_field_value(field("tcp.port"), 1001).unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
     }
 }

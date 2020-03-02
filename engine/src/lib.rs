@@ -67,6 +67,7 @@ mod filter;
 mod functions;
 mod heap_searcher;
 mod lhs_types;
+mod list_matcher;
 mod range_set;
 mod rhs_types;
 mod strict_partial_ord;
@@ -84,6 +85,7 @@ pub use self::{
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map},
+    list_matcher::{ListMatcher, ListMatcherWrapper},
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, ItemRedefinitionError, ParseError, Scheme,
         SchemeMismatchError, UnknownFieldError,
