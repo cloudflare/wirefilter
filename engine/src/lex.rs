@@ -132,6 +132,13 @@ pub enum LexErrorKind {
     /// Invalid usage of map each access operator
     #[fail(display = "invalid use of map each access operator")]
     InvalidMapEachAccess,
+
+    /// Invalid list name
+    #[fail(display = "invalid list name {:?}", name)]
+    InvalidListName {
+        /// Name of the list
+        name: String,
+    },
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

@@ -1,11 +1,13 @@
 use crate::{
     scheme::{Field, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
+    ListMatcherWrapper, Type,
 };
 use failure::Fail;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt;
 
 /// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
@@ -29,6 +31,7 @@ pub enum SetFieldValueError {
 pub struct ExecutionContext<'e> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
+    list_data: HashMap<Type, ListMatcherWrapper>,
 }
 
 impl<'e> ExecutionContext<'e> {
@@ -39,6 +42,7 @@ impl<'e> ExecutionContext<'e> {
         ExecutionContext {
             scheme,
             values: vec![None; scheme.get_field_count()].into(),
+            list_data: Default::default(),
         }
     }
 
@@ -87,6 +91,16 @@ impl<'e> ExecutionContext<'e> {
                 actual: value_type,
             }))
         }
+    }
+
+    /// Set the `ListMatcher` for the specified type.
+    pub fn set_list_matcher(&mut self, t: Type, matcher: ListMatcherWrapper) {
+        self.list_data.insert(t, matcher);
+    }
+
+    /// Get the `ListMatcher` for the specified type.
+    pub fn get_list_matcher(&self, t: &Type) -> Option<&ListMatcherWrapper> {
+        self.list_data.get(t)
     }
 }
 
