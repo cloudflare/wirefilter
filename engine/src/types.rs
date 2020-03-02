@@ -123,7 +123,20 @@ macro_rules! specialized_try_from {
     };
 }
 
+/// This macro generates `Type`, `LhsValue`, `RhsValue`, `RhsValues`.
+///
+/// Before the parenthesis is the variant for the `Type` enum (`Type::Ip`).
+/// First argument is the corresponding `LhsValue` variant (`LhsValue::Ip(IpAddr)`).
+/// Second argument is the corresponding `RhsValue` variant (`RhsValue::Ip(IpAddr)`).
+/// Third argument is the corresponding `RhsValues` variant (`RhsValues::Ip(Vec<IpRange>)`) for the curly bracket syntax. eg `num in {1, 5}`
+///
+/// ```
+/// declare_types! {
+///     Ip(IpAddr | IpAddr | IpRange),
+/// }
+/// ```
 macro_rules! declare_types {
+    // This is just to be used by the other arm.
     ($(# $attrs:tt)* enum $name:ident $(<$lt:tt>)* { $($(# $vattrs:tt)* $variant:ident ( $ty:ty ) , )* }) => {
         $(# $attrs)*
         #[repr(u8)]
@@ -148,34 +161,12 @@ macro_rules! declare_types {
         }
     };
 
+    // This is the entry point for the macro.
     ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
         #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Hash)]
         pub enum Type {
             $($(# $attrs)* $name$(($val_ty))?,)*
-        }
-
-        impl Type {
-            /// Returns the inner type when available (e.g: for a Map)
-            pub fn next(&self) -> Option<Type> {
-                match self {
-                    Type::Array(ty) => Some(*ty.clone()),
-                    Type::Map(ty) => Some(*ty.clone()),
-                    _ => None,
-                }
-            }
-        }
-
-        /// Provides a way to get a [`Type`] of the implementor.
-        pub trait GetType {
-            /// Returns a type.
-            fn get_type(&self) -> Type;
-        }
-
-        impl GetType for Type {
-            fn get_type(&self) -> Type {
-                self.clone()
-            }
         }
 
         declare_types! {
@@ -256,14 +247,6 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'a> StrictPartialOrd<RhsValue> for LhsValue<'a> {}
-
-        impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
-            fn eq(&self, other: &RhsValue) -> bool {
-                self.strict_partial_cmp(other) == Some(Ordering::Equal)
-            }
-        }
-
         declare_types! {
             /// A typed group of a list of values.
             ///
@@ -287,6 +270,37 @@ macro_rules! declare_types {
             }
         }
     };
+}
+
+impl Type {
+    /// Returns the inner type when available (e.g: for a Map)
+    pub fn next(&self) -> Option<Type> {
+        match self {
+            Type::Array(ty) => Some(*ty.clone()),
+            Type::Map(ty) => Some(*ty.clone()),
+            _ => None,
+        }
+    }
+}
+
+/// Provides a way to get a [`Type`] of the implementor.
+pub trait GetType {
+    /// Returns a type.
+    fn get_type(&self) -> Type;
+}
+
+impl GetType for Type {
+    fn get_type(&self) -> Type {
+        self.clone()
+    }
+}
+
+impl<'a> StrictPartialOrd<RhsValue> for LhsValue<'a> {}
+
+impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
+    fn eq(&self, other: &RhsValue) -> bool {
+        self.strict_partial_cmp(other) == Some(Ordering::Equal)
+    }
 }
 
 #[derive(Deserialize)]
