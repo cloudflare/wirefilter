@@ -1,14 +1,17 @@
 use crate::{
+    list_matcher::ListMatcherWrapper,
     scheme::{Field, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
-    ListMatcherWrapper, Type,
+    ListMatcher, Type,
 };
 use failure::Fail;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
+use std::any::Any;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Debug;
 
 /// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
 #[derive(Debug, PartialEq, Fail)]
@@ -94,12 +97,16 @@ impl<'e> ExecutionContext<'e> {
     }
 
     /// Set the `ListMatcher` for the specified type.
-    pub fn set_list_matcher(&mut self, t: Type, matcher: ListMatcherWrapper) {
-        self.list_data.insert(t, matcher);
+    pub fn set_list_matcher<T: Any + Clone + Debug + PartialEq + ListMatcher + Send + Sync>(
+        &mut self,
+        t: Type,
+        matcher: T,
+    ) {
+        self.list_data.insert(t, ListMatcherWrapper::new(matcher));
     }
 
     /// Get the `ListMatcher` for the specified type.
-    pub fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
+    pub(crate) fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
         self.list_data
             .get(t)
             .expect("no list matcher for the given type")

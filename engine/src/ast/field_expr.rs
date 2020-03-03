@@ -384,10 +384,10 @@ mod tests {
             SimpleFunctionOptParam, SimpleFunctionParam,
         },
         lhs_types::{Array, Map},
+        list_matcher::ListMatcherWrapper,
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
         types::ExpectedType,
-        ListMatcherWrapper,
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
