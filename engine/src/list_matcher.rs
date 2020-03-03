@@ -5,7 +5,7 @@ use std::fmt::Debug;
 /// Implement this Trait to match a given `LhsValue` against a list.
 pub trait ListMatcher {
     /// Returns true if `val` is in the given list.
-    fn match_value(&self, list_name: &str, val: &LhsValue) -> bool;
+    fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool;
 }
 
 /// Wrapper to ensure that any ListMatcher implements the required Traits.
@@ -14,7 +14,7 @@ pub struct ListMatcherWrapper {
     clone_cb: fn(&(dyn Any + Send + Sync)) -> Box<dyn Any + Send + Sync>,
     eq_cb: fn(&(dyn Any + Send + Sync), &(dyn Any + Send + Sync)) -> bool,
     fmt_cb: fn(&(dyn Any + Send + Sync), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
-    match_cb: fn(&(dyn Any + Send + Sync), &str, &LhsValue) -> bool,
+    match_cb: fn(&(dyn Any + Send + Sync), &str, &LhsValue<'_>) -> bool,
 }
 
 impl ListMatcherWrapper {
@@ -45,7 +45,7 @@ impl ListMatcherWrapper {
     fn match_any<T: Any + ListMatcher + Send + Sync>(
         t: &(dyn Any + Send + Sync),
         list_name: &str,
-        v: &LhsValue,
+        v: &LhsValue<'_>,
     ) -> bool {
         t.downcast_ref::<T>().unwrap().match_value(list_name, v)
     }
@@ -117,7 +117,7 @@ impl PartialEq for ListMatcherWrapper {
 }
 
 impl ListMatcher for ListMatcherWrapper {
-    fn match_value(&self, list_name: &str, val: &LhsValue) -> bool {
+    fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool {
         (self.match_cb)(&*self.inner, list_name, val)
     }
 }
