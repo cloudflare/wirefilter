@@ -91,7 +91,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn test() {
-    use crate::{execution_context::ExecutionContext, lex::complete, types::Array};
+    use crate::{execution_context::ExecutionContext, lex::complete, lhs_types::Array};
 
     let scheme = &Scheme! {
         t: Bool,

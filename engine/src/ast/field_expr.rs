@@ -363,9 +363,10 @@ mod tests {
             FunctionParam, FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl,
             SimpleFunctionOptParam, SimpleFunctionParam,
         },
+        lhs_types::{Array, Map},
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
-        types::{Array, ExpectedType, Map},
+        types::ExpectedType,
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;

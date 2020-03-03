@@ -219,9 +219,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
 fn test() {
     use super::field_expr::ComparisonExpr;
     use crate::{
-        execution_context::ExecutionContext,
-        lex::complete,
-        types::{Array, Type},
+        execution_context::ExecutionContext, lex::complete, lhs_types::Array, types::Type,
     };
 
     let scheme = &Scheme! {

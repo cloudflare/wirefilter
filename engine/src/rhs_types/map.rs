@@ -1,7 +1,8 @@
 use crate::{
     lex::{Lex, LexResult},
+    lhs_types::Map,
     strict_partial_ord::StrictPartialOrd,
-    types::{GetType, Map, Type},
+    types::{GetType, Type},
 };
 use serde::Serialize;
 use std::{borrow::Borrow, cmp::Ordering};

@@ -11,8 +11,9 @@ use crate::{
         FunctionParamError,
     },
     lex::{expect, skip_space, span, take_while, Lex, LexError, LexErrorKind, LexResult, LexWith},
+    lhs_types::Array,
     scheme::{Field, Scheme},
-    types::{Array, GetType, LhsValue, RhsValue, Type},
+    types::{GetType, LhsValue, RhsValue, Type},
 };
 use derivative::Derivative;
 use serde::Serialize;
@@ -424,7 +425,7 @@ mod tests {
             SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         },
         scheme::{FieldIndex, IndexAccessError, UnknownFieldError},
-        types::{Array, RhsValues, Type, TypeMismatchError},
+        types::{RhsValues, Type, TypeMismatchError},
     };
     use lazy_static::lazy_static;
     use std::convert::TryFrom;
