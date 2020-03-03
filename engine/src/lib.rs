@@ -85,7 +85,7 @@ pub use self::{
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map},
-    list_matcher::{ListMatcher, ListMatcherWrapper},
+    list_matcher::ListMatcher,
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, ItemRedefinitionError, ParseError, Scheme,
         SchemeMismatchError, UnknownFieldError,

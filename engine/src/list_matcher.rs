@@ -60,19 +60,6 @@ impl ListMatcherWrapper {
             match_cb: Self::match_any::<T>,
         }
     }
-    /// Returns a reference to the underlying Any object
-    pub fn as_any_ref(&self) -> &(dyn Any + Send + Sync) {
-        &*self.inner
-    }
-    /// Returns a mutable reference to the underlying Any object
-    pub fn as_any_mut(&mut self) -> &mut (dyn Any + Send + Sync) {
-        &mut *self.inner
-    }
-    /// Converts current `ListMatcherWrapper` to `Box<dyn Dy>`
-    pub fn into_any(self) -> Box<dyn Any + Send + Sync> {
-        let Self { inner, .. } = self;
-        inner
-    }
 }
 
 impl<T: Any> std::convert::AsRef<T> for ListMatcherWrapper {
