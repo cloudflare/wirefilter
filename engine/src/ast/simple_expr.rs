@@ -1,4 +1,5 @@
 use super::{field_expr::ComparisonExpr, logical_expr::LogicalExpr, Expr};
+use crate::compiler::Compiler;
 use crate::{
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
@@ -75,15 +76,15 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
         match self {
-            SimpleExpr::Comparison(op) => op.compile(),
-            SimpleExpr::Parenthesized(op) => op.compile(),
+            SimpleExpr::Comparison(op) => op.compile_with_compiler(compiler),
+            SimpleExpr::Parenthesized(op) => op.compile_with_compiler(compiler),
             SimpleExpr::Unary {
                 op: UnaryOp::Not,
                 arg,
             } => {
-                let arg = arg.compile();
+                let arg = arg.compile_with_compiler(compiler);
                 match arg {
                     CompiledExpr::One(one) => {
                         CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))

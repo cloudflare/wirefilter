@@ -1,11 +1,12 @@
 mod field_expr;
-mod function_expr;
-mod index_expr;
+pub mod function_expr;
+pub mod index_expr;
 mod logical_expr;
 mod simple_expr;
 
 use self::logical_expr::LogicalExpr;
 use crate::{
+    compiler::{Compiler, DefaultCompiler},
     filter::{CompiledExpr, CompiledValueExpr, Filter},
     lex::{LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme, UnknownFieldError},
@@ -14,16 +15,34 @@ use crate::{
 use serde::Serialize;
 use std::fmt::{self, Debug};
 
-trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
+/// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
+pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
+    /// Recursively check if a [`Field`] is being used.
     fn uses(&self, field: Field<'s>) -> bool;
+    /// Recursively check if a [`Field`] is being used in a list comparison.
     fn uses_list(&self, field: Field<'s>) -> bool;
-    fn compile(self) -> CompiledExpr<'s>;
+    /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
+    /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
+    fn compile(self) -> CompiledExpr<'s, DefaultCompiler<'s>> {
+        let mut compiler = DefaultCompiler::new();
+        self.compile_with_compiler(&mut compiler)
+    }
 }
 
-trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
+/// Trait used to represent node that evaluates to an [`LhsValue`].
+pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
+    /// Recursively check if a [`Field`] is being used.
     fn uses(&self, field: Field<'s>) -> bool;
+    /// Recursively check if a [`Field`] is being used in a list comparison.
     fn uses_list(&self, field: Field<'s>) -> bool;
-    fn compile(self) -> CompiledValueExpr<'s>;
+    /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
+    /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
+    fn compile(self) -> CompiledValueExpr<'s, DefaultCompiler<'s>> {
+        let mut compiler = DefaultCompiler::new();
+        self.compile_with_compiler(&mut compiler)
+    }
 }
 
 /// A parsed filter AST.
@@ -90,11 +109,17 @@ impl<'s> FilterAst<'s> {
             .map(|field| self.op.uses_list(field))
     }
 
-    /// Compiles a [`FilterAst`] into a [`Filter`].
-    pub fn compile(self) -> Filter<'s> {
-        match self.op.compile() {
+    /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].
+    pub fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> Filter<'s, C> {
+        match self.op.compile_with_compiler(compiler) {
             CompiledExpr::One(one) => Filter::new(one, self.scheme),
             CompiledExpr::Vec(_) => unreachable!(),
         }
+    }
+
+    /// Compiles a [`FilterAst`] into a [`Filter`] using [`DefaultCompiler`].
+    pub fn compile(self) -> Filter<'s, DefaultCompiler<'s>> {
+        let mut compiler = DefaultCompiler::new();
+        self.compile_with_compiler(&mut compiler)
     }
 }

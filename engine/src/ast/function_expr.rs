@@ -6,6 +6,7 @@ use crate::{
         simple_expr::{SimpleExpr, UnaryOp},
         Expr,
     },
+    compiler::Compiler,
     filter::{CompiledExpr, CompiledValueExpr},
     functions::{
         ExactSizeChain, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
@@ -24,7 +25,7 @@ use std::iter::once;
 /// [`SimpleExpr`], a field with [`IndexExpr`] or a literal with [`Literal`].
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(tag = "kind", content = "value")]
-pub(crate) enum FunctionCallArgExpr<'s> {
+pub enum FunctionCallArgExpr<'s> {
     /// IndexExpr is a field that supports the indexing operator.
     IndexExpr(IndexExpr<'s>),
     /// A Literal.
@@ -52,9 +53,9 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledValueExpr<'s> {
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
         match self {
-            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
+            FunctionCallArgExpr::IndexExpr(index_expr) => compiler.compile_index_expr(index_expr),
             FunctionCallArgExpr::Literal(literal) => {
                 CompiledValueExpr::new(move |_| LhsValue::from(literal.clone()).into())
             }
@@ -63,7 +64,7 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
             // Here we execute the expression to get the actual argument
             // for the function and forward the result in a CompiledValueExpr.
             FunctionCallArgExpr::SimpleExpr(simple_expr) => {
-                let compiled_expr = simple_expr.compile();
+                let compiled_expr = simple_expr.compile_with_compiler(compiler);
                 match compiled_expr {
                     CompiledExpr::One(expr) => {
                         CompiledValueExpr::new(move |ctx| LhsValue::from(expr.execute(ctx)).into())
@@ -86,7 +87,7 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
 }
 
 impl<'s> FunctionCallArgExpr<'s> {
-    pub fn map_each_to(&self) -> Option<Type> {
+    pub(crate) fn map_each_to(&self) -> Option<Type> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_to(),
             FunctionCallArgExpr::Literal(_) => None,
@@ -95,7 +96,7 @@ impl<'s> FunctionCallArgExpr<'s> {
     }
 
     #[allow(dead_code)]
-    pub fn simplify(self) -> Self {
+    pub(crate) fn simplify(self) -> Self {
         match self {
             FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(ComparisonExpr {
                 lhs,
@@ -211,18 +212,19 @@ impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionParam<'a> {
     }
 }
 
+/// FunctionCallExpr represents a function call expression.
 #[derive(Derivative, Serialize)]
 #[derivative(Debug, PartialEq, Eq, Clone)]
-pub(crate) struct FunctionCallExpr<'s> {
-    pub name: String,
+pub struct FunctionCallExpr<'s> {
+    pub(crate) name: String,
     #[serde(skip)]
     #[derivative(PartialEq = "ignore")]
-    pub function: &'s dyn FunctionDefinition,
+    pub(crate) function: &'s dyn FunctionDefinition,
     #[serde(skip)]
-    pub return_type: Type,
-    pub args: Vec<FunctionCallArgExpr<'s>>,
+    pub(crate) return_type: Type,
+    pub(crate) args: Vec<FunctionCallArgExpr<'s>>,
     #[serde(skip)]
-    pub context: Option<FunctionDefinitionContext>,
+    pub(crate) context: Option<FunctionDefinitionContext>,
 }
 
 impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
@@ -234,7 +236,7 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
         self.args.iter().any(|arg| arg.uses_list(field))
     }
 
-    fn compile(self) -> CompiledValueExpr<'s> {
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
         let ty = self.get_type();
         let Self {
             function,
@@ -247,7 +249,7 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
         let call = function.compile(&mut (&args).iter().map(|arg| arg.into()), context);
         let args = args
             .into_iter()
-            .map(FunctionCallArgExpr::compile)
+            .map(|arg| compiler.compile_function_call_arg_expr(arg))
             .collect::<Vec<_>>()
             .into_boxed_slice();
         if map_each.is_some() {
@@ -281,7 +283,7 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
 }
 
 impl<'s> FunctionCallExpr<'s> {
-    pub fn new(
+    pub(crate) fn new(
         name: &str,
         function: &'s dyn FunctionDefinition,
         args: Vec<FunctionCallArgExpr<'s>>,
@@ -300,7 +302,10 @@ impl<'s> FunctionCallExpr<'s> {
         }
     }
 
-    pub fn lex_with_function<'i>(input: &'i str, function: Function<'s>) -> LexResult<'i, Self> {
+    pub(crate) fn lex_with_function<'i>(
+        input: &'i str,
+        function: Function<'s>,
+    ) -> LexResult<'i, Self> {
         let scheme = function.scheme();
         let name = function.name();
         let definition = function.as_definition();

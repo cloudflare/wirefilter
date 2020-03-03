@@ -1,61 +1,69 @@
+//! Each AST expression node gets compiled into a CompiledExpr or a CompiledValueExpr.
+//! Therefore, Filter essentialy is a public API facade for a tree of Compiled(Value)Exprs.
+//! When filter gets executed it calls `execute` method on its root expression which then
+//! under the hood propagates field values to its leafs by recursively calling
+//! their `execute` methods and aggregating results into a single boolean value
+//! as recursion unwinds.
+
 use crate::{
-    execution_context::ExecutionContext,
+    compiler::Compiler,
     scheme::{Scheme, SchemeMismatchError},
     types::{LhsValue, Type},
 };
 
-// Each AST expression node gets compiled into CompiledExpr. Therefore, Filter
-// essentialy is a public API facade for a tree of CompiledExprs. When filter
-// gets executed it calls `execute` method on its root expression which then
-// under the hood propagates field values to its leafs by recursively calling
-// their `execute` methods and aggregating results into a single boolean value
-// as recursion unwinds.
-pub(crate) struct CompiledOneExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> bool + Sync + Send + 's>,
+/// Boxed closure for [`Expr`] AST node that evaluates to a simple [`bool`].
+#[allow(clippy::type_complexity)]
+pub struct CompiledOneExpr<'s, C: Compiler + 's>(
+    Box<dyn for<'e> Fn(&'e C::ExecutionContext) -> bool + Sync + Send + 's>,
 );
 
-impl<'s> CompiledOneExpr<'s> {
+impl<'s, C: Compiler + 's> CompiledOneExpr<'s, C> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> bool + Sync + Send + 's,
+    pub fn new(
+        closure: impl for<'e> Fn(&'e C::ExecutionContext) -> bool + Sync + Send + 's,
     ) -> Self {
         CompiledOneExpr(Box::new(closure))
     }
 
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
+    /// Executes the closure against a provided context with values.
+    pub fn execute<'e>(&self, ctx: &'e C::ExecutionContext) -> bool {
         self.0(ctx)
     }
 }
 
-type CompiledVecExprResult = Box<[bool]>;
+pub(crate) type CompiledVecExprResult = Box<[bool]>;
 
-pub(crate) struct CompiledVecExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + Sync + Send + 's>,
+/// Boxed closure for [`Expr`] AST node that evaluates to a list of [`bool`].
+#[allow(clippy::type_complexity)]
+pub struct CompiledVecExpr<'s, C: Compiler + 's>(
+    Box<dyn for<'e> Fn(&'e C::ExecutionContext) -> CompiledVecExprResult + Sync + Send + 's>,
 );
 
-impl<'s> CompiledVecExpr<'s> {
+impl<'s, C: Compiler + 's> CompiledVecExpr<'s, C> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledVecExprResult + Sync + Send + 's,
+    pub fn new(
+        closure: impl for<'e> Fn(&'e C::ExecutionContext) -> CompiledVecExprResult + Sync + Send + 's,
     ) -> Self {
         CompiledVecExpr(Box::new(closure))
     }
 
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
+    /// Executes the closure against a provided context with values.
+    pub fn execute<'e>(&self, ctx: &'e C::ExecutionContext) -> CompiledVecExprResult {
         self.0(ctx)
     }
 }
 
-pub(crate) enum CompiledExpr<'s> {
-    One(CompiledOneExpr<'s>),
-    Vec(CompiledVecExpr<'s>),
+/// Enum of boxed closure for [`Expr`] AST nodes.
+pub enum CompiledExpr<'s, C: Compiler> {
+    /// Variant for [`Expr`] AST node that evaluates to a simple [`bool`].
+    One(CompiledOneExpr<'s, C>),
+    /// Variant for [`Expr`] AST node that evaluates to a list of [`bool`].
+    Vec(CompiledVecExpr<'s, C>),
 }
 
-impl<'s> CompiledExpr<'s> {
+impl<'s, C: Compiler + 's> CompiledExpr<'s, C> {
     #[cfg(test)]
-    pub fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e>) -> bool {
+    pub(crate) fn execute_one<'e>(&self, ctx: &'e C::ExecutionContext) -> bool {
         match self {
             CompiledExpr::One(one) => one.execute(ctx),
             CompiledExpr::Vec(_) => unreachable!(),
@@ -63,7 +71,7 @@ impl<'s> CompiledExpr<'s> {
     }
 
     #[cfg(test)]
-    pub fn execute_vec<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledVecExprResult {
+    pub(crate) fn execute_vec<'e>(&self, ctx: &'e C::ExecutionContext) -> CompiledVecExprResult {
         match self {
             CompiledExpr::One(_) => unreachable!(),
             CompiledExpr::Vec(vec) => vec.execute(ctx),
@@ -71,7 +79,7 @@ impl<'s> CompiledExpr<'s> {
     }
 }
 
-pub(crate) type CompiledValueResult<'a> = Result<LhsValue<'a>, Type>;
+pub type CompiledValueResult<'a> = Result<LhsValue<'a>, Type>;
 
 impl<'a> From<LhsValue<'a>> for CompiledValueResult<'a> {
     fn from(value: LhsValue<'a>) -> Self {
@@ -85,20 +93,25 @@ impl<'a> From<Type> for CompiledValueResult<'a> {
     }
 }
 
-pub(crate) struct CompiledValueExpr<'s>(
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + Sync + Send + 's>,
+/// Boxed closure for [`ValueExpr`] AST node that evaluates to an [`LhsValue`].
+#[allow(clippy::type_complexity)]
+pub struct CompiledValueExpr<'s, C: Compiler + 's>(
+    Box<dyn for<'e> Fn(&'e C::ExecutionContext) -> CompiledValueResult<'e> + Sync + Send + 's>,
 );
 
-impl<'s> CompiledValueExpr<'s> {
+impl<'s, C: Compiler + 's> CompiledValueExpr<'s, C> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e>) -> CompiledValueResult<'e> + Sync + Send + 's,
+    pub fn new(
+        closure: impl for<'e> Fn(&'e C::ExecutionContext) -> CompiledValueResult<'e> + Sync + Send + 's,
     ) -> Self {
         CompiledValueExpr(Box::new(closure))
     }
 
-    /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> CompiledValueResult<'e> {
+    /// Executes the closure against a provided context with values.
+    pub fn execute<'e>(&self, ctx: &'e C::ExecutionContext) -> CompiledValueResult<'e>
+    where
+        C::ExecutionContext: 'e,
+    {
         self.0(ctx)
     }
 }
@@ -118,20 +131,23 @@ impl<'s> CompiledValueExpr<'s> {
 /// In the future the underlying representation might change, but for now it
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
-pub struct Filter<'s> {
-    root_expr: CompiledOneExpr<'s>,
+pub struct Filter<'s, C: Compiler> {
+    root_expr: CompiledOneExpr<'s, C>,
     scheme: &'s Scheme,
 }
 
-impl<'s> Filter<'s> {
+impl<'s, C: Compiler + 's> Filter<'s, C> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledOneExpr<'s>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledOneExpr<'s, C>, scheme: &'s Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e>) -> Result<bool, SchemeMismatchError> {
-        if self.scheme == ctx.scheme() {
+    pub fn execute<'e>(&self, ctx: &'e C::ExecutionContext) -> Result<bool, SchemeMismatchError>
+    where
+        C::ExecutionContext: PartialEq<Scheme>,
+    {
+        if ctx == self.scheme {
             Ok(self.root_expr.execute(ctx))
         } else {
             Err(SchemeMismatchError)

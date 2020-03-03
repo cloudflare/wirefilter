@@ -62,6 +62,7 @@ mod lex;
 mod scheme;
 
 mod ast;
+mod compiler;
 mod execution_context;
 mod filter;
 mod functions;
@@ -74,9 +75,14 @@ mod strict_partial_ord;
 mod types;
 
 pub use self::{
-    ast::FilterAst,
+    ast::{
+        function_expr::{FunctionCallArgExpr, FunctionCallExpr},
+        index_expr::IndexExpr,
+        Expr, FilterAst, ValueExpr,
+    },
+    compiler::{Compiler, DefaultCompiler, ExecCtx},
     execution_context::ExecutionContext,
-    filter::Filter,
+    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, Filter},
     functions::{
         FunctionArgInvalidConstantError, FunctionArgKind, FunctionArgKindMismatchError,
         FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
@@ -85,7 +91,7 @@ pub use self::{
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map},
-    list_matcher::ListMatcher,
+    list_matcher::{ListMatcher, ListMatcherWrapper},
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
         IdentifierRedefinitionError, ParseError, Scheme, SchemeMismatchError, UnknownFieldError,

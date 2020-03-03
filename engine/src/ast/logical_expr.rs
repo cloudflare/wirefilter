@@ -1,5 +1,6 @@
 use super::{simple_expr::SimpleExpr, Expr};
 use crate::{
+    compiler::Compiler,
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme},
@@ -130,16 +131,16 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
         }
     }
 
-    fn compile(self) -> CompiledExpr<'s> {
+    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
         match self {
-            LogicalExpr::Simple(op) => op.compile(),
+            LogicalExpr::Simple(op) => op.compile_with_compiler(compiler),
             LogicalExpr::Combining { op, items } => {
                 let mut items = items.into_iter();
-                let first = items.next().unwrap().compile();
+                let first = items.next().unwrap().compile_with_compiler(compiler);
                 match first {
                     CompiledExpr::One(first) => {
                         let items = items
-                            .map(|item| match item.compile() {
+                            .map(|item| match item.compile_with_compiler(compiler) {
                                 CompiledExpr::One(one) => one,
                                 CompiledExpr::Vec(_) => unreachable!(),
                             })
@@ -161,7 +162,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
                     }
                     CompiledExpr::Vec(first) => {
                         let items = items
-                            .map(|item| match item.compile() {
+                            .map(|item| match item.compile_with_compiler(compiler) {
                                 CompiledExpr::One(_) => unreachable!(),
                                 CompiledExpr::Vec(vec) => vec,
                             })
