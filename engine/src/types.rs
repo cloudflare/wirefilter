@@ -1,22 +1,21 @@
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
+    lhs_types::{Array, ArrayIterator, Map, MapIter, MapValuesIntoIter},
     rhs_types::{Bytes, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
 use failure::Fail;
-use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::de::{DeserializeSeed, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     convert::TryFrom,
     fmt::{self, Debug, Formatter},
     iter::once,
     net::IpAddr,
-    ops::Deref,
     ops::RangeInclusive,
 };
 
@@ -305,7 +304,7 @@ impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-enum BytesOrString<'a> {
+pub enum BytesOrString<'a> {
     BorrowedBytes(#[serde(borrow)] &'a [u8]),
     OwnedBytes(Vec<u8>),
     BorrowedString(#[serde(borrow)] &'a str),
@@ -313,556 +312,13 @@ enum BytesOrString<'a> {
 }
 
 impl<'a> BytesOrString<'a> {
-    fn into_bytes(self) -> Cow<'a, [u8]> {
+    pub fn into_bytes(self) -> Cow<'a, [u8]> {
         match self {
             BytesOrString::BorrowedBytes(slice) => (*slice).into(),
             BytesOrString::OwnedBytes(vec) => vec.into(),
             BytesOrString::BorrowedString(str) => str.as_bytes().into(),
             BytesOrString::OwnedString(str) => str.into_bytes().into(),
         }
-    }
-}
-
-// Ideally, we would want to use Cow<'a, LhsValue<'a>> here
-// but it doesnt work for unknown reasons
-// See https://github.com/rust-lang/rust/issues/23707#issuecomment-557312736
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum InnerArray<'a> {
-    Owned(Vec<LhsValue<'a>>),
-    Borrowed(&'a [LhsValue<'a>]),
-}
-
-impl<'a> InnerArray<'a> {
-    fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
-        if let InnerArray::Borrowed(slice) = self {
-            *self = InnerArray::Owned(slice.to_vec());
-        }
-        match self {
-            InnerArray::Owned(vec) => vec.get_mut(idx),
-            InnerArray::Borrowed(_) => unreachable!(),
-        }
-    }
-
-    fn insert(&mut self, idx: usize, value: LhsValue<'a>) {
-        if let InnerArray::Borrowed(slice) = self {
-            *self = InnerArray::Owned(slice.to_vec());
-        }
-        match self {
-            InnerArray::Owned(vec) => vec.insert(idx, value),
-            InnerArray::Borrowed(_) => unreachable!(),
-        }
-    }
-
-    fn push(&mut self, value: LhsValue<'a>) {
-        if let InnerArray::Borrowed(slice) = self {
-            *self = InnerArray::Owned(slice.to_vec());
-        }
-        match self {
-            InnerArray::Owned(vec) => vec.push(value),
-            InnerArray::Borrowed(_) => unreachable!(),
-        }
-    }
-}
-
-impl<'a> Deref for InnerArray<'a> {
-    type Target = [LhsValue<'a>];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            InnerArray::Owned(vec) => &vec[..],
-            InnerArray::Borrowed(slice) => slice,
-        }
-    }
-}
-
-/// An array of [`Type`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Array<'a> {
-    val_type: Cow<'a, Type>,
-    data: InnerArray<'a>,
-}
-
-impl<'a> Array<'a> {
-    /// Creates a new array
-    pub fn new(val_type: Type) -> Self {
-        Self {
-            val_type: Cow::Owned(val_type),
-            data: InnerArray::Owned(Vec::new()),
-        }
-    }
-
-    /// Get a reference to an element if it exists
-    pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
-        self.data.get(idx)
-    }
-
-    /// Get a mutable reference to an element if it exists
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
-        self.data.get_mut(idx)
-    }
-
-    /// Inserts an element at index `idx`
-    pub fn insert(&mut self, idx: usize, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
-        let value_type = value.get_type();
-        if *self.val_type != value_type {
-            return Err(TypeMismatchError {
-                expected: self.val_type.clone().into_owned().into(),
-                actual: value_type,
-            });
-        }
-        self.data.insert(idx, value);
-        Ok(())
-    }
-
-    /// Push an element to the back of the array
-    pub fn push(&mut self, value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
-        let value_type = value.get_type();
-        if *self.val_type != value_type {
-            return Err(TypeMismatchError {
-                expected: self.val_type.clone().into_owned().into(),
-                actual: value_type,
-            });
-        }
-        self.data.push(value);
-        Ok(())
-    }
-
-    pub(crate) fn as_ref(&'a self) -> Array<'a> {
-        Array {
-            val_type: match self.val_type {
-                Cow::Owned(ref ty) => Cow::Borrowed(ty),
-                Cow::Borrowed(ty) => Cow::Borrowed(ty),
-            },
-            data: match self.data {
-                InnerArray::Owned(ref vec) => InnerArray::Borrowed(&vec[..]),
-                InnerArray::Borrowed(ref slice) => InnerArray::Borrowed(slice),
-            },
-        }
-    }
-
-    /// Returns the type of the contained values.
-    pub fn value_type(&self) -> &Type {
-        &self.val_type
-    }
-
-    /// Returns the number of elements in the array
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Returns true if the array contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    pub(crate) fn extract(self, idx: usize) -> Option<LhsValue<'a>> {
-        let Self { data, .. } = self;
-        if idx >= data.len() {
-            None
-        } else {
-            match data {
-                InnerArray::Owned(mut vec) => Some(vec.swap_remove(idx)),
-                InnerArray::Borrowed(slice) => Some(unsafe { slice.get_unchecked(idx) }.as_ref()),
-            }
-        }
-    }
-}
-
-impl<'a> GetType for Array<'a> {
-    fn get_type(&self) -> Type {
-        Type::Array(Box::new(self.val_type.clone().into_owned()))
-    }
-}
-
-pub struct AsRefIterator<'a, T: Iterator<Item = &'a LhsValue<'a>>>(T);
-
-impl<'a, T: Iterator<Item = &'a LhsValue<'a>>> Iterator for AsRefIterator<'a, T> {
-    type Item = LhsValue<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(LhsValue::as_ref)
-    }
-}
-
-pub enum ArrayIterator<'a> {
-    Owned(std::vec::IntoIter<LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::slice::Iter<'a, LhsValue<'a>>>),
-}
-
-impl<'a> Iterator for ArrayIterator<'a> {
-    type Item = LhsValue<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            ArrayIterator::Owned(vec_iter) => vec_iter.next(),
-            ArrayIterator::Borrowed(slice_iter) => slice_iter.next(),
-        }
-    }
-}
-
-impl<'a> IntoIterator for Array<'a> {
-    type Item = LhsValue<'a>;
-    type IntoIter = ArrayIterator<'a>;
-    fn into_iter(self) -> Self::IntoIter {
-        match self.data {
-            InnerArray::Owned(vec) => ArrayIterator::Owned(vec.into_iter()),
-            InnerArray::Borrowed(slice) => ArrayIterator::Borrowed(AsRefIterator(slice.iter())),
-        }
-    }
-}
-
-impl<'a> IntoIterator for &'a Array<'a> {
-    type Item = &'a LhsValue<'a>;
-    type IntoIter = std::slice::Iter<'a, LhsValue<'a>>;
-    fn into_iter(self) -> Self::IntoIter {
-        (&self.data).iter()
-    }
-}
-
-impl<'a> Extend<LhsValue<'a>> for Array<'a> {
-    fn extend<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = LhsValue<'a>>,
-    {
-        if let InnerArray::Borrowed(slice) = self.data {
-            self.data = InnerArray::Owned(slice.to_vec());
-        }
-        let value_type = self.value_type().clone();
-        match self.data {
-            InnerArray::Owned(ref mut vec) => vec.extend(
-                iter.into_iter()
-                    .inspect(|elem| assert!(elem.get_type() == value_type)),
-            ),
-            InnerArray::Borrowed(_) => unreachable!(),
-        }
-    }
-}
-
-impl<'a> Serialize for Array<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(Some(self.len()))?;
-        for element in self.data.iter() {
-            seq.serialize_element(element)?;
-        }
-        seq.end()
-    }
-}
-
-impl<'de, 'a> DeserializeSeed<'de> for &'a mut Array<'de> {
-    type Value = ();
-
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct ArrayVisitor<'de, 'a>(&'a mut Array<'de>);
-
-        impl<'de, 'a> Visitor<'de> for ArrayVisitor<'de, 'a> {
-            type Value = ();
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(formatter, "an array of lhs value")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                while let Some(elem) = seq.next_element_seed(LhsValueSeed(self.0.value_type()))? {
-                    self.0.push(elem).map_err(|e| {
-                        de::Error::custom(format!(
-                            "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        ))
-                    })?;
-                }
-                Ok(())
-            }
-        }
-
-        deserializer.deserialize_seq(ArrayVisitor(self))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum InnerMap<'a> {
-    Owned(HashMap<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(&'a HashMap<Box<[u8]>, LhsValue<'a>>),
-}
-
-impl<'a> InnerMap<'a> {
-    fn get_mut(&mut self, key: &[u8]) -> Option<&mut LhsValue<'a>> {
-        if let InnerMap::Borrowed(map) = self {
-            *self = InnerMap::Owned(map.clone());
-        }
-        match self {
-            InnerMap::Owned(map) => map.get_mut(key),
-            InnerMap::Borrowed(_) => unreachable!(),
-        }
-    }
-
-    fn insert(&mut self, key: &[u8], value: LhsValue<'a>) {
-        if let InnerMap::Borrowed(map) = self {
-            *self = InnerMap::Owned(map.clone());
-        }
-        match self {
-            InnerMap::Owned(map) => map.insert(key.to_vec().into_boxed_slice(), value),
-            InnerMap::Borrowed(_) => unreachable!(),
-        };
-    }
-}
-
-impl<'a> Deref for InnerMap<'a> {
-    type Target = HashMap<Box<[u8]>, LhsValue<'a>>;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            InnerMap::Owned(ref map) => &map,
-            InnerMap::Borrowed(ref_map) => ref_map,
-        }
-    }
-}
-
-/// A map of string to [`Type`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Map<'a> {
-    val_type: Cow<'a, Type>,
-    data: InnerMap<'a>,
-}
-
-impl<'a> Map<'a> {
-    /// Creates a new map
-    pub fn new(val_type: Type) -> Self {
-        Self {
-            val_type: Cow::Owned(val_type),
-            data: InnerMap::Owned(HashMap::new()),
-        }
-    }
-
-    /// Get a reference to an element if it exists
-    pub fn get(&self, key: &[u8]) -> Option<&LhsValue<'a>> {
-        self.data.get(key)
-    }
-
-    /// Get a mutable reference to an element if it exists
-    pub fn get_mut(&mut self, key: &[u8]) -> Option<&mut LhsValue<'a>> {
-        self.data.get_mut(key)
-    }
-
-    /// Inserts an element, returns the previously inserted
-    /// element if it exists.
-    pub fn insert(&mut self, key: &[u8], value: LhsValue<'a>) -> Result<(), TypeMismatchError> {
-        let value_type = value.get_type();
-        if *self.val_type != value_type {
-            return Err(TypeMismatchError {
-                expected: self.val_type.clone().into_owned().into(),
-                actual: value_type,
-            });
-        }
-        self.data.insert(key, value);
-        Ok(())
-    }
-
-    pub(crate) fn as_ref(&'a self) -> Map<'a> {
-        Map {
-            val_type: self.val_type.clone(),
-            data: match self.data {
-                InnerMap::Owned(ref map) => InnerMap::Borrowed(map),
-                InnerMap::Borrowed(ref_map) => InnerMap::Borrowed(ref_map),
-            },
-        }
-    }
-
-    /// Returns the type of the contained values.
-    pub fn value_type(&self) -> &Type {
-        &self.val_type
-    }
-
-    /// Returns the number of elements in the map
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Returns true if the map contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    /// Convert current map into an iterator over contained values
-    pub fn values_into_iter(self) -> MapValuesIntoIter<'a> {
-        let Map { data, .. } = self;
-        match data {
-            InnerMap::Owned(map) => MapValuesIntoIter::Owned(map.into_iter()),
-            InnerMap::Borrowed(map) => MapValuesIntoIter::Borrowed(AsRefIterator(map.values())),
-        }
-    }
-
-    pub(crate) fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
-        let Self { data, .. } = self;
-        match data {
-            InnerMap::Owned(mut map) => map.remove(key),
-            InnerMap::Borrowed(map) => map.get(key).map(LhsValue::as_ref),
-        }
-    }
-}
-
-impl<'a> GetType for Map<'a> {
-    fn get_type(&self) -> Type {
-        Type::Map(Box::new(self.val_type.clone().into_owned()))
-    }
-}
-
-pub enum MapValuesIntoIter<'a> {
-    Owned(std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::collections::hash_map::Values<'a, Box<[u8]>, LhsValue<'a>>>),
-}
-
-impl<'a> Iterator for MapValuesIntoIter<'a> {
-    type Item = LhsValue<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            MapValuesIntoIter::Owned(iter) => iter.next().map(|(_, v)| v),
-            MapValuesIntoIter::Borrowed(iter) => iter.next(),
-        }
-    }
-}
-
-impl<'a> IntoIterator for Map<'a> {
-    type Item = (Box<[u8]>, LhsValue<'a>);
-    type IntoIter = std::collections::hash_map::IntoIter<Box<[u8]>, LhsValue<'a>>;
-    fn into_iter(self) -> Self::IntoIter {
-        match self.data {
-            InnerMap::Owned(map) => map.into_iter(),
-            InnerMap::Borrowed(ref_map) => ref_map.clone().into_iter(),
-        }
-    }
-}
-
-impl<'a> Serialize for Map<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let to_map = self.data.keys().all(|key| std::str::from_utf8(key).is_ok());
-
-        if to_map {
-            let mut map = serializer.serialize_map(Some(self.len()))?;
-            for (k, v) in self.data.iter() {
-                map.serialize_entry(std::str::from_utf8(k).unwrap(), v)?;
-            }
-            map.end()
-        } else {
-            // Keys have to be sorted in order to have reproducible output
-            let mut keys = Vec::new();
-            for key in self.data.keys() {
-                keys.push(key)
-            }
-            keys.sort();
-            let mut seq = serializer.serialize_seq(Some(self.len()))?;
-            for key in keys {
-                seq.serialize_element(&[
-                    &LhsValue::Bytes((&**key).into()),
-                    self.data.get(key).unwrap(),
-                ])?;
-            }
-            seq.end()
-        }
-    }
-}
-
-struct MapEntrySeed<'a>(&'a Type);
-
-impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
-    type Value = (Cow<'de, [u8]>, LhsValue<'de>);
-
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct MapEntryVisitor<'a>(&'a Type);
-
-        impl<'de, 'a> Visitor<'de> for MapEntryVisitor<'a> {
-            type Value = (Cow<'de, [u8]>, LhsValue<'de>);
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(formatter, "a [key, lhs value] pair")
-            }
-
-            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let key = seq
-                    .next_element::<BytesOrString<'_>>()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let value = seq
-                    .next_element_seed(LhsValueSeed(self.0))?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                Ok((key.into_bytes(), value))
-            }
-        }
-
-        deserializer.deserialize_seq(MapEntryVisitor(self.0))
-    }
-}
-
-impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
-    type Value = ();
-
-    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct MapVisitor<'de, 'a>(&'a mut Map<'de>);
-
-        impl<'de, 'a> Visitor<'de> for MapVisitor<'de, 'a> {
-            type Value = ();
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(
-                    formatter,
-                    "a map of lhs value or an array of pair of lhs value"
-                )
-            }
-
-            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-            where
-                M: MapAccess<'de>,
-            {
-                while let Some(key) = access.next_key::<Cow<'_, str>>()? {
-                    let value = access.next_value_seed(LhsValueSeed(self.0.value_type()))?;
-                    self.0.insert(key.as_bytes(), value).map_err(|e| {
-                        de::Error::custom(format!(
-                            "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        ))
-                    })?;
-                }
-
-                Ok(())
-            }
-
-            fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                while let Some(entry) = seq.next_element_seed(MapEntrySeed(self.0.value_type()))? {
-                    self.0.insert(&entry.0, entry.1).map_err(|e| {
-                        de::Error::custom(format!(
-                            "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        ))
-                    })?;
-                }
-                Ok(())
-            }
-        }
-
-        deserializer.deserialize_struct("", &[], MapVisitor(self))
     }
 }
 
@@ -947,7 +403,7 @@ impl<'a> LhsValue<'a> {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
-            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.data.get(key.as_bytes())),
+            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.get(key.as_bytes())),
             (_, FieldIndex::MapKey(_)) => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
@@ -1024,8 +480,8 @@ impl<'a> LhsValue<'a> {
     /// Returns an iterator over the Map or Array
     pub fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
-            LhsValue::Array(array) => Some(Iter::IterArray((&array.data).iter())),
-            LhsValue::Map(map) => Some(Iter::IterMap((&map.data).iter())),
+            LhsValue::Array(array) => Some(Iter::IterArray(array.as_slice().iter())),
+            LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
             _ => None,
         }
     }
@@ -1113,7 +569,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
 
 pub enum Iter<'a> {
     IterArray(std::slice::Iter<'a, LhsValue<'a>>),
-    IterMap(std::collections::hash_map::Iter<'a, Box<[u8]>, LhsValue<'a>>),
+    IterMap(MapIter<'a, 'a>),
 }
 
 impl<'a> Iterator for Iter<'a> {

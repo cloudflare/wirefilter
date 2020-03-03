@@ -191,7 +191,8 @@ fn test_scheme_mismatch() {
 
 #[test]
 fn test_serde() {
-    use crate::types::{Array, Map, Type};
+    use crate::lhs_types::{Array, Map};
+    use crate::types::Type;
     use std::net::IpAddr;
     use std::str::FromStr;
 

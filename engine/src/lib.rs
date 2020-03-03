@@ -66,6 +66,7 @@ mod execution_context;
 mod filter;
 mod functions;
 mod heap_searcher;
+mod lhs_types;
 mod range_set;
 mod rhs_types;
 mod strict_partial_ord;
@@ -82,9 +83,10 @@ pub use self::{
         SimpleFunctionParam,
     },
     lex::LexErrorKind,
+    lhs_types::{Array, Map},
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, ItemRedefinitionError, ParseError, Scheme,
         SchemeMismatchError, UnknownFieldError,
     },
-    types::{Array, ExpectedType, GetType, LhsValue, Map, Type, TypeMismatchError},
+    types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
