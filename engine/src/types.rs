@@ -563,7 +563,7 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut Array<'de> {
         impl<'de, 'a> Visitor<'de> for ArrayVisitor<'de, 'a> {
             type Value = ();
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "an array of lhs value")
             }
 
@@ -788,7 +788,7 @@ impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
         impl<'de, 'a> Visitor<'de> for MapEntryVisitor<'a> {
             type Value = (Cow<'de, [u8]>, LhsValue<'de>);
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "a [key, lhs value] pair")
             }
 
@@ -797,7 +797,7 @@ impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
                 V: SeqAccess<'de>,
             {
                 let key = seq
-                    .next_element::<BytesOrString>()?
+                    .next_element::<BytesOrString<'_>>()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 let value = seq
                     .next_element_seed(LhsValueSeed(self.0))?
@@ -822,7 +822,7 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
         impl<'de, 'a> Visitor<'de> for MapVisitor<'de, 'a> {
             type Value = ();
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(
                     formatter,
                     "a map of lhs value or an array of pair of lhs value"

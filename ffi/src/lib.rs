@@ -579,7 +579,7 @@ pub extern "C" fn wirefilter_free_array(array: RustBox<LhsValue<'_>>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_compile_filter<'s>(
     filter_ast: RustBox<FilterAst<'s>>,
-) -> CompilingResult {
+) -> CompilingResult<'_> {
     catch_panic(std::panic::AssertUnwindSafe(|| {
         let filter_ast = filter_ast.into_real_box();
         CompilingResult::Ok(filter_ast.compile().into())
@@ -587,7 +587,7 @@ pub extern "C" fn wirefilter_compile_filter<'s>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult) {
+pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult<'_>) {
     drop(r);
 }
 

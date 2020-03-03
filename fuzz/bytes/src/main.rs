@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate afl;
-extern crate wirefilter;
 
 // This is up here to make the Scheme macro happy
 #[cfg(fuzzing)]

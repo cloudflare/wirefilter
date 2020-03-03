@@ -75,7 +75,7 @@ where
     }
 }
 
-fn record_backtrace(info: &std::panic::PanicInfo, bt: &mut String) {
+fn record_backtrace(info: &std::panic::PanicInfo<'_>, bt: &mut String) {
     let (file, line) = if let Some(location) = info.location() {
         (location.file(), location.line())
     } else {
