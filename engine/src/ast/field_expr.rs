@@ -364,8 +364,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Array(_) => unreachable!(),
             },
             ComparisonOpExpr::InList(list) => lhs.compile_with(false, &[], move |val, ctx| {
-                ctx.get_list_matcher(&val.get_type())
-                    .expect("no list matcher for required type")
+                ctx.get_list_matcher_unchecked(&val.get_type())
                     .match_value(list.name(), &val)
             }),
         }

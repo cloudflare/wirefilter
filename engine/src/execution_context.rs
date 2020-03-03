@@ -99,8 +99,10 @@ impl<'e> ExecutionContext<'e> {
     }
 
     /// Get the `ListMatcher` for the specified type.
-    pub fn get_list_matcher(&self, t: &Type) -> Option<&ListMatcherWrapper> {
-        self.list_data.get(t)
+    pub fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
+        self.list_data
+            .get(t)
+            .expect("no list matcher for the given type")
     }
 }
 
