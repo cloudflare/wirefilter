@@ -2,7 +2,7 @@
 use super::{function_expr::FunctionCallExpr, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
-    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr},
+    filter::{CompiledExpr, CompiledValueExpr},
     heap_searcher::HeapSearcher,
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     list_matcher::ListMatcher,
@@ -293,39 +293,39 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
 
         match self.op {
             ComparisonOpExpr::IsTrue => match lhs.get_type() {
-                Type::Bool => {
-                    CompiledExpr::One(lhs.compile_one_with(false, move |x| *cast_value!(x, Bool)))
-                }
+                Type::Bool => CompiledExpr::One(
+                    lhs.compile_one_with(false, move |x, _ctx| *cast_value!(x, Bool)),
+                ),
                 Type::Array(arr_type) => match *arr_type {
-                    Type::Bool => {
-                        CompiledExpr::Vec(lhs.compile_vec_with(&[], move |x| *cast_value!(x, Bool)))
-                    }
+                    Type::Bool => CompiledExpr::Vec(
+                        lhs.compile_vec_with(&[], move |x, _ctx| *cast_value!(x, Bool)),
+                    ),
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
             },
             ComparisonOpExpr::Ordering { op, rhs } => match op {
-                OrderingOp::NotEqual => lhs.compile_with(true, &[], move |x| {
+                OrderingOp::NotEqual => lhs.compile_with(true, &[], move |x, _ctx| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
-                _ => lhs.compile_with(false, &[], move |x| {
+                _ => lhs.compile_with(false, &[], move |x, _ctx| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
             },
             ComparisonOpExpr::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(false, &[], move |x| cast_value!(x, Int) & rhs != 0),
+            } => lhs.compile_with(false, &[], move |x, _ctx| cast_value!(x, Int) & rhs != 0),
             ComparisonOpExpr::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                lhs.compile_with(false, &[], move |x| {
+                lhs.compile_with(false, &[], move |x, _ctx| {
                     searcher.search_in(cast_value!(x, Bytes)).is_some()
                 })
             }
-            ComparisonOpExpr::Matches(regex) => {
-                lhs.compile_with(false, &[], move |x| regex.is_match(cast_value!(x, Bytes)))
-            }
+            ComparisonOpExpr::Matches(regex) => lhs.compile_with(false, &[], move |x, _ctx| {
+                regex.is_match(cast_value!(x, Bytes))
+            }),
             ComparisonOpExpr::OneOf(values) => match values {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
@@ -339,7 +339,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(false, &[], move |x| match cast_value!(x, Ip) {
+                    lhs.compile_with(false, &[], move |x, _ctx| match cast_value!(x, Ip) {
                         IpAddr::V4(addr) => v4.contains(addr),
                         IpAddr::V6(addr) => v6.contains(addr),
                     })
@@ -347,13 +347,15 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(false, &[], move |x| values.contains(cast_value!(x, Int)))
+                    lhs.compile_with(false, &[], move |x, _ctx| {
+                        values.contains(cast_value!(x, Int))
+                    })
                 }
                 RhsValues::Bytes(values) => {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(false, &[], move |x| {
+                    lhs.compile_with(false, &[], move |x, _ctx| {
                         values.contains(cast_value!(x, Bytes) as &[u8])
                     })
                 }
@@ -361,16 +363,11 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Map(_) => unreachable!(),
                 RhsValues::Array(_) => unreachable!(),
             },
-            ComparisonOpExpr::InList(list) => {
-                let lhs = lhs.compile();
-                CompiledExpr::One(CompiledOneExpr::new(move |ctx| match lhs.execute(ctx) {
-                    Ok(val) => ctx
-                        .get_list_matcher(&val.get_type())
-                        .expect("no list matcher for required type")
-                        .match_value(list.name(), &val),
-                    Err(_) => false,
-                }))
-            }
+            ComparisonOpExpr::InList(list) => lhs.compile_with(false, &[], move |val, ctx| {
+                ctx.get_list_matcher(&val.get_type())
+                    .expect("no list matcher for required type")
+                    .match_value(list.name(), &val)
+            }),
         }
     }
 }
@@ -380,6 +377,7 @@ mod tests {
     use super::*;
     use crate::{
         ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
+        ast::simple_expr::SimpleExpr,
         execution_context::ExecutionContext,
         functions::{
             FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
@@ -395,6 +393,19 @@ mod tests {
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
     use std::{convert::TryFrom, iter::once, net::IpAddr};
+
+    fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        match args.next()? {
+            Ok(v) => Some(LhsValue::Bool(
+                Array::try_from(v)
+                    .unwrap()
+                    .into_iter()
+                    .any(|lhs| bool::try_from(lhs).unwrap()),
+            )),
+            Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
+            _ => unreachable!(),
+        }
+    }
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         Some(args.next()?.ok()?)
@@ -508,8 +519,23 @@ mod tests {
                 ip.addr: Ip,
                 ssl: Bool,
                 tcp.port: Int,
+                tcp.ports: Array(Int),
                 array.of.bool: Array(Bool),
             };
+            scheme
+                .add_function(
+                    "any".into(),
+                    SimpleFunctionDefinition {
+                        params: vec![SimpleFunctionParam {
+                            arg_kind: FunctionArgKind::Field,
+                            val_type: Type::Array(Box::new(Type::Bool)),
+                        }],
+                        opt_params: vec![],
+                        return_type: Type::Bool,
+                        implementation: SimpleFunctionImpl::new(any_function),
+                    },
+                )
+                .unwrap();
             scheme
                 .add_function(
                     "echo".into(),
@@ -1999,53 +2025,48 @@ mod tests {
         );
     }
 
+    #[derive(Debug, PartialEq, Clone)]
+    pub struct NumMatcher {}
+
+    impl ListMatcher for NumMatcher {
+        fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool {
+            // Ideally this would lookup list_name in metadata
+            let list_id = if list_name == "even" {
+                [0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            } else {
+                [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            };
+
+            match val {
+                LhsValue::Int(num) => self.num_matches(*num, list_id),
+                _ => unreachable!(), // TODO: is this unreachable?
+            }
+        }
+    }
+
+    /// Match IPs (v4 and v6) in lists.
+    ///
+    /// ```text
+    /// ip.src in $whitelist and not origin.ip in $whitelist
+    /// ```
+    impl NumMatcher {
+        pub fn new() -> Self {
+            NumMatcher {}
+        }
+
+        fn num_matches(&self, num: i32, list_id: [u8; 16]) -> bool {
+            let remainder = if list_id == [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] {
+                1
+            } else {
+                0
+            };
+
+            num % 2 == remainder
+        }
+    }
+
     #[test]
     fn test_number_in_list() {
-        #[derive(Debug, PartialEq, Clone)]
-        pub struct NumMatcher {
-            // TODO: metadata: HashMap<String, ListMetadata>
-        // ListMetadata {
-        //     id: [u8; 16],
-        // }
-        }
-
-        impl ListMatcher for NumMatcher {
-            fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool {
-                // Ideally this would lookup list_name in metadata
-                let list_id = if list_name == "even" {
-                    [0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-                } else {
-                    [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-                };
-
-                match val {
-                    LhsValue::Int(num) => self.num_matches(*num, list_id),
-                    _ => unreachable!(), // TODO: is this unreachable?
-                }
-            }
-        }
-
-        /// Match IPs (v4 and v6) in lists.
-        ///
-        /// ```text
-        /// ip.src in $whitelist and not origin.ip in $whitelist
-        /// ```
-        impl NumMatcher {
-            pub fn new() -> Self {
-                NumMatcher {}
-            }
-
-            fn num_matches(&self, num: i32, list_id: [u8; 16]) -> bool {
-                let remainder = if list_id == [1u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] {
-                    1
-                } else {
-                    0
-                };
-
-                num % 2 == remainder
-            }
-        }
-
         let expr = assert_ok!(
             ComparisonExpr::lex_with(r#"tcp.port in $even"#, &SCHEME),
             ComparisonExpr {
@@ -2094,5 +2115,76 @@ mod tests {
 
         ctx.set_field_value(field("tcp.port"), 1001).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_any_number_in_list() {
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"any(tcp.ports[*] in $even)"#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
+                        name: String::from("any"),
+                        function: SCHEME.get_function("any").unwrap(),
+                        args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
+                            ComparisonExpr {
+                                lhs: IndexExpr {
+                                    lhs: LhsFieldExpr::Field(field("tcp.ports")),
+                                    indexes: vec![FieldIndex::MapEach],
+                                },
+                                op: ComparisonOpExpr::InList(List::from("even".to_string())),
+                            }
+                        ))],
+                        return_type: Type::Bool,
+                        context: None,
+                    }),
+                    indexes: vec![],
+                },
+                op: ComparisonOpExpr::IsTrue
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": {
+                    "name": "any",
+                    "args": [
+                        {
+                            "kind": "SimpleExpr",
+                            "value": {
+                                "lhs": ["tcp.ports", {"kind": "MapEach"}],
+                                "op": "InList",
+                                "rhs": "even"
+                            }
+                        }
+                    ]
+                },
+                "op": "IsTrue"
+            }
+        );
+
+        // EVEN list
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let list_matcher = NumMatcher::new();
+        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+
+        let mut arr1 = Array::new(Type::Int);
+        // 1 odd, 1 even
+        arr1.push(1001.into()).unwrap();
+        arr1.push(1000.into()).unwrap();
+
+        ctx.set_field_value(field("tcp.ports"), arr1).unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
+
+        let mut arr2 = Array::new(Type::Int);
+        // all odd numbers
+        arr2.push(1001.into()).unwrap();
+        arr2.push(1003.into()).unwrap();
+
+        ctx.set_field_value(field("tcp.ports"), arr2).unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
     }
 }
