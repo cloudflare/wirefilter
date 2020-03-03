@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate afl;
-extern crate wirefilter;
+
 #[macro_use]
 extern crate lazy_static;
 

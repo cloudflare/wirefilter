@@ -102,7 +102,7 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
         impl<'de, 'a> Visitor<'de> for ExecutionContextVisitor<'de, 'a> {
             type Value = ();
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "a map of lhs value")
             }
 
@@ -116,8 +116,8 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
                         .scheme
                         .get_field(&key)
                         .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
-                    let value =
-                        access.next_value_seed::<LhsValueSeed>(LhsValueSeed(&field.get_type()))?;
+                    let value = access
+                        .next_value_seed::<LhsValueSeed<'_>>(LhsValueSeed(&field.get_type()))?;
                     let field = self
                         .0
                         .scheme()
