@@ -15,7 +15,8 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, Map, ParseError, Scheme, Type,
+    Array, DefaultCompiler, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, Map,
+    ParseError, Scheme, Type,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -120,7 +121,7 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
 
 type UsingResult = CResult<bool>;
 
-type CompilingResult<'s> = CResult<RustBox<Filter<'s>>>;
+type CompilingResult<'s, 'e> = CResult<RustBox<Filter<'s, DefaultCompiler<'e>>>>;
 
 type MatchingResult = CResult<bool>;
 
@@ -304,8 +305,8 @@ pub extern "C" fn wirefilter_free_execution_context(exec_context: RustBox<Execut
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_add_int_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
+pub extern "C" fn wirefilter_add_int_value_to_execution_context(
+    exec_context: &mut ExecutionContext<'_>,
     name: ExternallyAllocatedStr<'_>,
     value: i32,
 ) -> bool {
@@ -579,7 +580,7 @@ pub extern "C" fn wirefilter_free_array(array: RustBox<LhsValue<'_>>) {
 #[no_mangle]
 pub extern "C" fn wirefilter_compile_filter<'s>(
     filter_ast: RustBox<FilterAst<'s>>,
-) -> CompilingResult<'_> {
+) -> CompilingResult<'_, '_> {
     catch_panic(std::panic::AssertUnwindSafe(|| {
         let filter_ast = filter_ast.into_real_box();
         CompilingResult::Ok(filter_ast.compile().into())
@@ -587,14 +588,14 @@ pub extern "C" fn wirefilter_compile_filter<'s>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult<'_>) {
+pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult<'_, '_>) {
     drop(r);
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_match<'s>(
-    filter: &Filter<'s>,
-    exec_context: &ExecutionContext<'s>,
+pub extern "C" fn wirefilter_match<'e, 's: 'e>(
+    filter: &Filter<'s, DefaultCompiler<'e>>,
+    exec_context: &ExecutionContext<'e>,
 ) -> MatchingResult {
     catch_panic(std::panic::AssertUnwindSafe(|| {
         match filter.execute(exec_context) {
@@ -610,7 +611,9 @@ pub extern "C" fn wirefilter_free_matching_result(r: MatchingResult) {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<Filter<'_>>) {
+pub extern "C" fn wirefilter_free_compiled_filter(
+    filter: RustBox<Filter<'_, DefaultCompiler<'_>>>,
+) {
     drop(filter);
 }
 

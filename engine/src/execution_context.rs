@@ -1,4 +1,5 @@
 use crate::{
+    compiler::ExecCtx,
     list_matcher::ListMatcherWrapper,
     scheme::{Field, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
@@ -37,6 +38,42 @@ pub struct ExecutionContext<'e> {
     list_data: HashMap<Type, ListMatcherWrapper>,
 }
 
+// This is only used by Filter::execute to check if the current `Filter`
+// is backed by the same `Scheme` as `ExecutionContext`.
+// Its a bit dodgy but will do for now.
+impl<'e> PartialEq<Scheme> for ExecutionContext<'e> {
+    #[inline]
+    fn eq(&self, other: &Scheme) -> bool {
+        self.scheme == other
+    }
+}
+
+impl<'e> ExecCtx for ExecutionContext<'e> {
+    fn get_field_value_unchecked<'s>(&self, field: Field<'s>) -> &LhsValue<'_> {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        // For now we panic in this, but later we are going to align behaviour
+        // with wireshark: resolve all subexpressions that don't have RHS value
+        // to `false`.
+        self.values[field.index()].as_ref().unwrap_or_else(|| {
+            panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            );
+        })
+    }
+
+    /// Get the `ListMatcher` for the specified type.
+    fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
+        self.list_data
+            .get(t)
+            .expect("no list matcher for the given type")
+    }
+}
+
 impl<'e> ExecutionContext<'e> {
     /// Creates an execution context associated with a given scheme.
     ///
@@ -52,23 +89,6 @@ impl<'e> ExecutionContext<'e> {
     /// Returns an associated scheme.
     pub fn scheme(&self) -> &'e Scheme {
         self.scheme
-    }
-
-    pub(crate) fn get_field_value_unchecked<'s>(&'e self, field: Field<'s>) -> &'e LhsValue<'e> {
-        // This is safe because this code is reachable only from Filter::execute
-        // which already performs the scheme compatibility check, but check that
-        // invariant holds in the future at least in the debug mode.
-        debug_assert!(self.scheme() == field.scheme());
-
-        // For now we panic in this, but later we are going to align behaviour
-        // with wireshark: resolve all subexpressions that don't have RHS value
-        // to `false`.
-        self.values[field.index()].as_ref().unwrap_or_else(|| {
-            panic!(
-                "Field {} was registered but not given a value",
-                field.name()
-            );
-        })
     }
 
     /// Sets a runtime value for a given field name.
@@ -103,13 +123,6 @@ impl<'e> ExecutionContext<'e> {
         matcher: T,
     ) {
         self.list_data.insert(t, ListMatcherWrapper::new(matcher));
-    }
-
-    /// Get the `ListMatcher` for the specified type.
-    pub(crate) fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
-        self.list_data
-            .get(t)
-            .expect("no list matcher for the given type")
     }
 }
 
