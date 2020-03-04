@@ -37,6 +37,7 @@ mod ffi_ctest {
         parse_good_filter,
         parse_bad_filter,
         filter_uses_field,
+        filter_uses_list_field,
         filter_hash,
         filter_serialize,
         scheme_serialize,

@@ -309,6 +309,11 @@ wirefilter_using_result_t wirefilter_filter_uses(
     wirefilter_externally_allocated_str_t field_name
 );
 
+wirefilter_using_result_t wirefilter_filter_uses_list(
+    const wirefilter_filter_ast_t *ast,
+    wirefilter_externally_allocated_str_t field_name
+);
+
 wirefilter_hashing_result_t wirefilter_get_filter_hash(const wirefilter_filter_ast_t *ast);
 
 void wirefilter_free_hashing_result(wirefilter_hashing_result_t result);

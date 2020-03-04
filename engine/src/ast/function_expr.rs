@@ -43,6 +43,14 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
+    pub fn uses_list(&self, field: Field<'s>) -> bool {
+        match self {
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses_list(field),
+            FunctionCallArgExpr::Literal(_) => false,
+            FunctionCallArgExpr::SimpleExpr(simple_expr) => simple_expr.uses_list(field),
+        }
+    }
+
     pub fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
@@ -238,6 +246,10 @@ impl<'s> FunctionCallExpr<'s> {
 
     pub fn uses(&self, field: Field<'s>) -> bool {
         self.args.iter().any(|arg| arg.uses(field))
+    }
+
+    pub fn uses_list(&self, field: Field<'s>) -> bool {
+        self.args.iter().any(|arg| arg.uses_list(field))
     }
 
     pub fn compile(self) -> CompiledValueExpr<'s> {

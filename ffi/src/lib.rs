@@ -628,6 +628,19 @@ pub extern "C" fn wirefilter_filter_uses(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_filter_uses_list(
+    filter_ast: &FilterAst<'_>,
+    field_name: ExternallyAllocatedStr<'_>,
+) -> UsingResult {
+    catch_panic(std::panic::AssertUnwindSafe(|| {
+        match filter_ast.uses_list(field_name.into_ref()) {
+            Ok(ok) => UsingResult::Ok(ok),
+            Err(err) => UsingResult::Err(RustAllocatedString::from(err.to_string())),
+        }
+    }))
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_free_using_result(r: UsingResult) {
     drop(r);
 }
@@ -966,6 +979,49 @@ mod ffi_test {
 
             assert!(
                 !wirefilter_filter_uses(&filter, ExternallyAllocatedStr::from("map2")).unwrap()
+            );
+
+            wirefilter_free_parsed_filter(filter);
+        }
+
+        wirefilter_free_scheme(scheme);
+    }
+
+    #[test]
+    fn filter_uses_list() {
+        let scheme = create_scheme();
+
+        {
+            let filter = parse_filter(
+                &scheme,
+                r#"num1 in $numbers && num2 == 1337 && str1 in $countries && str2 != "hi" && ip1 in $bad && ip2 == 10.10.10.10"#,
+            )
+            .unwrap();
+
+            assert!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num1")).unwrap()
+            );
+
+            assert!(
+                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num2"))
+                    .unwrap()
+            );
+
+            assert!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str1")).unwrap()
+            );
+
+            assert!(
+                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str2"))
+                    .unwrap()
+            );
+
+            assert!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip1")).unwrap()
+            );
+
+            assert!(
+                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip2")).unwrap()
             );
 
             wirefilter_free_parsed_filter(filter);

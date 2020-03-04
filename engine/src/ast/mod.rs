@@ -16,6 +16,7 @@ use std::fmt::{self, Debug};
 
 trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     fn uses(&self, field: Field<'s>) -> bool;
+    fn uses_list(&self, field: Field<'s>) -> bool;
     fn compile(self) -> CompiledExpr<'s>;
 }
 
@@ -74,6 +75,13 @@ impl<'s> FilterAst<'s> {
         self.scheme
             .get_field(field_name)
             .map(|field| self.op.uses(field))
+    }
+
+    /// Recursively checks whether a [`FilterAst`] uses a list.
+    pub fn uses_list(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
+        self.scheme
+            .get_field(field_name)
+            .map(|field| self.op.uses_list(field))
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`].

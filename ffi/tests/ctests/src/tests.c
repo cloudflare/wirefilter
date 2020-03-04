@@ -162,6 +162,42 @@ void wirefilter_ffi_ctest_filter_uses_field() {
     wirefilter_free_scheme(scheme);
 }
 
+void wirefilter_ffi_ctest_filter_uses_list_field() {
+    wirefilter_scheme_t *scheme = wirefilter_create_scheme();
+    rust_assert(scheme != NULL, "could not create scheme");
+
+    initialize_scheme(scheme);
+
+    wirefilter_parsing_result_t parsing_result = wirefilter_parse_filter(
+        scheme,
+        wirefilter_string("ip.addr in $bad")
+    );
+    rust_assert(parsing_result.success == 1, "could not parse good filter");
+    rust_assert(parsing_result.ok.ast != NULL, "could not parse good filter");
+
+    wirefilter_using_result_t using_result;
+
+    using_result = wirefilter_filter_uses_list(
+        parsing_result.ok.ast,
+        wirefilter_string("ip.addr")
+    );
+
+    rust_assert(using_result.success == 1, "could not check if filter uses tcp.port field");
+    rust_assert(using_result.ok.value == true, "filter should be using field ip.addr");
+
+    using_result = wirefilter_filter_uses_list(
+        parsing_result.ok.ast,
+        wirefilter_string("tcp.port")
+    );
+
+    rust_assert(using_result.success == 1, "could not check if filter uses tcp.port field");
+    rust_assert(using_result.ok.value == false, "filter should not be using field tcp.port");
+
+    wirefilter_free_parsing_result(parsing_result);
+
+    wirefilter_free_scheme(scheme);
+}
+
 void wirefilter_ffi_ctest_filter_hash() {
     wirefilter_scheme_t *scheme = wirefilter_create_scheme();
     rust_assert(scheme != NULL, "could not create scheme");

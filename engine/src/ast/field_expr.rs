@@ -148,6 +148,13 @@ impl<'s> LhsFieldExpr<'s> {
         }
     }
 
+    pub fn uses_list(&self, field: Field<'s>) -> bool {
+        match self {
+            LhsFieldExpr::Field(_f) => false,
+            LhsFieldExpr::FunctionCallExpr(call) => call.uses_list(field),
+        }
+    }
+
     pub fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             LhsFieldExpr::Field(f) => {
@@ -277,6 +284,17 @@ impl<'s> ComparisonExpr<'s> {
 impl<'s> Expr<'s> for ComparisonExpr<'s> {
     fn uses(&self, field: Field<'s>) -> bool {
         self.lhs.uses(field)
+    }
+
+    fn uses_list(&self, field: Field<'s>) -> bool {
+        if self.lhs.uses(field) {
+            match &self.op {
+                ComparisonOpExpr::InList(_list) => true,
+                _ => false,
+            }
+        } else {
+            self.lhs.uses_list(field)
+        }
     }
 
     fn compile(self) -> CompiledExpr<'s> {

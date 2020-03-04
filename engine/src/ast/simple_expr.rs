@@ -66,6 +66,14 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
+    fn uses_list(&self, field: Field<'s>) -> bool {
+        match self {
+            SimpleExpr::Comparison(op) => op.uses_list(field),
+            SimpleExpr::Parenthesized(op) => op.uses_list(field),
+            SimpleExpr::Unary { arg, .. } => arg.uses_list(field),
+        }
+    }
+
     fn compile(self) -> CompiledExpr<'s> {
         match self {
             SimpleExpr::Comparison(op) => op.compile(),
