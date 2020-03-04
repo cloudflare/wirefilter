@@ -123,6 +123,13 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
         }
     }
 
+    fn uses_list(&self, field: Field<'s>) -> bool {
+        match self {
+            LogicalExpr::Simple(op) => op.uses_list(field),
+            LogicalExpr::Combining { items, .. } => items.iter().any(|op| op.uses_list(field)),
+        }
+    }
+
     fn compile(self) -> CompiledExpr<'s> {
         match self {
             LogicalExpr::Simple(op) => op.compile(),

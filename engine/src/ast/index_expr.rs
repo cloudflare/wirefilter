@@ -58,6 +58,10 @@ impl<'s> IndexExpr<'s> {
         self.lhs.uses(field)
     }
 
+    pub fn uses_list(&self, field: Field<'s>) -> bool {
+        self.lhs.uses_list(field)
+    }
+
     pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledOneExpr<'s>
     where
         F: Fn(&LhsValue<'_>, &ExecutionContext<'_>) -> bool + Sync + Send,
