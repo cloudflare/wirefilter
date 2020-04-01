@@ -6,7 +6,7 @@ mod simple_expr;
 
 use self::logical_expr::LogicalExpr;
 use crate::{
-    filter::{CompiledExpr, Filter},
+    filter::{CompiledExpr, CompiledValueExpr, Filter},
     lex::{LexErrorKind, LexResult, LexWith},
     scheme::{Field, Scheme, UnknownFieldError},
     types::{GetType, Type, TypeMismatchError},
@@ -18,6 +18,12 @@ trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize
     fn uses(&self, field: Field<'s>) -> bool;
     fn uses_list(&self, field: Field<'s>) -> bool;
     fn compile(self) -> CompiledExpr<'s>;
+}
+
+trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
+    fn uses(&self, field: Field<'s>) -> bool;
+    fn uses_list(&self, field: Field<'s>) -> bool;
+    fn compile(self) -> CompiledValueExpr<'s>;
 }
 
 /// A parsed filter AST.

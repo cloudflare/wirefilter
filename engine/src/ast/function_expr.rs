@@ -1,3 +1,4 @@
+use super::ValueExpr;
 use crate::{
     ast::{
         field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
@@ -34,8 +35,8 @@ pub(crate) enum FunctionCallArgExpr<'s> {
     SimpleExpr(SimpleExpr<'s>),
 }
 
-impl<'s> FunctionCallArgExpr<'s> {
-    pub fn uses(&self, field: Field<'s>) -> bool {
+impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
+    fn uses(&self, field: Field<'s>) -> bool {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses(field),
             FunctionCallArgExpr::Literal(_) => false,
@@ -43,7 +44,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn uses_list(&self, field: Field<'s>) -> bool {
+    fn uses_list(&self, field: Field<'s>) -> bool {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.uses_list(field),
             FunctionCallArgExpr::Literal(_) => false,
@@ -51,7 +52,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn compile(self) -> CompiledValueExpr<'s> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.compile(),
             FunctionCallArgExpr::Literal(literal) => {
@@ -82,7 +83,9 @@ impl<'s> FunctionCallArgExpr<'s> {
             }
         }
     }
+}
 
+impl<'s> FunctionCallArgExpr<'s> {
     pub fn map_each_to(&self) -> Option<Type> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_to(),
@@ -222,35 +225,16 @@ pub(crate) struct FunctionCallExpr<'s> {
     pub context: Option<FunctionDefinitionContext>,
 }
 
-impl<'s> FunctionCallExpr<'s> {
-    pub fn new(
-        name: &str,
-        function: &'s dyn FunctionDefinition,
-        args: Vec<FunctionCallArgExpr<'s>>,
-        context: Option<FunctionDefinitionContext>,
-    ) -> Self {
-        let return_type = function.return_type(
-            &mut (&args).iter().map(|arg| arg.into()),
-            (&context).as_ref(),
-        );
-        Self {
-            name: name.into(),
-            function,
-            args,
-            return_type,
-            context,
-        }
-    }
-
-    pub fn uses(&self, field: Field<'s>) -> bool {
+impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
+    fn uses(&self, field: Field<'s>) -> bool {
         self.args.iter().any(|arg| arg.uses(field))
     }
 
-    pub fn uses_list(&self, field: Field<'s>) -> bool {
+    fn uses_list(&self, field: Field<'s>) -> bool {
         self.args.iter().any(|arg| arg.uses_list(field))
     }
 
-    pub fn compile(self) -> CompiledValueExpr<'s> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         let ty = self.get_type();
         let Self {
             function,
@@ -292,6 +276,27 @@ impl<'s> FunctionCallExpr<'s> {
                     Err(ty.clone())
                 }
             })
+        }
+    }
+}
+
+impl<'s> FunctionCallExpr<'s> {
+    pub fn new(
+        name: &str,
+        function: &'s dyn FunctionDefinition,
+        args: Vec<FunctionCallArgExpr<'s>>,
+        context: Option<FunctionDefinitionContext>,
+    ) -> Self {
+        let return_type = function.return_type(
+            &mut (&args).iter().map(|arg| arg.into()),
+            (&context).as_ref(),
+        );
+        Self {
+            name: name.into(),
+            function,
+            args,
+            return_type,
+            context,
         }
     }
 

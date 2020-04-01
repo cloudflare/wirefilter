@@ -1,4 +1,4 @@
-use super::field_expr::LhsFieldExpr;
+use super::{field_expr::LhsFieldExpr, ValueExpr};
 use crate::{
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
@@ -53,15 +53,55 @@ macro_rules! index_access_vec {
     };
 }
 
-impl<'s> IndexExpr<'s> {
-    pub fn uses(&self, field: Field<'s>) -> bool {
+impl<'s> ValueExpr<'s> for IndexExpr<'s> {
+    fn uses(&self, field: Field<'s>) -> bool {
         self.lhs.uses(field)
     }
 
-    pub fn uses_list(&self, field: Field<'s>) -> bool {
+    fn uses_list(&self, field: Field<'s>) -> bool {
         self.lhs.uses_list(field)
     }
 
+    fn compile(self) -> CompiledValueExpr<'s> {
+        let ty = self.get_type();
+        let Self { lhs, indexes } = self;
+
+        let last = if let Some(&FieldIndex::MapEach) = indexes.last() {
+            indexes.len() - 1
+        } else {
+            indexes.len()
+        };
+        if last == 0 {
+            lhs.compile()
+        } else {
+            match lhs {
+                LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                    indexes[..last]
+                        .iter()
+                        .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
+                            value.and_then(|val| val.get(index).unwrap())
+                        })
+                        .map(LhsValue::as_ref)
+                        .ok_or_else(|| ty.clone())
+                }),
+                LhsFieldExpr::FunctionCallExpr(call) => {
+                    let call = call.compile();
+                    CompiledValueExpr::new(move |ctx| {
+                        let result = call.execute(ctx)?;
+                        indexes[..last]
+                            .iter()
+                            .fold(Some(result), |value, index| {
+                                value.and_then(|val| val.extract(index).unwrap())
+                            })
+                            .ok_or_else(|| ty.clone())
+                    })
+                }
+            }
+        }
+    }
+}
+
+impl<'s> IndexExpr<'s> {
     pub fn compile_one_with<F: 's>(self, default: bool, func: F) -> CompiledOneExpr<'s>
     where
         F: Fn(&LhsValue<'_>, &ExecutionContext<'_>) -> bool + Sync + Send,
@@ -137,44 +177,6 @@ impl<'s> IndexExpr<'s> {
             CompiledExpr::Vec(self.compile_vec_with(default_vec, func))
         } else {
             CompiledExpr::One(self.compile_one_with(default_one, func))
-        }
-    }
-
-    pub fn compile(self) -> CompiledValueExpr<'s> {
-        let ty = self.get_type();
-        let Self { lhs, indexes } = self;
-
-        let last = if let Some(&FieldIndex::MapEach) = indexes.last() {
-            indexes.len() - 1
-        } else {
-            indexes.len()
-        };
-        if last == 0 {
-            lhs.compile()
-        } else {
-            match lhs {
-                LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    indexes[..last]
-                        .iter()
-                        .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
-                            value.and_then(|val| val.get(index).unwrap())
-                        })
-                        .map(LhsValue::as_ref)
-                        .ok_or_else(|| ty.clone())
-                }),
-                LhsFieldExpr::FunctionCallExpr(call) => {
-                    let call = call.compile();
-                    CompiledValueExpr::new(move |ctx| {
-                        let result = call.execute(ctx)?;
-                        indexes[..last]
-                            .iter()
-                            .fold(Some(result), |value, index| {
-                                value.and_then(|val| val.extract(index).unwrap())
-                            })
-                            .ok_or_else(|| ty.clone())
-                    })
-                }
-            }
         }
     }
 
