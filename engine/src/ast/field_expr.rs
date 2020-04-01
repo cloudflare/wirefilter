@@ -1,5 +1,5 @@
 // use crate::filter::CompiledExpr;
-use super::{function_expr::FunctionCallExpr, Expr};
+use super::{function_expr::FunctionCallExpr, Expr, ValueExpr};
 use crate::{
     ast::index_expr::IndexExpr,
     filter::{CompiledExpr, CompiledValueExpr},
