@@ -396,6 +396,18 @@ impl<'a> LhsValue<'a> {
         }
     }
 
+    /// Converts an `LhsValue` with borrowed data to a fully owned `LhsValue`.
+    pub fn into_owned(self) -> LhsValue<'static> {
+        match self {
+            LhsValue::Ip(ip) => LhsValue::Ip(ip),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(Cow::Owned(bytes.into_owned())),
+            LhsValue::Int(i) => LhsValue::Int(i),
+            LhsValue::Bool(b) => LhsValue::Bool(b),
+            LhsValue::Array(arr) => LhsValue::Array(arr.into_owned()),
+            LhsValue::Map(map) => LhsValue::Map(map.into_owned()),
+        }
+    }
+
     /// Retrieve an element from an LhsValue given a path item and a specified
     /// type.
     /// Returns a TypeMismatchError error if current type does not support it
