@@ -126,6 +126,24 @@ impl<'a> Array<'a> {
         }
     }
 
+    /// Converts an `Array` with borrowed data to a fully owned `Array`.
+    pub fn into_owned(self) -> Array<'static> {
+        Array {
+            val_type: match self.val_type {
+                Cow::Owned(ty) => Cow::Owned(ty),
+                Cow::Borrowed(ty) => Cow::Owned(ty.clone()),
+            },
+            data: match self.data {
+                InnerArray::Owned(vec) => {
+                    InnerArray::Owned(vec.into_iter().map(LhsValue::into_owned).collect())
+                }
+                InnerArray::Borrowed(slice) => {
+                    InnerArray::Owned(slice.iter().cloned().map(LhsValue::into_owned).collect())
+                }
+            },
+        }
+    }
+
     /// Returns the type of the contained values.
     pub fn value_type(&self) -> &Type {
         &self.val_type

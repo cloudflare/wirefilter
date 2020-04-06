@@ -98,6 +98,28 @@ impl<'a> Map<'a> {
         }
     }
 
+    /// Converts a `Map` with borrowed data to a fully owned `Map`.
+    pub fn into_owned(self) -> Map<'static> {
+        Map {
+            val_type: match self.val_type {
+                Cow::Owned(ty) => Cow::Owned(ty),
+                Cow::Borrowed(ty) => Cow::Owned(ty.clone()),
+            },
+            data: match self.data {
+                InnerMap::Owned(map) => InnerMap::Owned(
+                    map.into_iter()
+                        .map(|(key, val)| (key, val.into_owned()))
+                        .collect(),
+                ),
+                InnerMap::Borrowed(map) => InnerMap::Owned(
+                    map.iter()
+                        .map(|(key, value)| (key.clone(), value.clone().into_owned()))
+                        .collect(),
+                ),
+            },
+        }
+    }
+
     /// Returns the type of the contained values.
     pub fn value_type(&self) -> &Type {
         &self.val_type
