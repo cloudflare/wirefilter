@@ -244,6 +244,41 @@ fn bench_string_function_comparison(c: &mut Criterion) {
     .run(c)
 }
 
+fn bench_large_filter_parse(c: &mut Criterion) {
+    let filters = &[
+        r#"(http.request.uri.path matches "/up.js|/impl.js|/impl_legacy.js" and http.referer matches "[^a-z\\-]+(earn-url.com|cuturl1.ga|cuturl.ca|antena24.ro|cutsouf.com-transferred|cutearn.ca|cut1.ml|cut1.gq|cut1.ga|cut1.cf|cpm4all.tk|cpm4all.ml|cpm4all.gq|cpm4all.ga|cpm4all.cf|allshort.tk-transferred|allshort.ml-transferred|allshort.gq-transferred|allshort.ga-transferred|allshort.cf-transferred|123short.com|123short.ca|123datingo.com-transferred|emaxsemmy.com|paysnation.com|clubedonude.ga|hotbazeng.com|app-tipps.com|bankfxrates.com|animeplanet.com|wi.cr|howplex.com|pikdo.one|cultivaprofitabil.ro|spotdrama.com|talk49ja.com.ng|luisalfonso89.tk|elscheats.com|younglovepoemsandreviews.blogspot|fourthave.net|nobluffdating.com|mdscript1.gq|hungamaplus.com|soldierlitoshi.xyz|suratmenyurat.net|clinicadematematica.com.br|jobdhundo.online|domain.com|bankfxrates.com|vtube.com.ng|wesyrians.com|klikport.com|blogstart.me|isbufikirbu.com|lasuinfo.com|faucethero.com|crowd24ng.com|siaglobe.com|clinicadematematica.com.br|filmstreamingf.com|w3scholar.com|flaverloaded.com.ng|mjnull.com|addelma.hu|sattaresults.in|healthandhealthyliving.info|dgrafik.net|lypaste.com|countrygames.net|akhirnp.online|lyonkim.com|lyonkim.net|hdmacozetleri.ml|trendingdailyheadlines.com|vetato.com|naijarecruit.com|blogspot.com|vetato.com|jonasl.info|ogfim.ml|bhanu22.ml|newsmee.com|isamultimedia.com|dugifeed.com|mumbleside.com|infoteca.co|izzan.us|jscholarship.com|wrilog.com|discosmx.net|wejoke.online|gnosisoriente.com.ve|fifaworldtv.com|feradsblog.com.ng|gnosisoriente.com.ve|sojworld.com|mkup.us|discosmx.com|igdownloads.com|regularjobs.net|bimsport.net|nhaudzese.com|biggymp3.com|nulled.live|bet9ja.com.ng|uamma.co.uk|anonymousfiles.io|vibethesport.com.ng|life-fitnes.info|worldfreesportsnews.ga|madeboost.tk|barishishab.com|stellarkazan.com|dragonball-saga.tk|szerencsemano.info|0110.tv|omaview.com|domain.com|digissi.com|dkromantik.ru|muhammetkoc.tk|schoolnewsmedia.com|myjobz.net|myjobsnow.com|migrationtips.com|jobsfound.net|dubaijobnet.com|deckinsider.com|careerjourney.net|101insider.com|scouthired.com|sitman123.com|peliculasenmega.com|cooljobagency.com|spor59.com|nashor.cn|your-best-success.com|igtools.net|habertekno.ml|paginadenursing.ro|sitman456.com|sitman345.com|sitman567.com|sitman5678.com|sitman5678.com|sitman345.com|sitman456.com|freebieselect.com|freebieselect.com|stanloaded.net|todaeu.blog.br|sekillinick.net|minersfrenzy.com|thedark.com|rccreature.tech|crispbot.com|hitcanavari.net|awezzome.com|skinnypoints-only.com|nashor.cn|healthyeatingveg.com|blogspot.com|faseberita.id|psfiles.com|bebluntafrica.com|southlandvideos.com|klikport.com|serefkartalim.online|equilibreinfo.com|felloly.com|publicinsta.com|10downloads.com|nossapolitica.net|webdezign.com.br|ultrabuz.com|eartoearmagic.com|extraimage.club|viralvio.com|arlojipro.com|emulatorgamesdownload.com|aniflix.site|cdnstorage.co|wp-ar.net|izlebakalim.net|jumiaphoneprices.com|jobzfree.com|shortpaid.xyz|z2i.com|theeye360.com|theeye360.com|nuitearn.ml|arabweber.com|brust.club|flashfilmes.org|xn--tarihireniyorum-etb11e.com|jelajahcoin.me|pictame.biz|ckk.ai|aykkellin.xyz|jaspersmm.com|filmecrestineonline.ro|mygadgetsinfo.in|domain.com|coshqun.com|idm.com|eksposjabar.com|lemaroc24.com|gistsfanz.com|unitedrental-kw.com|queenfaucet.website|eg4.tech|filmecrestineonline.ro|khazarperfume.com|idm.com|palangagyvai.lt|filmecrestineonline.net|oyuncuplatformu.net|tokvid.com|daysinform.com.ng|mmhighlights.com|crickethighlights.cricket|highlightstore.me|pakistansuperleaguet20.cricket|soccermatchestoday.com|dailylife.com|receivefreesms.net|lordsmobile.org|descargarlordsmobile.com|dolordemuelas.org|dolordeovarios.com|quefuienmividapasada.com|dietapostparto.com|allemoji.com|tarotgratis.pw|salsasparapastas.com|tarotgitano.co|mastitis.net|dolorenlossenos.com|horoscopo.pw|pulpitis.net|curcumalonga.net|duniyanfasaha.guidetricks.com|hanyantsirah.guidetricks.com|abbagana.guidetricks.com|guidetricks.com|gidannovels.guidetricks.com|infopedia24.com)")"#,
+    ];
+
+    for &filter in filters {
+        let owned_name;
+
+        // trim ranges because they are usually too long and
+        // pollute bench names in HTML and folder names
+        let name = if let Some(pos) = filter.find(" in {") {
+            owned_name = format!("{} in ...", &filter[..pos]);
+            &owned_name
+        } else {
+            filter
+        };
+
+        c.bench(
+            "parsing",
+            Benchmark::new(name, {
+                let mut scheme = Scheme::default();
+                scheme
+                    .add_field("http.referer".to_owned(), Type::Bytes)
+                    .unwrap();
+                scheme
+                    .add_field("http.request.uri.path".to_owned(), Type::Bytes)
+                    .unwrap();
+                move |b: &mut Bencher| {
+                    b.iter(|| scheme.parse(filter).unwrap());
+                }
+            }),
+        );
+    }
+}
+
 criterion_group! {
     name = field_benchmarks;
     config = Criterion::default();
@@ -253,6 +288,7 @@ criterion_group! {
         bench_string_comparisons,
         bench_string_matches,
         bench_string_function_comparison,
+        bench_large_filter_parse,
 }
 
 criterion_main!(field_benchmarks);
