@@ -1,9 +1,9 @@
-use super::{simple_expr::SimpleExpr, Expr};
+use super::{simple_expr::SimpleExpr, visitor::Visitor, Expr};
 use crate::{
     compiler::Compiler,
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{skip_space, Lex, LexErrorKind, LexResult, LexWith},
-    scheme::{Field, Scheme},
+    scheme::Scheme,
     types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
@@ -14,12 +14,18 @@ lex_enum!(#[derive(PartialOrd, Ord)] LogicalOp {
     "and" | "&&" => And,
 });
 
+/// LogicalExpr is a either a generic sub-expression
+/// or a logical conjunction expression.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 pub enum LogicalExpr<'s> {
+    /// Sub-expression
     Simple(SimpleExpr<'s>),
+    /// Logical conjunction expression
     Combining {
+        /// Logical operator (&&, ||)
         op: LogicalOp,
+        /// List of sub-expressions
         items: Vec<LogicalExpr<'s>>,
     },
 }
@@ -117,17 +123,17 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for LogicalExpr<'s> {
 }
 
 impl<'s> Expr<'s> for LogicalExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
         match self {
-            LogicalExpr::Simple(op) => op.uses(field),
-            LogicalExpr::Combining { items, .. } => items.iter().any(|op| op.uses(field)),
-        }
-    }
-
-    fn uses_list(&self, field: Field<'s>) -> bool {
-        match self {
-            LogicalExpr::Simple(op) => op.uses_list(field),
-            LogicalExpr::Combining { items, .. } => items.iter().any(|op| op.uses_list(field)),
+            LogicalExpr::Simple(node) => visitor.visit_simple_expr(node),
+            LogicalExpr::Combining { items, .. } => {
+                let mut result = None;
+                items.iter().any(|node| {
+                    result = visitor.visit_logical_expr(node);
+                    result.is_some()
+                });
+                result
+            }
         }
     }
 

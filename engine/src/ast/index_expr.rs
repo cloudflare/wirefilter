@@ -1,9 +1,9 @@
-use super::{field_expr::LhsFieldExpr, ValueExpr};
+use super::{field_expr::LhsFieldExpr, visitor::Visitor, ValueExpr};
 use crate::{
     compiler::{Compiler, ExecCtx},
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
-    scheme::{Field, FieldIndex, IndexAccessError, Scheme},
+    scheme::{FieldIndex, IndexAccessError, Scheme},
     types::{GetType, LhsValue, Type},
 };
 use serde::{ser::SerializeSeq, Serialize, Serializer};
@@ -54,12 +54,11 @@ macro_rules! index_access_vec {
 }
 
 impl<'s> ValueExpr<'s> for IndexExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
-        self.lhs.uses(field)
-    }
-
-    fn uses_list(&self, field: Field<'s>) -> bool {
-        self.lhs.uses_list(field)
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+        match self.lhs {
+            LhsFieldExpr::Field(field) => visitor.visit_field(&field),
+            LhsFieldExpr::FunctionCallExpr(ref call) => visitor.visit_function_call_expr(call),
+        }
     }
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {

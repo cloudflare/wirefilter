@@ -1,26 +1,26 @@
-mod field_expr;
+pub mod field_expr;
 pub mod function_expr;
 pub mod index_expr;
-mod logical_expr;
-mod simple_expr;
+pub mod logical_expr;
+pub mod simple_expr;
+pub mod visitor;
 
 use self::logical_expr::LogicalExpr;
 use crate::{
     compiler::{Compiler, DefaultCompiler},
     filter::{CompiledExpr, CompiledValueExpr, Filter},
     lex::{LexErrorKind, LexResult, LexWith},
-    scheme::{Field, Scheme, UnknownFieldError},
+    scheme::{Scheme, UnknownFieldError},
     types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
+use visitor::{UsesListVisitor, UsesVisitor, Visitor};
 
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
 pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
-    /// Recursively check if a [`Field`] is being used.
-    fn uses(&self, field: Field<'s>) -> bool;
-    /// Recursively check if a [`Field`] is being used in a list comparison.
-    fn uses_list(&self, field: Field<'s>) -> bool;
+    /// Recursively visit all nodes in the AST.
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T>;
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
@@ -32,10 +32,8 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
 
 /// Trait used to represent node that evaluates to an [`LhsValue`].
 pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
-    /// Recursively check if a [`Field`] is being used.
-    fn uses(&self, field: Field<'s>) -> bool;
-    /// Recursively check if a [`Field`] is being used in a list comparison.
-    fn uses_list(&self, field: Field<'s>) -> bool;
+    /// Recursively visit all nodes in the AST.
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
@@ -93,20 +91,25 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 }
 
 impl<'s> FilterAst<'s> {
+    /// Recursively visit all nodes in the AST.
+    pub fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+        visitor.visit_logical_expr(&self.op)
+    }
+
     /// Recursively checks whether a [`FilterAst`] uses a given field name.
     ///
     /// This is useful to lazily initialise expensive fields only if necessary.
     pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
         self.scheme
             .get_field(field_name)
-            .map(|field| self.op.uses(field))
+            .map(|field| self.walk(&mut UsesVisitor::new(field)).is_some())
     }
 
     /// Recursively checks whether a [`FilterAst`] uses a list.
     pub fn uses_list(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
         self.scheme
             .get_field(field_name)
-            .map(|field| self.op.uses_list(field))
+            .map(|field| self.walk(&mut UsesListVisitor::new(field)).is_some())
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].

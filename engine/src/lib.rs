@@ -76,8 +76,12 @@ mod types;
 
 pub use self::{
     ast::{
+        field_expr::{ComparisonExpr, ComparisonOpExpr},
         function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         index_expr::IndexExpr,
+        logical_expr::LogicalExpr,
+        simple_expr::SimpleExpr,
+        visitor::Visitor,
         Expr, FilterAst, ValueExpr,
     },
     compiler::{Compiler, DefaultCompiler, ExecCtx},
