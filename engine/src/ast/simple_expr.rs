@@ -1,9 +1,9 @@
-use super::{field_expr::ComparisonExpr, logical_expr::LogicalExpr, Expr};
+use super::{field_expr::ComparisonExpr, logical_expr::LogicalExpr, visitor::Visitor, Expr};
 use crate::compiler::Compiler;
 use crate::{
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
     lex::{expect, skip_space, Lex, LexResult, LexWith},
-    scheme::{Field, Scheme},
+    scheme::Scheme,
     types::{GetType, Type},
 };
 use serde::Serialize;
@@ -12,14 +12,22 @@ lex_enum!(UnaryOp {
     "not" | "!" => Not,
 });
 
+/// SimpleExpr is a "generic" expression. It can be either a comparison
+/// expression with [`SimpleExpr::Comparison`], a parenthesized expression
+/// with [`SimpleExpr::Parenthesized`] or a unary expression with [`SimpleExpr::Unary`].
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum SimpleExpr<'s> {
+    /// A comparison expression.
     Comparison(ComparisonExpr<'s>),
+    /// A parenthisized expression.
     Parenthesized(Box<LogicalExpr<'s>>),
+    /// A unary expression.
     Unary {
+        /// Unary operator.
         op: UnaryOp,
+        /// Sub-expression.
         arg: Box<SimpleExpr<'s>>,
     },
 }
@@ -60,19 +68,11 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
 }
 
 impl<'s> Expr<'s> for SimpleExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
         match self {
-            SimpleExpr::Comparison(op) => op.uses(field),
-            SimpleExpr::Parenthesized(op) => op.uses(field),
-            SimpleExpr::Unary { arg, .. } => arg.uses(field),
-        }
-    }
-
-    fn uses_list(&self, field: Field<'s>) -> bool {
-        match self {
-            SimpleExpr::Comparison(op) => op.uses_list(field),
-            SimpleExpr::Parenthesized(op) => op.uses_list(field),
-            SimpleExpr::Unary { arg, .. } => arg.uses_list(field),
+            SimpleExpr::Comparison(node) => visitor.visit_comparison_expr(node),
+            SimpleExpr::Parenthesized(node) => visitor.visit_logical_expr(node),
+            SimpleExpr::Unary { arg, .. } => visitor.visit_simple_expr(arg),
         }
     }
 

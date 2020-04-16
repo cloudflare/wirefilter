@@ -1,5 +1,5 @@
 // use crate::filter::CompiledExpr;
-use super::{function_expr::FunctionCallExpr, Expr, ValueExpr};
+use super::{function_expr::FunctionCallExpr, visitor::Visitor, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
     compiler::{Compiler, ExecCtx},
@@ -68,31 +68,51 @@ lex_enum!(ComparisonOp {
     BytesOp => Bytes,
 });
 
+/// Operator and right-hand side expression of a
+/// comparison expression.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-pub(crate) enum ComparisonOpExpr {
+pub enum ComparisonOpExpr {
+    /// Boolean field verification
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
 
+    /// Ordering comparison
     Ordering {
+        /// Ordering comparison operator:
+        /// * "eq" | "=="
+        /// * "ne" | "!="
+        /// * "ge" | ">="
+        /// * "le" | "<="
+        /// * "gt" | ">"
+        /// * "lt" | "<"
         op: OrderingOp,
+        /// Right-hand side literal
         rhs: RhsValue,
     },
 
+    /// Integer comparison
     Int {
+        /// Integer comparison operator:
+        /// * "&" | "bitwise_and"
         op: IntOp,
+        /// Right-hand side integer value
         rhs: i32,
     },
 
+    /// "contains" comparison
     #[serde(serialize_with = "serialize_contains")]
     Contains(Bytes),
 
+    /// "matches / ~" comparison
     #[serde(serialize_with = "serialize_matches")]
     Matches(Regex),
 
+    /// "in {...}" comparison
     #[serde(serialize_with = "serialize_one_of")]
     OneOf(RhsValues),
 
+    /// "in $..." comparison
     #[serde(serialize_with = "serialize_list")]
     InList(List),
 }
@@ -142,20 +162,6 @@ pub(crate) enum LhsFieldExpr<'s> {
 }
 
 impl<'s> LhsFieldExpr<'s> {
-    pub fn uses(&self, field: Field<'s>) -> bool {
-        match self {
-            LhsFieldExpr::Field(f) => *f == field,
-            LhsFieldExpr::FunctionCallExpr(call) => call.uses(field),
-        }
-    }
-
-    pub fn uses_list(&self, field: Field<'s>) -> bool {
-        match self {
-            LhsFieldExpr::Field(_f) => false,
-            LhsFieldExpr::FunctionCallExpr(call) => call.uses_list(field),
-        }
-    }
-
     pub fn compile_with_compiler<C: Compiler + 's>(
         self,
         compiler: &mut C,
@@ -189,12 +195,15 @@ impl<'s> GetType for LhsFieldExpr<'s> {
     }
 }
 
+/// Comparison expression
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct ComparisonExpr<'s> {
-    pub(crate) lhs: IndexExpr<'s>,
+    /// Lef-hand side of the comparison expression
+    pub lhs: IndexExpr<'s>,
 
+    /// Operator + right-hand side of the comparison expression
     #[serde(flatten)]
-    pub(crate) op: ComparisonOpExpr,
+    pub op: ComparisonOpExpr,
 }
 
 impl<'s> GetType for ComparisonExpr<'s> {
@@ -285,19 +294,8 @@ impl<'s> ComparisonExpr<'s> {
 }
 
 impl<'s> Expr<'s> for ComparisonExpr<'s> {
-    fn uses(&self, field: Field<'s>) -> bool {
-        self.lhs.uses(field)
-    }
-
-    fn uses_list(&self, field: Field<'s>) -> bool {
-        if self.lhs.uses(field) {
-            match &self.op {
-                ComparisonOpExpr::InList(_list) => true,
-                _ => false,
-            }
-        } else {
-            self.lhs.uses_list(field)
-        }
+    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+        visitor.visit_index_expr(&self.lhs)
     }
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
@@ -1200,7 +1198,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("echo"),
-                        function: SCHEME.get_function("echo").unwrap().as_definition(),
+                        function: SCHEME.get_function("echo").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
@@ -1254,7 +1252,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("lowercase"),
-                        function: SCHEME.get_function("lowercase").unwrap().as_definition(),
+                        function: SCHEME.get_function("lowercase").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
@@ -1452,7 +1450,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
-                        function: SCHEME.get_function("concat").unwrap().as_definition(),
+                        function: SCHEME.get_function("concat").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
                             indexes: vec![],
@@ -1503,7 +1501,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
-                        function: SCHEME.get_function("concat").unwrap().as_definition(),
+                        function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 lhs: LhsFieldExpr::Field(field("http.host")),
@@ -1568,7 +1566,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("filter"),
-                        function: SCHEME.get_function("filter").unwrap().as_definition(),
+                        function: SCHEME.get_function("filter").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 lhs: LhsFieldExpr::Field(field("http.cookies")),
@@ -1651,7 +1649,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
-                        function: SCHEME.get_function("concat").unwrap().as_definition(),
+                        function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 lhs: LhsFieldExpr::Field(field("http.cookies")),
@@ -1723,7 +1721,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
-                        function: SCHEME.get_function("concat").unwrap().as_definition(),
+                        function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 lhs: LhsFieldExpr::Field(field("http.headers")),
@@ -1891,7 +1889,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("concat"),
-                        function: SCHEME.get_function("concat").unwrap().as_definition(),
+                        function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 lhs: LhsFieldExpr::Field(field("http.cookies")),
@@ -1963,7 +1961,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("len"),
-                        function: SCHEME.get_function("len").unwrap().as_definition(),
+                        function: SCHEME.get_function("len").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.cookies")),
                             indexes: vec![FieldIndex::MapEach],
@@ -2157,7 +2155,7 @@ mod tests {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
                         name: String::from("any"),
-                        function: SCHEME.get_function("any").unwrap().as_definition(),
+                        function: SCHEME.get_function("any").unwrap(),
                         args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
                             ComparisonExpr {
                                 lhs: IndexExpr {
