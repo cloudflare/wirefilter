@@ -1,3 +1,5 @@
+#![warn(rust_2018_idioms)]
+
 pub mod panic;
 pub mod transfer_types;
 
