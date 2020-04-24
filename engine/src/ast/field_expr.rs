@@ -208,7 +208,7 @@ pub struct ComparisonExpr<'s> {
 
 impl<'s> GetType for ComparisonExpr<'s> {
     fn get_type(&self) -> Type {
-        if self.lhs.map_each_to().is_some() {
+        if self.lhs.map_each_count() > 0 {
             Type::Array(Box::new(Type::Bool))
         } else if self.op == ComparisonOpExpr::IsTrue {
             // Bool or Array(Bool)
@@ -240,7 +240,7 @@ impl<'s> ComparisonExpr<'s> {
         } else if lhs_type.next() == Some(Type::Bool) {
             // Invalid because this would produce an Array(Array(Bool))
             // which cannot be coerced to an Array(Bool)
-            if lhs.map_each_to().is_some() {
+            if lhs.map_each_count() > 0 {
                 return Err((
                     LexErrorKind::UnsupportedOp {
                         lhs_type: Type::Array(Box::new(Type::Array(Box::new(Type::Bool)))),
@@ -558,6 +558,7 @@ mod tests {
                 tcp.port: Int,
                 tcp.ports: Array(Int),
                 array.of.bool: Array(Bool),
+                http.parts: Array(Array(Bytes)),
             };
             scheme
                 .add_function(
@@ -2223,5 +2224,142 @@ mod tests {
 
         ctx.set_field_value(field("tcp.ports"), arr2).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
+    }
+
+    #[test]
+    fn test_map_each_nested() {
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"http.parts[*][*] == "[5][5]""#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.parts")),
+                    indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                }
+            }
+        );
+
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.parts", {"kind": "MapEach"}, {"kind": "MapEach"}],
+                "op": "Equal",
+                "rhs": "[5][5]",
+            }
+        );
+
+        let expr1 = expr.compile();
+
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"http.parts[5][*] == "[5][5]""#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.parts")),
+                    indexes: vec![FieldIndex::ArrayIndex(5), FieldIndex::MapEach],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                }
+            }
+        );
+
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.parts", {"kind": "ArrayIndex", "value": 5}, {"kind": "MapEach"}],
+                "op": "Equal",
+                "rhs": "[5][5]",
+            }
+        );
+
+        let expr2 = expr.compile();
+
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"http.parts[*][5] == "[5][5]""#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.parts")),
+                    indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(5)],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::Equal,
+                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                }
+            }
+        );
+
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["http.parts", {"kind": "MapEach"}, {"kind": "ArrayIndex", "value": 5}],
+                "op": "Equal",
+                "rhs": "[5][5]",
+            }
+        );
+
+        let expr3 = expr.compile();
+
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        let mut parts = Array::new(Type::Array(Box::new(Type::Bytes)));
+        for i in 0..10 {
+            let mut nested_arr = Array::new(Type::Bytes);
+            for j in 0..10 {
+                nested_arr
+                    .push(LhsValue::Bytes(
+                        format!("[{}][{}]", i, j).into_bytes().into(),
+                    ))
+                    .unwrap();
+            }
+            parts.push(LhsValue::Array(nested_arr)).unwrap();
+        }
+
+        ctx.set_field_value(field("http.parts"), parts).unwrap();
+
+        let mut true_count = 0;
+        let mut false_count = 0;
+        for val in expr1.execute_vec(ctx).iter() {
+            if *val {
+                true_count += 1;
+            } else {
+                false_count += 1;
+            }
+        }
+        assert_eq!(false_count, 99);
+        assert_eq!(true_count, 1);
+
+        let mut true_count = 0;
+        let mut false_count = 0;
+        for val in expr2.execute_vec(ctx).iter() {
+            if *val {
+                true_count += 1;
+            } else {
+                false_count += 1;
+            }
+        }
+        assert_eq!(false_count, 9);
+        assert_eq!(true_count, 1);
+
+        let mut true_count = 0;
+        let mut false_count = 0;
+        for val in expr3.execute_vec(ctx).iter() {
+            if *val {
+                true_count += 1;
+            } else {
+                false_count += 1;
+            }
+        }
+        assert_eq!(false_count, 9);
+        assert_eq!(true_count, 1);
     }
 }
