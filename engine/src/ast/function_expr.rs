@@ -79,11 +79,11 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
 }
 
 impl<'s> FunctionCallArgExpr<'s> {
-    pub(crate) fn map_each_to(&self) -> Option<Type> {
+    pub(crate) fn map_each_count(&self) -> usize {
         match self {
-            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_to(),
-            FunctionCallArgExpr::Literal(_) => None,
-            FunctionCallArgExpr::SimpleExpr(_) => None,
+            FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_count(),
+            FunctionCallArgExpr::Literal(_) => 0,
+            FunctionCallArgExpr::SimpleExpr(_) => 0,
         }
     }
 
@@ -238,7 +238,7 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
             context,
             ..
         } = self;
-        let map_each = args.get(0).and_then(|arg| arg.map_each_to());
+        let map_each_count = args.get(0).map_or(0, |arg| arg.map_each_count());
         let call = function
             .as_definition()
             .compile(&mut (&args).iter().map(|arg| arg.into()), context);
@@ -247,7 +247,7 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
             .map(|arg| compiler.compile_function_call_arg_expr(arg))
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        if map_each.is_some() {
+        if map_each_count > 0 {
             CompiledValueExpr::new(move |ctx| {
                 // Create the output array
                 let mut output = Array::new(return_type.clone());
@@ -335,7 +335,7 @@ impl<'s> FunctionCallExpr<'s> {
 
             // Mapping is only accepted for the first argument
             // of a function call for code simplicity
-            if arg.map_each_to().is_some() && index != 0 {
+            if arg.map_each_count() > 0 && index != 0 {
                 return Err((LexErrorKind::InvalidMapEachAccess, span(input, rest)));
             }
 
@@ -410,7 +410,7 @@ fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> 
 impl<'s> GetType for FunctionCallExpr<'s> {
     fn get_type(&self) -> Type {
         let ty = self.return_type.clone();
-        if !self.args.is_empty() && self.args[0].map_each_to().is_some() {
+        if !self.args.is_empty() && self.args[0].map_each_count() > 0 {
             Type::Array(Box::new(ty))
         } else {
             ty
@@ -967,7 +967,7 @@ mod tests {
             ""
         );
 
-        assert_eq!(expr.args[0].map_each_to(), Some(Type::Bytes));
+        assert_eq!(expr.args[0].map_each_count(), 1);
         assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Int)));
     }
 
