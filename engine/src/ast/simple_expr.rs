@@ -101,11 +101,14 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 #[test]
 #[allow(clippy::cognitive_complexity)]
 fn test() {
-    use crate::{execution_context::ExecutionContext, lex::complete, lhs_types::Array};
+    use crate::{
+        execution_context::ExecutionContext, lex::complete, lex::LexErrorKind, lhs_types::Array,
+    };
 
     let scheme = &Scheme! {
         t: Bool,
         at: Array(Bool),
+        aat: Array(Array(Bool)),
     };
 
     let ctx = &mut ExecutionContext::new(scheme);
@@ -129,6 +132,8 @@ fn test() {
     {
         let expr = assert_ok!(SimpleExpr::lex_with("t", scheme), t_expr());
 
+        assert_eq!(expr.get_type(), Type::Bool);
+
         assert_json!(
             expr,
             {
@@ -145,6 +150,8 @@ fn test() {
     {
         let expr = assert_ok!(SimpleExpr::lex_with("at", scheme), at_expr());
 
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
+
         assert_json!(
             expr,
             {
@@ -158,6 +165,37 @@ fn test() {
         assert_eq!(
             expr.execute_vec(ctx),
             vec![true, false, true].into_boxed_slice()
+        );
+    }
+
+    {
+        let expr = SimpleExpr::lex_with("at[*]", scheme).unwrap().0;
+
+        assert_eq!(expr.get_type(), Type::Array(Box::new(Type::Bool)));
+
+        assert_json!(
+            expr,
+            {
+                "lhs": ["at", {"kind": "MapEach"}],
+                "op": "IsTrue"
+            }
+        );
+
+        let expr = expr.compile();
+
+        assert_eq!(
+            expr.execute_vec(ctx),
+            vec![true, false, true].into_boxed_slice()
+        );
+    }
+
+    {
+        assert_err!(
+            SimpleExpr::lex_with("aat[*]", scheme),
+            LexErrorKind::UnsupportedOp {
+                lhs_type: Type::Array(Box::new(Type::Array(Box::new(Type::Bool))))
+            },
+            ""
         );
     }
 

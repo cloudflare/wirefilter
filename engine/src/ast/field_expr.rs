@@ -208,15 +208,13 @@ pub struct ComparisonExpr<'s> {
 
 impl<'s> GetType for ComparisonExpr<'s> {
     fn get_type(&self) -> Type {
-        match self.op {
-            ComparisonOpExpr::IsTrue => self.lhs.get_type(),
-            _ => {
-                if self.lhs.map_each_to().is_some() {
-                    Type::Array(Box::new(Type::Bool))
-                } else {
-                    Type::Bool
-                }
-            }
+        if self.lhs.map_each_to().is_some() {
+            Type::Array(Box::new(Type::Bool))
+        } else if self.op == ComparisonOpExpr::IsTrue {
+            // Bool or Array(Bool)
+            self.lhs.get_type()
+        } else {
+            Type::Bool
         }
     }
 }
@@ -237,9 +235,21 @@ impl<'s> ComparisonExpr<'s> {
     ) -> LexResult<'i, Self> {
         let lhs_type = lhs.get_type();
 
-        let (op, input) = if lhs_type == Type::Bool || lhs_type == Type::Array(Box::new(Type::Bool))
-        {
+        let (op, input) = if lhs_type == Type::Bool {
             (ComparisonOpExpr::IsTrue, input)
+        } else if lhs_type.next() == Some(Type::Bool) {
+            // Invalid because this would produce an Array(Array(Bool))
+            // which cannot be coerced to an Array(Bool)
+            if lhs.map_each_to().is_some() {
+                return Err((
+                    LexErrorKind::UnsupportedOp {
+                        lhs_type: Type::Array(Box::new(Type::Array(Box::new(Type::Bool)))),
+                    },
+                    span(input, input),
+                ));
+            } else {
+                (ComparisonOpExpr::IsTrue, input)
+            }
         } else {
             let initial_input = skip_space(input);
             let (op, input) = ComparisonOp::lex(initial_input)?;
@@ -311,22 +321,19 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
         }
 
         match self.op {
-            ComparisonOpExpr::IsTrue => match lhs.get_type() {
-                Type::Bool => {
-                    CompiledExpr::One(
-                        lhs.compile_one_with(compiler, false, move |x, _ctx| *cast_value!(x, Bool)),
+            ComparisonOpExpr::IsTrue => {
+                if lhs.get_type() == Type::Bool {
+                    lhs.compile_with(compiler, false, &[], move |x, _ctx| *cast_value!(x, Bool))
+                } else if lhs.get_type().next() == Some(Type::Bool) {
+                    // MapEach is impossible in this case, thus call `compile_vec_with` directly
+                    // to coerce LhsValue to Vec<bool>
+                    CompiledExpr::Vec(
+                        lhs.compile_vec_with(compiler, &[], move |x, _ctx| *cast_value!(x, Bool)),
                     )
+                } else {
+                    unreachable!()
                 }
-                Type::Array(arr_type) => match *arr_type {
-                    Type::Bool => CompiledExpr::Vec(lhs.compile_vec_with(
-                        compiler,
-                        &[],
-                        move |x, _ctx| *cast_value!(x, Bool),
-                    )),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            },
+            }
             ComparisonOpExpr::Ordering { op, rhs } => match op {
                 OrderingOp::NotEqual => lhs.compile_with(compiler, true, &[], move |x, _ctx| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
