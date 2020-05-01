@@ -5,3 +5,7 @@ pub struct Var<'i>(pub &'i str);
 pub enum Rhs {
     Int(i32),
 }
+
+pub enum BinOp {
+
+}

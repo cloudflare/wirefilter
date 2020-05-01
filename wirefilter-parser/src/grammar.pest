@@ -1,63 +1,60 @@
 // Identifiers
 //============================================================
-identifier = _{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
-variable_name = @{ identifier ~ ("." ~ identifier)* }
+ident = _{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+var = @{ ident ~ ("." ~ ident)* }
 
 
 // Rhs
 //============================================================
-rhs = { int_range_inclusive | int_literal }
+rhs = { int_range | int_lit }
 
 // Int
-int_literal = ${ "-"? ~ digits }
+int_lit = ${ "-"? ~ digits }
 digits = _{ oct_digits | ("0x" ~ hex_digits) | dec_digits }
 hex_digits = { ASCII_HEX_DIGIT+ }
+
+// NOTE: we need to include 0, so i32::from_str_radix can parse it properly
 oct_digits = { "0" ~ ASCII_OCT_DIGIT+ }
 dec_digits = { ASCII_DIGIT+ }
 
 // Int range (inclusive)
-int_range_inclusive = ${ int_literal ~ ".." ~ int_literal }
+int_range = ${ int_lit ~ ".." ~ int_lit }
 
-
-// Operators
-//============================================================
 
 // Logical operators
-logical_operator = { op_or | op_and | op_xor }
+//============================================================
+logical_op = { op_or | op_and | op_xor }
 
 op_or = { "||" | "or" }
 op_and = { "&&" | "and" }
 op_xor = { "^^" | "xor" }
 
+
 // Binary operators
-binary_operator = { comparison_operator | int_operator | bytes_operator | collection_operator }
+//============================================================
+bin_op = {
+    eq_op | ne_op | ge_op | le_op | gt_op | lt_op | band_op | contains_op | matches_op | in_op
+}
 
-comparison_operator = { op_eq | op_ne | op_ge | op_le | op_gt | op_lt }
-op_eq = { "==" | "eq" }
-op_ne = { "!=" | "ne" }
-op_ge = { ">=" | "ge" }
-op_le = { "<=" | "le" }
-op_gt = { ">" | "gt" }
-op_lt = { "<" | "lt" }
-
-int_operator = { op_bitwise_and }
-op_bitwise_and = { "&" | "bitwise_and" }
-
-bytes_operator = { op_contains | op_matches }
-op_contains = { "contains" }
-op_matches = { "~" | "matches" }
-
-collection_operator = { op_in }
-op_in = { "in" }
+eq_op = { "==" | "eq" }
+ne_op = { "!=" | "ne" }
+ge_op = { ">=" | "ge" }
+le_op = { "<=" | "le" }
+gt_op = { ">" | "gt" }
+lt_op = { "<" | "lt" }
+band_op = { "&" | "bitwise_and" }
+contains_op = { "contains" }
+matches_op = { "~" | "matches" }
+in_op = { "in" }
 
 
 // Expression
 //============================================================
 filter = { SOI ~ compound_expr ~ EOI }
 
-compound_expr = { term ~ (logical_operator ~ term)* }
+compound_expr = { term ~ (logical_op ~ term)* }
 term = _{ expr | "(" ~ compound_expr ~ ")" }
-expr = { variable_name ~ binary_operator ~ rhs }
+expr = { var ~ bin_op ~ rhs }
 
 
 // Trivia
