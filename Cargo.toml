@@ -3,6 +3,7 @@ members = [
 	"engine",
 	"ffi",
 	"wasm",
+	"wirefilter-parser"
 ]
 
 [profile.release]
