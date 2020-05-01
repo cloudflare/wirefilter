@@ -1,7 +1,7 @@
 pub mod ast;
 
 use pest::error::ErrorVariant;
-use pest_consume::{match_nodes, Error as ParseError, Parser as PestParser};
+use pest_consume::{Error as ParseError, Parser as PestParser};
 use std::error::Error;
 use std::fmt::Display;
 
@@ -13,14 +13,14 @@ pub type ParseResult<T> = Result<T, ParseError<Rule>>;
 pub type Node<'i> = pest_consume::Node<'i, Rule, ()>;
 
 trait IntoParseResult<T> {
-    fn into_parse_result(self, node: Node) -> ParseResult<T>;
+    fn into_parse_result(self, node: &Node) -> ParseResult<T>;
 }
 
 impl<T, E> IntoParseResult<T> for Result<T, E>
 where
     E: Error + Display,
 {
-    fn into_parse_result(self, node: Node) -> ParseResult<T> {
+    fn into_parse_result(self, node: &Node) -> ParseResult<T> {
         self.map_err(|e| {
             let span = node.as_span();
 
@@ -41,12 +41,19 @@ impl Parser {
     }
 
     fn int_lit(node: Node) -> ParseResult<ast::Rhs> {
-        let mut num = match_nodes! {
-            node.children();
-            [dec_digits(d)] => d,
-            [oct_digits(d)] => d,
-            [hex_digits(d)] => d
+        use Rule::*;
+
+        let digits_node = node.children().single().unwrap();
+        let digits_str = digits_node.as_str();
+
+        let radix = match digits_node.as_rule() {
+            hex_digits => 16,
+            oct_digits => 8,
+            dec_digits => 10,
+            _ => unreachable!(),
         };
+
+        let mut num = i32::from_str_radix(digits_str, radix).into_parse_result(&node)?;
 
         if let Some('-') = node.as_str().chars().next() {
             num = -num;
@@ -55,19 +62,23 @@ impl Parser {
         Ok(ast::Rhs::Int(num))
     }
 
-    #[inline]
-    fn dec_digits(node: Node) -> ParseResult<i32> {
-        i32::from_str_radix(node.as_str(), 10).into_parse_result(node)
-    }
+    fn bin_op(node: Node) -> ParseResult<ast::BinOp> {
+        use ast::BinOp::*;
+        use Rule::*;
 
-    #[inline]
-    fn oct_digits(node: Node) -> ParseResult<i32> {
-        i32::from_str_radix(node.as_str(), 8).into_parse_result(node)
-    }
+        let op = node.into_children().single().unwrap().as_rule();
 
-    #[inline]
-    fn hex_digits(node: Node) -> ParseResult<i32> {
-        i32::from_str_radix(node.as_str(), 16).into_parse_result(node)
+        Ok(match op {
+            gt_op => Greater,
+            ne_op => NotEq,
+            ge_op => GreaterOrEq,
+            le_op => LessOrEq,
+            band_op => BitwiseAnd,
+            contains_op => Contains,
+            matches_op => Matches,
+            in_op => In,
+            _ => unreachable!(),
+        })
     }
 }
 
