@@ -5,6 +5,7 @@ members = [
 	"fuzz/bytes",
 	"fuzz/map-keys",
 	"wasm",
+	"wirefilter-parser"
 ]
 
 [profile.release]
