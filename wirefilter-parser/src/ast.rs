@@ -1,9 +1,18 @@
+use std::ops::RangeInclusive;
+
 #[derive(Debug, PartialEq)]
 pub struct Var<'i>(pub &'i str);
 
 #[derive(Debug, PartialEq)]
+pub struct Int(pub i32);
+
+#[derive(Debug, PartialEq)]
+pub struct IntRangeInclusive(pub RangeInclusive<i32>);
+
+#[derive(Debug, PartialEq)]
 pub enum Rhs {
-    Int(i32),
+    Int(Int),
+    IntRangeInclusive(IntRangeInclusive),
 }
 
 #[derive(Debug, PartialEq)]

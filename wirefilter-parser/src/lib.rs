@@ -2,8 +2,6 @@ pub mod ast;
 
 use pest::error::ErrorVariant;
 use pest_consume::{match_nodes, Error as ParseError, Parser as PestParser};
-use std::error::Error;
-use std::fmt::Display;
 
 #[derive(PestParser)]
 #[grammar = "./grammar.pest"]
@@ -18,7 +16,7 @@ trait IntoParseResult<T> {
 
 impl<T, E> IntoParseResult<T> for Result<T, E>
 where
-    E: Error + Display,
+    E: ToString,
 {
     fn into_parse_result(self, node: &Node) -> ParseResult<T> {
         self.map_err(|e| {
@@ -40,7 +38,7 @@ impl Parser {
         Ok(ast::Var(node.as_str()))
     }
 
-    fn int_lit(node: Node) -> ParseResult<ast::Rhs> {
+    fn int_lit(node: Node) -> ParseResult<ast::Int> {
         use Rule::*;
 
         let digits_node = node.children().single().unwrap();
@@ -59,7 +57,26 @@ impl Parser {
             num = -num;
         }
 
-        Ok(ast::Rhs::Int(num))
+        Ok(ast::Int(num))
+    }
+
+    fn int_range(node: Node) -> ParseResult<ast::IntRangeInclusive> {
+        match_nodes! {
+            node.children();
+            [int_lit(i1), int_lit(i2)] => if i2.0 < i1.0 {
+                Err("incompatible range bounds").into_parse_result(&node)
+            } else {
+                Ok(ast::IntRangeInclusive(i1.0..=i2.0))
+            }
+        }
+    }
+
+    fn rhs(node: Node) -> ParseResult<ast::Rhs> {
+        Ok(match_nodes! {
+            node.children();
+            [int_lit(i)] => ast::Rhs::Int(i),
+            [int_range(r)] => ast::Rhs::IntRangeInclusive(r)
+        })
     }
 
     fn bin_op(node: Node) -> ParseResult<ast::BinOp> {
@@ -80,13 +97,6 @@ impl Parser {
             matches_op => Matches,
             in_op => In,
             _ => unreachable!(),
-        })
-    }
-
-    fn rhs(node: Node) -> ParseResult<ast::Rhs> {
-        Ok(match_nodes! {
-            node.children();
-            [int_lit(i)] => i,
         })
     }
 
@@ -122,12 +132,12 @@ mod tests {
 
     #[test]
     fn parse_int_lit() {
-        assert_eq!(parse!(int_lit, "42"), Ok(ast::Rhs::Int(42)));
-        assert_eq!(parse!(int_lit, "-42"), Ok(ast::Rhs::Int(-42)));
-        assert_eq!(parse!(int_lit, "0x2A"), Ok(ast::Rhs::Int(42)));
-        assert_eq!(parse!(int_lit, "-0x2a"), Ok(ast::Rhs::Int(-42)));
-        assert_eq!(parse!(int_lit, "052"), Ok(ast::Rhs::Int(42)));
-        assert_eq!(parse!(int_lit, "-052"), Ok(ast::Rhs::Int(-42)));
+        assert_eq!(parse!(int_lit, "42"), Ok(ast::Int(42)));
+        assert_eq!(parse!(int_lit, "-42"), Ok(ast::Int(-42)));
+        assert_eq!(parse!(int_lit, "0x2A"), Ok(ast::Int(42)));
+        assert_eq!(parse!(int_lit, "-0x2a"), Ok(ast::Int(-42)));
+        assert_eq!(parse!(int_lit, "052"), Ok(ast::Int(42)));
+        assert_eq!(parse!(int_lit, "-052"), Ok(ast::Int(-42)));
         assert!(parse!(int_lit, "-abc").is_err());
         assert!(parse!(int_lit, "99999999999999999999999999999").is_err());
     }
