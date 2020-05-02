@@ -1,7 +1,7 @@
 pub mod ast;
 
 use pest::error::ErrorVariant;
-use pest_consume::{Error as ParseError, Parser as PestParser};
+use pest_consume::{match_nodes, Error as ParseError, Parser as PestParser};
 use std::error::Error;
 use std::fmt::Display;
 
@@ -66,18 +66,35 @@ impl Parser {
         use ast::BinOp::*;
         use Rule::*;
 
-        let op = node.into_children().single().unwrap().as_rule();
+        let op = node.children().single().unwrap().as_rule();
 
         Ok(match op {
-            gt_op => Greater,
+            eq_op => Eq,
             ne_op => NotEq,
             ge_op => GreaterOrEq,
             le_op => LessOrEq,
+            gt_op => Greater,
+            lt_op => Less,
             band_op => BitwiseAnd,
             contains_op => Contains,
             matches_op => Matches,
             in_op => In,
             _ => unreachable!(),
+        })
+    }
+
+    fn rhs(node: Node) -> ParseResult<ast::Rhs> {
+        Ok(match_nodes! {
+            node.children();
+            [int_lit(i)] => i,
+        })
+    }
+
+    fn expr(node: Node) -> ParseResult<ast::Expr> {
+        // TODO type checks
+        Ok(match_nodes! {
+            node.children();
+            [var(var), bin_op(op), rhs(rhs)] => ast::Expr {var, op, rhs}
         })
     }
 }
@@ -113,5 +130,27 @@ mod tests {
         assert_eq!(parse!(int_lit, "-052"), Ok(ast::Rhs::Int(-42)));
         assert!(parse!(int_lit, "-abc").is_err());
         assert!(parse!(int_lit, "99999999999999999999999999999").is_err());
+    }
+
+    #[test]
+    fn parse_bin_op() {
+        assert_eq!(parse!(bin_op, "=="), Ok(ast::BinOp::Eq));
+        assert_eq!(parse!(bin_op, "eq"), Ok(ast::BinOp::Eq));
+        assert_eq!(parse!(bin_op, "!="), Ok(ast::BinOp::NotEq));
+        assert_eq!(parse!(bin_op, "ne"), Ok(ast::BinOp::NotEq));
+        assert_eq!(parse!(bin_op, ">="), Ok(ast::BinOp::GreaterOrEq));
+        assert_eq!(parse!(bin_op, "ge"), Ok(ast::BinOp::GreaterOrEq));
+        assert_eq!(parse!(bin_op, "<="), Ok(ast::BinOp::LessOrEq));
+        assert_eq!(parse!(bin_op, "le"), Ok(ast::BinOp::LessOrEq));
+        assert_eq!(parse!(bin_op, ">"), Ok(ast::BinOp::Greater));
+        assert_eq!(parse!(bin_op, "gt"), Ok(ast::BinOp::Greater));
+        assert_eq!(parse!(bin_op, "<"), Ok(ast::BinOp::Less));
+        assert_eq!(parse!(bin_op, "lt"), Ok(ast::BinOp::Less));
+        assert_eq!(parse!(bin_op, "&"), Ok(ast::BinOp::BitwiseAnd));
+        assert_eq!(parse!(bin_op, "bitwise_and "), Ok(ast::BinOp::BitwiseAnd));
+        assert_eq!(parse!(bin_op, "contains "), Ok(ast::BinOp::Contains));
+        assert_eq!(parse!(bin_op, "~ "), Ok(ast::BinOp::Matches));
+        assert_eq!(parse!(bin_op, "matches "), Ok(ast::BinOp::Matches));
+        assert_eq!(parse!(bin_op, "in"), Ok(ast::BinOp::In));
     }
 }
