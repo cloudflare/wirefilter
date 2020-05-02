@@ -144,7 +144,8 @@ impl Parser {
         // TODO type checks
         Ok(match_nodes! {
             node.children();
-            [var(var), bin_op(op), rhs(rhs)] => ast::Expr {var, op, rhs}
+            [var(var), bin_op(op), rhs(rhs)] => ast::Expr::Binary {lhs: var, op, rhs},
+            [var(var)] => ast::Expr::Unary(var)
         })
     }
 }
@@ -235,7 +236,6 @@ mod tests {
 
         assert!(parse!(str_lit, r#""foobar \i""#).is_err());
         assert!(parse!(str_lit, r#""foobar \x3z""#).is_err());
-
     }
 
     #[test]
@@ -258,5 +258,22 @@ mod tests {
         assert_eq!(parse!(bin_op, "~ "), Ok(ast::BinOp::Matches));
         assert_eq!(parse!(bin_op, "matches "), Ok(ast::BinOp::Matches));
         assert_eq!(parse!(bin_op, "in"), Ok(ast::BinOp::In));
+    }
+
+    #[test]
+    fn parse_expr() {
+        assert_eq!(
+            parse!(expr, "foo.bar.baz"),
+            Ok(ast::Expr::Unary(ast::Var("foo.bar.baz".into())))
+        );
+
+        assert_eq!(
+            parse!(expr, "foo.bar.baz in 32..42"),
+            Ok(ast::Expr::Binary {
+                lhs: ast::Var("foo.bar.baz".into()),
+                op: ast::BinOp::In,
+                rhs: ast::Rhs::IntRangeInclusive(ast::IntRangeInclusive(32..=42))
+            })
+        );
     }
 }

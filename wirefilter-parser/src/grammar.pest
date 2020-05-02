@@ -61,7 +61,7 @@ filter = { SOI ~ compound_expr ~ EOI }
 
 compound_expr = { term ~ ( logical_op ~ term )* }
 term = _{ expr | "(" ~ compound_expr ~ ")" }
-expr = { var ~ bin_op ~ rhs }
+expr = { var ~ (bin_op ~ rhs)? }
 
 
 // Trivia
