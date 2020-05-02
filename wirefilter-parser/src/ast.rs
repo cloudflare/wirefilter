@@ -35,8 +35,11 @@ pub enum BinOp {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Expr<'i> {
-    pub var: Var<'i>,
-    pub op: BinOp,
-    pub rhs: Rhs<'i>,
+pub enum Expr<'i> {
+    Unary(Var<'i>),
+    Binary {
+        lhs: Var<'i>,
+        op: BinOp,
+        rhs: Rhs<'i>,
+    },
 }
