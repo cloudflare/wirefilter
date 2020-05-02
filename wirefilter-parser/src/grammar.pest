@@ -8,17 +8,23 @@ var = @{ ident ~ ("." ~ ident)* }
 //============================================================
 rhs = { int_range | int_lit }
 
-// Int
+// Int literal
 int_lit = ${ "-"? ~ digits }
 digits = _{ oct_digits | ("0x" ~ hex_digits) | dec_digits }
 hex_digits = { ASCII_HEX_DIGIT+ }
-
 // NOTE: we need to include 0, so i32::from_str_radix can parse it properly
 oct_digits = { "0" ~ ASCII_OCT_DIGIT+ }
 dec_digits = { ASCII_DIGIT+ }
 
-// Int range (inclusive)
+// Int range
 int_range = ${ int_lit ~ ".." ~ int_lit }
+
+// String
+str_lit  = ${ "\"" ~ str_content ~ "\"" }
+str_content = { ( text | (text? ~ esc))* }
+text = { (!("\"" | "\\") ~ ANY)+ }
+esc  = { "\\" ~ ("\"" | "\\" | "f" | "n" | "r" | "t" | hex_byte) }
+hex_byte = { "x" ~ ASCII_HEX_DIGIT{2} }
 
 
 // Logical operators
