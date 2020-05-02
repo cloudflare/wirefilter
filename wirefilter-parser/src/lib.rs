@@ -31,18 +31,23 @@ where
     }
 }
 
+macro_rules! parse_num {
+    ($node:expr, $ty:ident, $radix:expr) => {
+        $ty::from_str_radix($node.as_str(), $radix).into_parse_result(&$node)
+    };
+}
+
 #[pest_consume::parser]
 impl Parser {
     fn var(node: Node) -> ParseResult<ast::Var> {
         // TODO check in scheme
-        Ok(ast::Var(node.as_str()))
+        Ok(ast::Var(node.as_str().into()))
     }
 
     fn int_lit(node: Node) -> ParseResult<ast::Int> {
         use Rule::*;
 
         let digits_node = node.children().single().unwrap();
-        let digits_str = digits_node.as_str();
 
         let radix = match digits_node.as_rule() {
             hex_digits => 16,
@@ -51,13 +56,48 @@ impl Parser {
             _ => unreachable!(),
         };
 
-        let mut num = i32::from_str_radix(digits_str, radix).into_parse_result(&node)?;
+        let mut num = parse_num!(digits_node, i32, radix)?;
 
         if let Some('-') = node.as_str().chars().next() {
             num = -num;
         }
 
         Ok(ast::Int(num))
+    }
+
+    fn esc_alias(node: Node) -> ParseResult<u8> {
+        Ok(match node.as_str() {
+            "\"" => b'"',
+            "\\" => b'\\',
+            "n" => b'\n',
+            "r" => b'\r',
+            "t" => b'\t',
+            _ => unreachable!(),
+        })
+    }
+
+    fn str_lit(node: Node) -> ParseResult<ast::Bytes> {
+        use Rule::*;
+
+        let content = node.into_children().collect::<Vec<_>>();
+
+        // NOTE: if there are no escapes then we can avoid allocating.
+        if content.len() == 1 && matches!(content[0].as_rule(), Rule::text) {
+            return Ok(ast::Bytes(content[0].as_str().as_bytes().into()));
+        }
+
+        let mut s = Vec::new();
+
+        for node in content {
+            match node.as_rule() {
+                text => s.extend_from_slice(node.as_str().as_bytes()),
+                esc_alias => s.push(Parser::esc_alias(node)?),
+                esc_hex_byte => s.push(parse_num!(node, u8, 16)?),
+                _ => unreachable!(),
+            }
+        }
+
+        Ok(ast::Bytes(s.into()))
     }
 
     fn int_range(node: Node) -> ParseResult<ast::IntRangeInclusive> {
@@ -123,10 +163,16 @@ mod tests {
 
     #[test]
     fn parse_var() {
-        assert_eq!(parse!(var, "foo"), Ok(ast::Var("foo")));
-        assert_eq!(parse!(var, "f1o2o3"), Ok(ast::Var("f1o2o3")));
-        assert_eq!(parse!(var, "f1o2o3.bar321"), Ok(ast::Var("f1o2o3.bar321")));
-        assert_eq!(parse!(var, "foo.bar.baz"), Ok(ast::Var("foo.bar.baz")));
+        assert_eq!(parse!(var, "foo"), Ok(ast::Var("foo".into())));
+        assert_eq!(parse!(var, "f1o2o3"), Ok(ast::Var("f1o2o3".into())));
+        assert_eq!(
+            parse!(var, "f1o2o3.bar321"),
+            Ok(ast::Var("f1o2o3.bar321".into()))
+        );
+        assert_eq!(
+            parse!(var, "foo.bar.baz"),
+            Ok(ast::Var("foo.bar.baz".into()))
+        );
         assert!(parse!(var, "123foo").is_err());
     }
 
@@ -163,6 +209,33 @@ mod tests {
         assert!(parse!(int_range, "42.. 43").is_err());
         assert!(parse!(int_range, "45..42").is_err());
         assert!(parse!(int_range, "42..z").is_err());
+    }
+
+    #[test]
+    fn parse_str_lit() {
+        assert_eq!(
+            parse!(str_lit, r#""""#),
+            Ok(ast::Bytes("".as_bytes().into()))
+        );
+
+        assert_eq!(
+            parse!(str_lit, r#""foobar baz  qux""#),
+            Ok(ast::Bytes("foobar baz  qux".as_bytes().into()))
+        );
+
+        assert_eq!(
+            parse!(str_lit, r#""\n foo \t\r \\ baz \" bar ""#),
+            Ok(ast::Bytes("\n foo \t\r \\ baz \" bar ".as_bytes().into()))
+        );
+
+        assert_eq!(
+            parse!(str_lit, r#""foo \x41\x42 bar\x43""#),
+            Ok(ast::Bytes("foo AB barC".as_bytes().into()))
+        );
+
+        assert!(parse!(str_lit, r#""foobar \i""#).is_err());
+        assert!(parse!(str_lit, r#""foobar \x3z""#).is_err());
+
     }
 
     #[test]

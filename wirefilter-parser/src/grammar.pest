@@ -10,7 +10,7 @@ rhs = { int_range | int_lit }
 
 // Int literal
 int_lit = ${ "-"? ~ digits }
-digits = _{ oct_digits | ("0x" ~ hex_digits) | dec_digits }
+digits = _{ oct_digits | ( "0x" ~ hex_digits ) | dec_digits }
 hex_digits = { ASCII_HEX_DIGIT+ }
 // NOTE: we need to include 0, so i32::from_str_radix can parse it properly
 oct_digits = { "0" ~ ASCII_OCT_DIGIT+ }
@@ -21,10 +21,11 @@ int_range = ${ int_lit ~ ".." ~ int_lit }
 
 // String
 str_lit  = ${ "\"" ~ str_content ~ "\"" }
-str_content = { ( text | (text? ~ esc))* }
+str_content = _{ ( text | ( esc ~ text? ) )* }
 text = { (!("\"" | "\\") ~ ANY)+ }
-esc  = { "\\" ~ ("\"" | "\\" | "f" | "n" | "r" | "t" | hex_byte) }
-hex_byte = { "x" ~ ASCII_HEX_DIGIT{2} }
+esc  = _{ "\\" ~ ( esc_alias | ( "x" ~ esc_hex_byte ) ) }
+esc_alias = { "\"" | "\\" | "n" | "r" | "t" }
+esc_hex_byte = { ASCII_HEX_DIGIT{2} }
 
 
 // Logical operators
@@ -58,7 +59,7 @@ in_op = { "in" }
 //============================================================
 filter = { SOI ~ compound_expr ~ EOI }
 
-compound_expr = { term ~ (logical_op ~ term)* }
+compound_expr = { term ~ ( logical_op ~ term )* }
 term = _{ expr | "(" ~ compound_expr ~ ")" }
 expr = { var ~ bin_op ~ rhs }
 
