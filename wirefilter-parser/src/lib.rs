@@ -143,6 +143,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_int_range() {
+        assert_eq!(
+            parse!(int_range, "42..0x2b"),
+            Ok(ast::IntRangeInclusive(42..=43))
+        );
+
+        assert_eq!(
+            parse!(int_range, "-0x2a..0x2A"),
+            Ok(ast::IntRangeInclusive(-42..=42))
+        );
+
+        assert_eq!(
+            parse!(int_range, "42..42"),
+            Ok(ast::IntRangeInclusive(42..=42))
+        );
+
+        assert!(parse!(int_range, "42 ..43").is_err());
+        assert!(parse!(int_range, "42.. 43").is_err());
+        assert!(parse!(int_range, "45..42").is_err());
+        assert!(parse!(int_range, "42..z").is_err());
+    }
+
+    #[test]
     fn parse_bin_op() {
         assert_eq!(parse!(bin_op, "=="), Ok(ast::BinOp::Eq));
         assert_eq!(parse!(bin_op, "eq"), Ok(ast::BinOp::Eq));
