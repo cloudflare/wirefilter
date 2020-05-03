@@ -2,6 +2,8 @@ pub mod ast;
 
 use pest::error::ErrorVariant;
 use pest_consume::{match_nodes, Error as ParseError, Parser as PestParser};
+use std::borrow::Cow;
+use std::ops::RangeInclusive;
 
 #[derive(PestParser)]
 #[grammar = "./grammar.pest"]
@@ -44,7 +46,7 @@ impl Parser {
         Ok(ast::Var(node.as_str().into()))
     }
 
-    fn int_lit(node: Node) -> ParseResult<ast::Int> {
+    fn int_lit(node: Node) -> ParseResult<i32> {
         use Rule::*;
 
         let digits_node = node.children().single().unwrap();
@@ -62,7 +64,7 @@ impl Parser {
             num = -num;
         }
 
-        Ok(ast::Int(num))
+        Ok(num)
     }
 
     fn esc_alias(node: Node) -> ParseResult<u8> {
@@ -76,14 +78,14 @@ impl Parser {
         })
     }
 
-    fn str_lit(node: Node) -> ParseResult<ast::Bytes> {
+    fn str_lit(node: Node) -> ParseResult<Cow<[u8]>> {
         use Rule::*;
 
         let content = node.into_children().collect::<Vec<_>>();
 
         // NOTE: if there are no escapes then we can avoid allocating.
         if content.len() == 1 && matches!(content[0].as_rule(), Rule::text) {
-            return Ok(ast::Bytes(content[0].as_str().as_bytes().into()));
+            return Ok(content[0].as_str().as_bytes().into());
         }
 
         let mut s = Vec::new();
@@ -97,16 +99,16 @@ impl Parser {
             }
         }
 
-        Ok(ast::Bytes(s.into()))
+        Ok(s.into())
     }
 
-    fn int_range(node: Node) -> ParseResult<ast::IntRangeInclusive> {
+    fn int_range(node: Node) -> ParseResult<RangeInclusive<i32>> {
         match_nodes! {
             node.children();
-            [int_lit(i1), int_lit(i2)] => if i2.0 < i1.0 {
+            [int_lit(i1), int_lit(i2)] => if i2 < i1 {
                 Err("incompatible range bounds").into_parse_result(&node)
             } else {
-                Ok(ast::IntRangeInclusive(i1.0..=i2.0))
+                Ok(i1..=i2)
             }
         }
     }
@@ -179,33 +181,21 @@ mod tests {
 
     #[test]
     fn parse_int_lit() {
-        assert_eq!(parse!(int_lit, "42"), Ok(ast::Int(42)));
-        assert_eq!(parse!(int_lit, "-42"), Ok(ast::Int(-42)));
-        assert_eq!(parse!(int_lit, "0x2A"), Ok(ast::Int(42)));
-        assert_eq!(parse!(int_lit, "-0x2a"), Ok(ast::Int(-42)));
-        assert_eq!(parse!(int_lit, "052"), Ok(ast::Int(42)));
-        assert_eq!(parse!(int_lit, "-052"), Ok(ast::Int(-42)));
+        assert_eq!(parse!(int_lit, "42"), Ok(42));
+        assert_eq!(parse!(int_lit, "-42"), Ok(-42));
+        assert_eq!(parse!(int_lit, "0x2A"), Ok(42));
+        assert_eq!(parse!(int_lit, "-0x2a"), Ok(-42));
+        assert_eq!(parse!(int_lit, "052"), Ok(42));
+        assert_eq!(parse!(int_lit, "-052"), Ok(-42));
         assert!(parse!(int_lit, "-abc").is_err());
         assert!(parse!(int_lit, "99999999999999999999999999999").is_err());
     }
 
     #[test]
     fn parse_int_range() {
-        assert_eq!(
-            parse!(int_range, "42..0x2b"),
-            Ok(ast::IntRangeInclusive(42..=43))
-        );
-
-        assert_eq!(
-            parse!(int_range, "-0x2a..0x2A"),
-            Ok(ast::IntRangeInclusive(-42..=42))
-        );
-
-        assert_eq!(
-            parse!(int_range, "42..42"),
-            Ok(ast::IntRangeInclusive(42..=42))
-        );
-
+        assert_eq!(parse!(int_range, "42..0x2b"), Ok(42..=43));
+        assert_eq!(parse!(int_range, "-0x2a..0x2A"), Ok(-42..=42));
+        assert_eq!(parse!(int_range, "42..42"), Ok(42..=42));
         assert!(parse!(int_range, "42 ..43").is_err());
         assert!(parse!(int_range, "42.. 43").is_err());
         assert!(parse!(int_range, "45..42").is_err());
@@ -214,24 +204,21 @@ mod tests {
 
     #[test]
     fn parse_str_lit() {
-        assert_eq!(
-            parse!(str_lit, r#""""#),
-            Ok(ast::Bytes("".as_bytes().into()))
-        );
+        assert_eq!(parse!(str_lit, r#""""#), Ok("".as_bytes().into()));
 
         assert_eq!(
             parse!(str_lit, r#""foobar baz  qux""#),
-            Ok(ast::Bytes("foobar baz  qux".as_bytes().into()))
+            Ok("foobar baz  qux".as_bytes().into())
         );
 
         assert_eq!(
             parse!(str_lit, r#""\n foo \t\r \\ baz \" bar ""#),
-            Ok(ast::Bytes("\n foo \t\r \\ baz \" bar ".as_bytes().into()))
+            Ok("\n foo \t\r \\ baz \" bar ".as_bytes().into())
         );
 
         assert_eq!(
             parse!(str_lit, r#""foo \x41\x42 bar\x43""#),
-            Ok(ast::Bytes("foo AB barC".as_bytes().into()))
+            Ok("foo AB barC".as_bytes().into())
         );
 
         assert!(parse!(str_lit, r#""foobar \i""#).is_err());
@@ -272,7 +259,7 @@ mod tests {
             Ok(ast::Expr::Binary {
                 lhs: ast::Var("foo.bar.baz".into()),
                 op: ast::BinOp::In,
-                rhs: ast::Rhs::IntRangeInclusive(ast::IntRangeInclusive(32..=42))
+                rhs: ast::Rhs::IntRangeInclusive(32..=42)
             })
         );
     }
