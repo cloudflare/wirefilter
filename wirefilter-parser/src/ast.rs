@@ -5,19 +5,10 @@ use std::ops::RangeInclusive;
 pub struct Var<'i>(pub Cow<'i, str>);
 
 #[derive(Debug, PartialEq)]
-pub struct Int(pub i32);
-
-#[derive(Debug, PartialEq)]
-pub struct Bytes<'i>(pub Cow<'i, [u8]>);
-
-#[derive(Debug, PartialEq)]
-pub struct IntRangeInclusive(pub RangeInclusive<i32>);
-
-#[derive(Debug, PartialEq)]
 pub enum Rhs<'i> {
-    Int(Int),
-    IntRangeInclusive(IntRangeInclusive),
-    Bytes(Bytes<'i>),
+    Int(i32),
+    IntRangeInclusive(RangeInclusive<i32>),
+    Bytes(Cow<'i, [u8]>),
 }
 
 #[derive(Debug, PartialEq)]
