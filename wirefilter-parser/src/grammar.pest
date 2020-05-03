@@ -6,7 +6,7 @@ var = @{ ident ~ ("." ~ ident)* }
 
 // Rhs
 //============================================================
-rhs = { int_range | int_lit }
+rhs = { int_range | int_lit | str_lit }
 
 // Int literal
 int_lit = ${ "-"? ~ digits }

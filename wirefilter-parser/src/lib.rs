@@ -117,7 +117,8 @@ impl Parser {
         Ok(match_nodes! {
             node.children();
             [int_lit(i)] => ast::Rhs::Int(i),
-            [int_range(r)] => ast::Rhs::IntRangeInclusive(r)
+            [int_range(r)] => ast::Rhs::IntRangeInclusive(r),
+            [str_lit(s)] => ast::Rhs::String(s)
         })
     }
 
@@ -240,10 +241,10 @@ mod tests {
         assert_eq!(parse!(bin_op, "<"), Ok(ast::BinOp::Less));
         assert_eq!(parse!(bin_op, "lt"), Ok(ast::BinOp::Less));
         assert_eq!(parse!(bin_op, "&"), Ok(ast::BinOp::BitwiseAnd));
-        assert_eq!(parse!(bin_op, "bitwise_and "), Ok(ast::BinOp::BitwiseAnd));
-        assert_eq!(parse!(bin_op, "contains "), Ok(ast::BinOp::Contains));
-        assert_eq!(parse!(bin_op, "~ "), Ok(ast::BinOp::Matches));
-        assert_eq!(parse!(bin_op, "matches "), Ok(ast::BinOp::Matches));
+        assert_eq!(parse!(bin_op, "bitwise_and"), Ok(ast::BinOp::BitwiseAnd));
+        assert_eq!(parse!(bin_op, "contains"), Ok(ast::BinOp::Contains));
+        assert_eq!(parse!(bin_op, "~"), Ok(ast::BinOp::Matches));
+        assert_eq!(parse!(bin_op, "matches"), Ok(ast::BinOp::Matches));
         assert_eq!(parse!(bin_op, "in"), Ok(ast::BinOp::In));
     }
 
@@ -260,6 +261,15 @@ mod tests {
                 lhs: ast::Var("foo.bar.baz".into()),
                 op: ast::BinOp::In,
                 rhs: ast::Rhs::IntRangeInclusive(32..=42)
+            })
+        );
+
+        assert_eq!(
+            parse!(expr, r#"foo.bar == "test\n""#),
+            Ok(ast::Expr::Binary {
+                lhs: ast::Var("foo.bar".into()),
+                op: ast::BinOp::Eq,
+                rhs: ast::Rhs::String("test\n".as_bytes().into())
             })
         );
     }
