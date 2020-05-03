@@ -8,7 +8,7 @@ pub struct Var<'i>(pub Cow<'i, str>);
 pub enum Rhs<'i> {
     Int(i32),
     IntRangeInclusive(RangeInclusive<i32>),
-    Bytes(Cow<'i, [u8]>),
+    String(Cow<'i, [u8]>),
 }
 
 #[derive(Debug, PartialEq)]
