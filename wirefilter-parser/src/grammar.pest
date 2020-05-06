@@ -6,7 +6,12 @@ var = @{ ident ~ ("." ~ ident)* }
 
 // Rhs
 //============================================================
-rhs = { int_range | int_lit | str_lit }
+// NOTE: unfortunately there is an ambiguity between IP literals and int literal.
+// Though, in the worst case we'll backtrack only 4 characters.
+rhs = {
+    ipv4_range | ipv4_cidr | ipv4_lit | ipv6_range | ipv6_cidr | ipv6_lit |
+    int_range | int_lit | str_lit
+}
 
 // Int literal
 int_lit = ${ "-"? ~ digits }
@@ -20,13 +25,26 @@ dec_digits = { ASCII_DIGIT+ }
 int_range = ${ int_lit ~ ".." ~ int_lit }
 
 // String
-str_lit  = ${ "\"" ~ str_content ~ "\"" }
+str_lit = ${ "\"" ~ str_content ~ "\"" }
 str_content = _{ ( text | ( esc ~ text? ) )* }
 text = { (!("\"" | "\\") ~ ANY)+ }
-esc  = _{ "\\" ~ ( esc_alias | ( "x" ~ esc_hex_byte ) ) }
+esc = _{ "\\" ~ ( esc_alias | ( "x" ~ esc_hex_byte ) ) }
 esc_alias = { "\"" | "\\" | "n" | "r" | "t" }
 esc_hex_byte = { ASCII_HEX_DIGIT{2} }
 
+// IP
+ipv4_lit = @{ ASCII_DIGIT{1,3} ~ ( "." ~ ASCII_DIGIT{1,3} ){3} }
+// NOTE: this is far from being precise IPv6 grammar, but it's not ambigious with IPv4 and
+// int literal. Actual parsing is performed by Rust's std lib.
+ipv6_lit = @{
+    ( ":" | ASCII_ALPHANUMERIC{1,4} ) ~ ":" ~ ( ipv4_lit | ASCII_ALPHANUMERIC{1,4} | ":" )+
+}
+
+// IP ranges
+ipv4_cidr = @{ ipv4_lit ~ "/" ~ ASCII_DIGIT{1,2} }
+ipv6_cidr = @{ ipv6_lit ~ "/" ~ ASCII_DIGIT{1,3} }
+ipv4_range = ${ ipv4_lit ~ ".." ~ ipv4_lit }
+ipv6_range = ${ ipv6_lit ~ ".." ~ ipv6_lit }
 
 // Logical operators
 //============================================================
