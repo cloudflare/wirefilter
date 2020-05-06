@@ -204,6 +204,7 @@ impl Parser {
 mod tests {
     use super::*;
     use cidr::Cidr as _;
+    use indoc::indoc;
 
     macro_rules! parse {
         ($rule:ident, $input:expr) => {
@@ -213,240 +214,394 @@ mod tests {
         };
     }
 
+    macro_rules! ok {
+        ($rule:ident $input:expr => $expected:expr) => {
+            assert_eq!(parse!($rule, $input), Ok($expected));
+        };
+    }
+
+    macro_rules! err {
+        ($rule:ident $input:expr => $expected:expr) => {
+            assert_eq!(
+                parse!($rule, $input).unwrap_err().to_string(),
+                indoc!($expected)
+            );
+        };
+    }
+
     #[test]
     fn parse_var() {
-        assert_eq!(parse!(var, "foo"), Ok(ast::Var("foo".into())));
-        assert_eq!(parse!(var, "f1o2o3"), Ok(ast::Var("f1o2o3".into())));
+        ok! { var "foo" => ast::Var("foo".into()) }
+        ok! { var "f1o2o3" => ast::Var("f1o2o3".into()) }
+        ok! { var "f1o2o3.bar321" => ast::Var("f1o2o3.bar321".into()) }
+        ok! { var "foo.bar.baz" => ast::Var("foo.bar.baz".into()) }
 
-        assert_eq!(
-            parse!(var, "f1o2o3.bar321"),
-            Ok(ast::Var("f1o2o3.bar321".into()))
-        );
-
-        assert_eq!(
-            parse!(var, "foo.bar.baz"),
-            Ok(ast::Var("foo.bar.baz".into()))
-        );
-
-        assert!(parse!(var, "123foo").is_err());
+        err! { var "123foo" =>
+            " --> 1:1
+            |
+          1 | 123foo
+            | ^---
+            |
+            = expected var"
+        }
     }
 
     #[test]
     fn parse_int_lit() {
-        assert_eq!(parse!(int_lit, "42"), Ok(42));
-        assert_eq!(parse!(int_lit, "-42"), Ok(-42));
-        assert_eq!(parse!(int_lit, "0x2A"), Ok(42));
-        assert_eq!(parse!(int_lit, "-0x2a"), Ok(-42));
-        assert_eq!(parse!(int_lit, "052"), Ok(42));
-        assert_eq!(parse!(int_lit, "-052"), Ok(-42));
-        assert!(parse!(int_lit, "-abc").is_err());
-        assert!(parse!(int_lit, "99999999999999999999999999999").is_err());
+        ok! { int_lit "42" => 42 }
+        ok! { int_lit "-42" => -42 }
+        ok! { int_lit "0x2A" => 42 }
+        ok! { int_lit "-0x2a" => -42 }
+        ok! { int_lit "052" => 42 }
+        ok! { int_lit "-052" => -42 }
+
+        err! { int_lit "-abc" =>
+            " --> 1:2
+            |
+          1 | -abc
+            |  ^---
+            |
+            = expected oct_digits or dec_digits"
+        }
+
+        err! { int_lit "99999999999999999999999999999" =>
+            " --> 1:1
+            |
+          1 | 99999999999999999999999999999
+            | ^---------------------------^
+            |
+            = number too large to fit in target type"
+        }
     }
 
     #[test]
     fn parse_int_range() {
-        assert_eq!(parse!(int_range, "42..0x2b"), Ok(42..=43));
-        assert_eq!(parse!(int_range, "-0x2a..0x2A"), Ok(-42..=42));
-        assert_eq!(parse!(int_range, "42..42"), Ok(42..=42));
-        assert!(parse!(int_range, "42 ..43").is_err());
-        assert!(parse!(int_range, "42.. 43").is_err());
-        assert!(parse!(int_range, "45..42").is_err());
-        assert!(parse!(int_range, "42..z").is_err());
+        ok! { int_range "42..0x2b" => 42..=43 }
+        ok! { int_range "-0x2a..0x2A" => -42..=42 }
+        ok! { int_range "42..42" => 42..=42 }
+
+        err! { int_range "42.. 43" =>
+            " --> 1:5
+            |
+          1 | 42.. 43
+            |     ^---
+            |
+            = expected int_lit"
+        }
+
+        err! { int_range "45..42" =>
+            " --> 1:1
+            |
+          1 | 45..42
+            | ^----^
+            |
+            = start of the range is greater than the end"
+        }
+
+        err! { int_range "42..z" =>
+            " --> 1:5
+            |
+          1 | 42..z
+            |     ^---
+            |
+            = expected int_lit"
+        }
     }
 
     #[test]
     fn parse_str_lit() {
-        assert_eq!(parse!(str_lit, r#""""#), Ok("".as_bytes().into()));
+        ok! { str_lit r#""""# => "".as_bytes().into() }
+        ok! { str_lit r#""foobar baz  qux""# => "foobar baz  qux".as_bytes().into() }
+        ok! { str_lit r#""foo \x41\x42 bar\x43""# => "foo AB barC".as_bytes().into() }
 
-        assert_eq!(
-            parse!(str_lit, r#""foobar baz  qux""#),
-            Ok("foobar baz  qux".as_bytes().into())
-        );
+        ok! {
+            str_lit r#""\n foo \t\r \\ baz \" bar ""#  =>
+            "\n foo \t\r \\ baz \" bar ".as_bytes().into()
+        }
 
-        assert_eq!(
-            parse!(str_lit, r#""\n foo \t\r \\ baz \" bar ""#),
-            Ok("\n foo \t\r \\ baz \" bar ".as_bytes().into())
-        );
+        err! { str_lit r#""foobar \i""# =>
+            r#" --> 1:10
+            |
+          1 | "foobar \i"
+            |          ^---
+            |
+            = expected esc_alias"#
+        }
 
-        assert_eq!(
-            parse!(str_lit, r#""foo \x41\x42 bar\x43""#),
-            Ok("foo AB barC".as_bytes().into())
-        );
-
-        assert!(parse!(str_lit, r#""foobar \i""#).is_err());
-        assert!(parse!(str_lit, r#""foobar \x3z""#).is_err());
+        err! { str_lit r#""foobar \x3z""# =>
+            r#" --> 1:11
+            |
+          1 | "foobar \x3z"
+            |           ^---
+            |
+            = expected esc_hex_byte"#
+        }
     }
 
     #[test]
     fn parse_bin_op() {
-        assert_eq!(parse!(bin_op, "=="), Ok(ast::BinOp::Eq));
-        assert_eq!(parse!(bin_op, "eq"), Ok(ast::BinOp::Eq));
-        assert_eq!(parse!(bin_op, "!="), Ok(ast::BinOp::NotEq));
-        assert_eq!(parse!(bin_op, "ne"), Ok(ast::BinOp::NotEq));
-        assert_eq!(parse!(bin_op, ">="), Ok(ast::BinOp::GreaterOrEq));
-        assert_eq!(parse!(bin_op, "ge"), Ok(ast::BinOp::GreaterOrEq));
-        assert_eq!(parse!(bin_op, "<="), Ok(ast::BinOp::LessOrEq));
-        assert_eq!(parse!(bin_op, "le"), Ok(ast::BinOp::LessOrEq));
-        assert_eq!(parse!(bin_op, ">"), Ok(ast::BinOp::Greater));
-        assert_eq!(parse!(bin_op, "gt"), Ok(ast::BinOp::Greater));
-        assert_eq!(parse!(bin_op, "<"), Ok(ast::BinOp::Less));
-        assert_eq!(parse!(bin_op, "lt"), Ok(ast::BinOp::Less));
-        assert_eq!(parse!(bin_op, "&"), Ok(ast::BinOp::BitwiseAnd));
-        assert_eq!(parse!(bin_op, "bitwise_and"), Ok(ast::BinOp::BitwiseAnd));
-        assert_eq!(parse!(bin_op, "contains"), Ok(ast::BinOp::Contains));
-        assert_eq!(parse!(bin_op, "~"), Ok(ast::BinOp::Matches));
-        assert_eq!(parse!(bin_op, "matches"), Ok(ast::BinOp::Matches));
-        assert_eq!(parse!(bin_op, "in"), Ok(ast::BinOp::In));
+        ok! { bin_op "==" => ast::BinOp::Eq }
+        ok! { bin_op "eq" => ast::BinOp::Eq }
+        ok! { bin_op "!=" => ast::BinOp::NotEq }
+        ok! { bin_op "ne" => ast::BinOp::NotEq }
+        ok! { bin_op ">=" => ast::BinOp::GreaterOrEq }
+        ok! { bin_op "ge" => ast::BinOp::GreaterOrEq }
+        ok! { bin_op "<=" => ast::BinOp::LessOrEq }
+        ok! { bin_op "le" => ast::BinOp::LessOrEq }
+        ok! { bin_op ">" => ast::BinOp::Greater }
+        ok! { bin_op "gt" => ast::BinOp::Greater }
+        ok! { bin_op "<" => ast::BinOp::Less }
+        ok! { bin_op "lt" => ast::BinOp::Less }
+        ok! { bin_op "&" => ast::BinOp::BitwiseAnd }
+        ok! { bin_op "bitwise_and" => ast::BinOp::BitwiseAnd }
+        ok! { bin_op "contains" => ast::BinOp::Contains }
+        ok! { bin_op "~" => ast::BinOp::Matches }
+        ok! { bin_op "matches" => ast::BinOp::Matches }
+        ok! { bin_op "in" => ast::BinOp::In }
     }
 
     #[test]
-    fn parse_expr() {
-        assert_eq!(
-            parse!(expr, "foo.bar.baz"),
-            Ok(ast::Expr::Unary(ast::Var("foo.bar.baz".into())))
-        );
+    fn pare_expr() {
+        ok! { expr "foo.bar.baz" => ast::Expr::Unary(ast::Var("foo.bar.baz".into())) }
 
-        assert_eq!(
-            parse!(expr, "foo.bar.baz > 42"),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr "foo.bar.baz > 42" =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo.bar.baz".into()),
                 op: ast::BinOp::Greater,
                 rhs: ast::Rhs::Int(42)
-            })
-        );
+            }
+        }
 
-        assert_eq!(
-            parse!(expr, "foo.bar.baz in 32..42"),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr "foo.bar.baz in 32..42" =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo.bar.baz".into()),
                 op: ast::BinOp::In,
                 rhs: ast::Rhs::IntRange(32..=42)
-            })
-        );
+            }
+        }
 
-        assert_eq!(
-            parse!(expr, "foo == 220.12.13.1"),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr "foo == 220.12.13.1" =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo".into()),
                 op: ast::BinOp::Eq,
                 rhs: ast::Rhs::Ipv4(Ipv4Addr::new(220, 12, 13, 1))
-            })
-        );
+            }
+        }
 
-        assert_eq!(
-            parse!(expr, "foo in 220.12.13.1..220.12.13.2"),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr "foo in 220.12.13.1..220.12.13.2" =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo".into()),
                 op: ast::BinOp::In,
                 rhs: ast::Rhs::Ipv4Range(
                     Ipv4Addr::new(220, 12, 13, 1)..=Ipv4Addr::new(220, 12, 13, 2)
                 )
-            })
-        );
+            }
+        }
 
-        assert_eq!(
-            parse!(expr, "foo == 2001:db8::1"),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr "foo in 192.0.0.0/16" =>
+            ast::Expr::Binary {
+                lhs: ast::Var("foo".into()),
+                op: ast::BinOp::In,
+                rhs: ast::Rhs::Ipv4Cidr(
+                    Ipv4Cidr::new(Ipv4Addr::new(192, 0, 0, 0), 16).unwrap()
+                )
+            }
+        }
+
+        ok! {
+            expr "foo in ::1/128" =>
+            ast::Expr::Binary {
+                lhs: ast::Var("foo".into()),
+                op: ast::BinOp::In,
+                rhs: ast::Rhs::Ipv6Cidr(
+                    Ipv6Cidr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), 128).unwrap()
+                )
+            }
+        }
+
+        ok! {
+            expr "foo == 2001:db8::1" =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo".into()),
                 op: ast::BinOp::Eq,
                 rhs: ast::Rhs::Ipv6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))
-            })
-        );
+            }
+        }
 
-        assert_eq!(
-            parse!(expr, r#"foo.bar == "test\n""#),
-            Ok(ast::Expr::Binary {
+        ok! {
+            expr r#"foo.bar == "test\n""# =>
+            ast::Expr::Binary {
                 lhs: ast::Var("foo.bar".into()),
                 op: ast::BinOp::Eq,
                 rhs: ast::Rhs::String("test\n".as_bytes().into())
-            })
-        );
+            }
+        }
     }
 
     #[test]
     fn parse_ipv4_lit() {
-        assert_eq!(
-            parse!(ipv4_lit, "127.0.0.1"),
-            Ok(Ipv4Addr::new(127, 0, 0, 1))
-        );
+        ok! { ipv4_lit "127.0.0.1" => Ipv4Addr::new(127, 0, 0, 1) }
+        ok! { ipv4_lit "192.0.2.235" => Ipv4Addr::new(192, 0, 2, 235) }
 
-        assert_eq!(
-            parse!(ipv4_lit, "192.0.2.235"),
-            Ok(Ipv4Addr::new(192, 0, 2, 235))
-        );
+        err! { ipv4_lit "127.0.0.a" =>
+            " --> 1:1
+            |
+          1 | 127.0.0.a
+            | ^---
+            |
+            = expected ipv4_lit"
+        }
 
-        assert!(parse!(ipv4_lit, "127.0.0.a").is_err());
+        err! { ipv4_lit "300.0.0.1" =>
+            " --> 1:1
+            |
+          1 | 300.0.0.1
+            | ^-------^
+            |
+            = invalid IP address syntax"
+        }
     }
 
     #[test]
     fn parse_ipv6_lit() {
-        assert_eq!(
-            parse!(ipv6_lit, "::1"),
-            Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))
-        );
+        ok! { ipv6_lit "::" => Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0) }
+        ok! { ipv6_lit "::1" => Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1) }
+        ok! { ipv6_lit "2001:db8::1" => Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1) }
+        ok! { ipv6_lit "2001:db8::1" => Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1) }
 
-        assert_eq!(
-            parse!(ipv6_lit, "2001:db8::1"),
-            Ok(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))
-        );
+        ok! {
+            ipv6_lit "::ffff:255.255.255.255" =>
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xffff, 0xffff)
+        }
 
-        assert_eq!(
-            parse!(ipv6_lit, "2001:db8::1"),
-            Ok(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1))
-        );
-
-        assert_eq!(
-            parse!(ipv6_lit, "::ffff:255.255.255.255"),
-            Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xffff, 0xffff))
-        );
+        err! { ipv6_lit "2001:dz8::1" =>
+            " --> 1:1
+            |
+          1 | 2001:dz8::1
+            | ^---------^
+            |
+            = invalid IP address syntax"
+        }
     }
 
     #[test]
     fn parse_ipv4_cidr() {
-        assert_eq!(
-            parse!(ipv4_cidr, "127.0.0.1/32"),
-            Ok(Ipv4Cidr::new(Ipv4Addr::new(127, 0, 0, 1), 32).unwrap())
-        );
+        ok! {
+            ipv4_cidr "127.0.0.1/32" =>
+            Ipv4Cidr::new(Ipv4Addr::new(127, 0, 0, 1), 32).unwrap()
+        }
 
-        assert_eq!(
-            parse!(ipv4_cidr, "192.0.0.0/16"),
-            Ok(Ipv4Cidr::new(Ipv4Addr::new(192, 0, 0, 0), 16).unwrap())
-        );
+        ok! {
+            ipv4_cidr "192.0.0.0/16" =>
+            Ipv4Cidr::new(Ipv4Addr::new(192, 0, 0, 0), 16).unwrap()
+        }
 
-        assert!(parse!(ipv4_cidr, "192.0.0.0/99").is_err());
-        assert!(parse!(ipv4_cidr, "192.0.0.1/8").is_err());
+        err! { ipv4_cidr "192.0.0.0/99" =>
+            " --> 1:1
+            |
+          1 | 192.0.0.0/99
+            | ^----------^
+            |
+            = invalid length for network: Network length 99 is too long for Ipv4 (maximum: 32)"
+        }
+
+        err! { ipv4_cidr "192.0.0.1/8" =>
+            " --> 1:1
+            |
+          1 | 192.0.0.1/8
+            | ^---------^
+            |
+            = host part of address was not zero"
+        }
+    }
+
+    #[test]
+    fn parse_ipv6_cidr() {
+        ok! {
+            ipv6_cidr "::1/128" =>
+            Ipv6Cidr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), 128).unwrap()
+        }
+
+        ok! {
+            ipv6_cidr "::/10" =>
+            Ipv6Cidr::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0), 10).unwrap()
+        }
+
+        err! { ipv6_cidr "::1/560" =>
+            " --> 1:1
+            |
+          1 | ::1/560
+            | ^-----^
+            |
+            = couldn't parse length in network: number too large to fit in target type"
+        }
     }
 
     #[test]
     fn parse_ipv4_range() {
-        assert_eq!(
-            parse!(ipv4_range, "127.0.0.1..127.0.0.128"),
-            Ok(Ipv4Addr::new(127, 0, 0, 1)..=Ipv4Addr::new(127, 0, 0, 128))
-        );
+        ok! {
+            ipv4_range "127.0.0.1..127.0.0.128" =>
+            Ipv4Addr::new(127, 0, 0, 1)..=Ipv4Addr::new(127, 0, 0, 128)
+        }
 
-        assert_eq!(
-            parse!(ipv4_range, "192.0.2.235..192.1.2.235"),
-            Ok(Ipv4Addr::new(192, 0, 2, 235)..=Ipv4Addr::new(192, 1, 2, 235))
-        );
+        ok! {
+            ipv4_range "192.0.2.235..192.1.2.235" =>
+            Ipv4Addr::new(192, 0, 2, 235)..=Ipv4Addr::new(192, 1, 2, 235)
+        }
 
-        assert!(parse!(ipv4_range, "192.0.2.235..192.1.2.a").is_err());
-        assert!(parse!(ipv4_range, "192.0.2.235..192.0.2.128").is_err());
+        err! { ipv4_range "192.0.2.235..192.1.2.a" =>
+            " --> 1:14
+            |
+          1 | 192.0.2.235..192.1.2.a
+            |              ^---
+            |
+            = expected ipv4_lit"
+        }
+
+        err! { ipv4_range "192.0.2.235..192.0.2.128" =>
+            " --> 1:1
+            |
+          1 | 192.0.2.235..192.0.2.128
+            | ^----------------------^
+            |
+            = start of the range is greater than the end"
+        }
     }
 
     #[test]
     fn parse_ipv6_range() {
-        assert_eq!(
-            parse!(ipv6_range, "::1..::2"),
-            Ok(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)..=Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 2))
-        );
+        ok! {
+            ipv6_range "::1..::2" =>
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)..=Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 2)
+        }
 
-        assert_eq!(
-            parse!(ipv6_range, "2001:db8::1..2001:db8::ff"),
-            Ok(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)
-                ..=Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0xff))
-        );
+        ok! {
+            ipv6_range "2001:db8::1..2001:db8::ff" =>
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)
+                ..=Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0xff)
+        }
 
-        assert!(parse!(ipv6_range, "2001:db8::1..2001:dz8::ff").is_err());
-        assert!(parse!(ipv6_range, "2001:db8::ff..2001:db8::11").is_err());
+        err! { ipv6_range "2001:db8::1..2001:dz8::ff" =>
+            " --> 1:14
+            |
+          1 | 2001:db8::1..2001:dz8::ff
+            |              ^----------^
+            |
+            = invalid IP address syntax"
+        }
+
+        err! { ipv6_range "2001:db8::ff..2001:db8::11" =>
+            " --> 1:1
+            |
+          1 | 2001:db8::ff..2001:db8::11
+            | ^------------------------^
+            |
+            = start of the range is greater than the end"
+        }
     }
 }

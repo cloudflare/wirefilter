@@ -37,7 +37,7 @@ ipv4_lit = @{ ASCII_DIGIT{1,3} ~ ( "." ~ ASCII_DIGIT{1,3} ){3} }
 // NOTE: this is far from being precise IPv6 grammar, but it's not ambigious with IPv4 and
 // int literal. Actual parsing is performed by Rust's std lib.
 ipv6_lit = @{
-    ( ":" | ASCII_ALPHANUMERIC{1,4} ) ~ ":" ~ ( ipv4_lit | ASCII_ALPHANUMERIC{1,4} | ":" )+
+    ( ":" | ASCII_ALPHANUMERIC{1,4} ) ~ ":" ~ ( ipv4_lit | ASCII_ALPHANUMERIC{1,4} | ":" )*
 }
 
 // IP ranges
