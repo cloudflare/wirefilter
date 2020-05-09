@@ -10,7 +10,7 @@ var = @{ ident ~ ("." ~ ident)* }
 // Though, in the worst case we'll backtrack only 4 characters.
 rhs = {
     ipv4_range | ipv4_cidr | ipv4_lit | ipv6_range | ipv6_cidr | ipv6_lit |
-    int_range | int_lit | str_lit
+    int_range | int_lit | str_lit | regex_lit
 }
 
 // Int literal
@@ -45,6 +45,16 @@ ipv4_cidr = @{ ipv4_lit ~ "/" ~ ASCII_DIGIT{1,2} }
 ipv6_cidr = @{ ipv6_lit ~ "/" ~ ASCII_DIGIT{1,3} }
 ipv4_range = ${ ipv4_lit ~ ".." ~ ipv4_lit }
 ipv6_range = ${ ipv6_lit ~ ".." ~ ipv6_lit }
+
+// Regex
+re_lit = ${ "/" ~ re_content ~ "/" }
+re_content = { ( re_ch_gr | re_esc | re_unesc )+ }
+re_unesc = _{ ( !( "/" | "\\" | "[" ) ~ ANY )+ }
+re_esc = _{ "\\" ~ ANY }
+re_ch_gr = _{ "[" ~ ( re_esc | re_ch_gr_unesc )* ~ "]" }
+re_ch_gr_unesc = _{ ( !( "]" | "\\" ) ~ ANY )+ }
+
+
 
 // Logical operators
 //============================================================
