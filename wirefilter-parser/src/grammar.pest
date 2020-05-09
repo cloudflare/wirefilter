@@ -10,7 +10,7 @@ var = @{ ident ~ ("." ~ ident)* }
 // Though, in the worst case we'll backtrack only 4 characters.
 rhs = {
     ipv4_range | ipv4_cidr | ipv4_lit | ipv6_range | ipv6_cidr | ipv6_lit |
-    int_range | int_lit | str_lit | regex_lit
+    int_range | int_lit | str_lit | re_lit
 }
 
 // Int literal
