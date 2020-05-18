@@ -55,7 +55,6 @@ re_ch_gr = _{ "[" ~ ( re_esc | re_ch_gr_unesc )* ~ "]" }
 re_ch_gr_unesc = _{ ( !( "]" | "\\" ) ~ ANY )+ }
 
 
-
 // Logical operators
 //============================================================
 logical_op = { op_or | op_and | op_xor }
