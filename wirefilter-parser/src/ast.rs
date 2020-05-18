@@ -1,10 +1,15 @@
 use cidr::{Ipv4Cidr, Ipv6Cidr};
+use regex::bytes::RegexBuilder;
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::ops::RangeInclusive;
+use std::ops::{Deref, RangeInclusive};
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
 pub struct Var<'i>(pub Cow<'i, str>);
+
+#[derive(Debug)]
+pub struct Regex(regex::bytes::Regex);
 
 #[derive(Debug, PartialEq)]
 pub enum Rhs<'i> {
@@ -17,6 +22,7 @@ pub enum Rhs<'i> {
     Ipv6Range(RangeInclusive<Ipv6Addr>),
     Ipv4Cidr(Ipv4Cidr),
     Ipv6Cidr(Ipv6Cidr),
+    Regex(Regex),
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,4 +47,28 @@ pub enum Expr<'i> {
         op: BinOp,
         rhs: Rhs<'i>,
     },
+}
+
+impl PartialEq for Regex {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+
+impl Deref for Regex {
+    type Target = regex::bytes::Regex;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromStr for Regex {
+    type Err = regex::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        RegexBuilder::new(s).unicode(false).build().map(Regex)
+    }
 }

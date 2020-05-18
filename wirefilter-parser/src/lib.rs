@@ -145,12 +145,23 @@ impl Parser {
         parse_type!(node, Ipv6Cidr)
     }
 
+    #[inline]
     fn ipv4_range(node: Node) -> ParseResult<RangeInclusive<Ipv4Addr>> {
         parse_range!(node, ipv4_lit)
     }
 
+    #[inline]
     fn ipv6_range(node: Node) -> ParseResult<RangeInclusive<Ipv6Addr>> {
         parse_range!(node, ipv6_lit)
+    }
+
+    fn re_lit(node: Node) -> ParseResult<ast::Regex> {
+        node.children()
+            .single()
+            .unwrap()
+            .as_str()
+            .parse()
+            .into_parse_result(&node)
     }
 
     fn rhs(node: Node) -> ParseResult<ast::Rhs> {
@@ -164,7 +175,8 @@ impl Parser {
             [ipv4_cidr(c)] => ast::Rhs::Ipv4Cidr(c),
             [ipv6_cidr(c)] => ast::Rhs::Ipv6Cidr(c),
             [ipv4_range(r)] => ast::Rhs::Ipv4Range(r),
-            [ipv6_range(r)] => ast::Rhs::Ipv6Range(r)
+            [ipv6_range(r)] => ast::Rhs::Ipv6Range(r),
+            [re_lit(r)] => ast::Rhs::Regex(r)
         })
     }
 
@@ -602,6 +614,14 @@ mod tests {
             | ^------------------------^
             |
             = start of the range is greater than the end"
+        }
+    }
+
+    #[test]
+    fn parse_re_lit() {
+        ok! {
+            re_lit r#"/[-]?[0-9]+[,.]?[0-9]*([\/][0-9]+[,.]?[0-9]*)*/"# =>
+            r#"[-]?[0-9]+[,.]?[0-9]*([\/][0-9]+[,.]?[0-9]*)*"#.parse().unwrap()
         }
     }
 }
