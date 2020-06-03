@@ -123,7 +123,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for LogicalExpr<'s> {
 }
 
 impl<'s> Expr<'s> for LogicalExpr<'s> {
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
         match self {
             LogicalExpr::Simple(node) => visitor.visit_simple_expr(node),
             LogicalExpr::Combining { items, .. } => {

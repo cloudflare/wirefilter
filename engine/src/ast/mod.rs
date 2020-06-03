@@ -20,7 +20,7 @@ use visitor::{UsesListVisitor, UsesVisitor, Visitor};
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
 pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T>;
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T>;
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
@@ -33,7 +33,7 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
 /// Trait used to represent node that evaluates to an [`LhsValue`].
 pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T>;
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
@@ -92,7 +92,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 
 impl<'s> FilterAst<'s> {
     /// Recursively visit all nodes in the AST.
-    pub fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+    pub fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
         visitor.visit_logical_expr(&self.op)
     }
 
