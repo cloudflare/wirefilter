@@ -9,30 +9,30 @@ use super::{
 use crate::scheme::{Field, Function};
 
 /// Trait used to visit all nodes in the AST.
-pub trait Visitor<T>: Sized {
+pub trait Visitor<'s, T>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
     #[inline(always)]
-    fn visit_expr<'s>(&mut self, node: &'s impl Expr<'s>) -> Option<T> {
+    fn visit_expr(&mut self, node: &impl Expr<'s>) -> Option<T> {
         node.walk(self)
     }
 
     /// Visit [`SimpleExpr`] node.
     #[inline(always)]
-    fn visit_simple_expr(&mut self, node: &SimpleExpr<'_>) -> Option<T> {
+    fn visit_simple_expr(&mut self, node: &SimpleExpr<'s>) -> Option<T> {
         self.visit_expr(node)
     }
 
     /// Visit [`LogicalExpr`] node.
     #[inline(always)]
-    fn visit_logical_expr(&mut self, node: &LogicalExpr<'_>) -> Option<T> {
+    fn visit_logical_expr(&mut self, node: &LogicalExpr<'s>) -> Option<T> {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
     #[inline(always)]
-    fn visit_comparison_expr(&mut self, node: &ComparisonExpr<'_>) -> Option<T> {
+    fn visit_comparison_expr(&mut self, node: &ComparisonExpr<'s>) -> Option<T> {
         self.visit_expr(node)
     }
 
@@ -40,25 +40,25 @@ pub trait Visitor<T>: Sized {
 
     /// Visit [`ValueExpr`] node.
     #[inline(always)]
-    fn visit_value_expr<'s>(&mut self, node: &'s impl ValueExpr<'s>) -> Option<T> {
+    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) -> Option<T> {
         node.walk(self)
     }
 
     /// Visit [`IndexExpr`] node.
     #[inline(always)]
-    fn visit_index_expr(&mut self, node: &IndexExpr<'_>) -> Option<T> {
+    fn visit_index_expr(&mut self, node: &IndexExpr<'s>) -> Option<T> {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
     #[inline(always)]
-    fn visit_function_call_expr(&mut self, node: &FunctionCallExpr<'_>) -> Option<T> {
+    fn visit_function_call_expr(&mut self, node: &FunctionCallExpr<'s>) -> Option<T> {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
     #[inline(always)]
-    fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'_>) -> Option<T> {
+    fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'s>) -> Option<T> {
         self.visit_value_expr(node)
     }
 
@@ -66,13 +66,13 @@ pub trait Visitor<T>: Sized {
 
     /// Visit [`Field`] node.
     #[inline(always)]
-    fn visit_field(&mut self, _: &Field<'_>) -> Option<T> {
+    fn visit_field(&mut self, _: &Field<'s>) -> Option<T> {
         None
     }
 
     /// Visit [`Function`] node.
     #[inline(always)]
-    fn visit_function(&mut self, _: &Function<'_>) -> Option<T> {
+    fn visit_function(&mut self, _: &Function<'s>) -> Option<T> {
         None
     }
 
@@ -90,8 +90,8 @@ impl<'s> UsesVisitor<'s> {
     }
 }
 
-impl<'s> Visitor<()> for UsesVisitor<'s> {
-    fn visit_field(&mut self, f: &Field<'_>) -> Option<()> {
+impl<'s> Visitor<'s, ()> for UsesVisitor<'s> {
+    fn visit_field(&mut self, f: &Field<'s>) -> Option<()> {
         if self.field == *f {
             Some(())
         } else {
@@ -111,8 +111,8 @@ impl<'s> UsesListVisitor<'s> {
     }
 }
 
-impl<'s> Visitor<()> for UsesListVisitor<'s> {
-    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'_>) -> Option<()> {
+impl<'s> Visitor<'s, ()> for UsesListVisitor<'s> {
+    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'s>) -> Option<()> {
         match comparison_expr.op {
             ComparisonOpExpr::InList(ref _list) => Some(()),
             _ => None,

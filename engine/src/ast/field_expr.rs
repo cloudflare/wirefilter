@@ -304,7 +304,7 @@ impl<'s> ComparisonExpr<'s> {
 }
 
 impl<'s> Expr<'s> for ComparisonExpr<'s> {
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
         visitor.visit_index_expr(&self.lhs)
     }
 

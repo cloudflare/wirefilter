@@ -37,7 +37,7 @@ pub enum FunctionCallArgExpr<'s> {
 }
 
 impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => visitor.visit_index_expr(index_expr),
             FunctionCallArgExpr::Literal(_) => None,
@@ -220,7 +220,7 @@ pub struct FunctionCallExpr<'s> {
 }
 
 impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
-    fn walk<T, V: Visitor<T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
         let mut result = None;
         self.args.iter().any(|arg| {
             result = visitor.visit_function_call_arg_expr(arg);
