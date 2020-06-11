@@ -83,5 +83,6 @@ everything: &everything
 
 buster: *everything
 stretch: *everything
+buster: *everything
 
 default-flavor: buster
