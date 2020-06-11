@@ -81,4 +81,6 @@ everything: &everything
       - ./cfsetup-cargo.sh fmt -- --check
 
 stretch: *everything
-jessie: *everything
+buster: *everything
+
+default-flavor: buster
