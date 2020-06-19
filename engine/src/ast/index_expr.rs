@@ -147,25 +147,39 @@ impl<'s> IndexExpr<'s> {
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
-                CompiledOneExpr::new(move |ctx| {
-                    index_access_one!(
-                        indexes,
-                        (&call.execute(ctx)).as_ref().ok(),
-                        default,
-                        ctx,
-                        func
-                    )
-                })
+                if indexes.is_empty() {
+                    CompiledOneExpr::new(move |ctx| {
+                        call.execute(ctx).map_or(default, |val| func(&val, ctx))
+                    })
+                } else {
+                    CompiledOneExpr::new(move |ctx| {
+                        index_access_one!(
+                            indexes,
+                            (&call.execute(ctx)).as_ref().ok(),
+                            default,
+                            ctx,
+                            func
+                        )
+                    })
+                }
             }
-            LhsFieldExpr::Field(f) => CompiledOneExpr::new(move |ctx: &C::ExecutionContext| {
-                index_access_one!(
-                    indexes,
-                    Some(ctx.get_field_value_unchecked(f)),
-                    default,
-                    ctx,
-                    func
-                )
-            }),
+            LhsFieldExpr::Field(f) => {
+                if indexes.is_empty() {
+                    CompiledOneExpr::new(move |ctx: &C::ExecutionContext| {
+                        func(ctx.get_field_value_unchecked(f), ctx)
+                    })
+                } else {
+                    CompiledOneExpr::new(move |ctx: &C::ExecutionContext| {
+                        index_access_one!(
+                            indexes,
+                            Some(ctx.get_field_value_unchecked(f)),
+                            default,
+                            ctx,
+                            func
+                        )
+                    })
+                }
+            }
         }
     }
 
