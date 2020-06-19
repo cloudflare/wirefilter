@@ -28,12 +28,12 @@ macro_rules! index_access_one {
             .fold($first, |value, idx| {
                 value.and_then(|val| val.get(idx).unwrap())
             })
-            .map_or($default, |val| $func(val, $ctx))
+            .map_or_else(|| $default, |val| $func(val, $ctx))
     };
 }
 
 macro_rules! index_access_vec {
-    ($indexes:ident, $first:expr, $default:ident, $ctx:ident, $func:ident) => {
+    ($indexes:ident, $first:expr, $default:expr, $ctx:ident, $func:ident) => {
         index_access_one!(
             $indexes,
             $first,
@@ -180,15 +180,15 @@ impl<'s> IndexExpr<'s> {
     {
         let Self { lhs, indexes } = self;
         let indexes = simplify_indexes(indexes);
+        let default = default.to_vec().into_boxed_slice();
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    let default = default.to_vec().into_boxed_slice();
                     index_access_vec!(
                         indexes,
                         (&call.execute(ctx)).as_ref().ok(),
-                        default,
+                        default.clone(),
                         ctx,
                         func
                     )
@@ -199,7 +199,7 @@ impl<'s> IndexExpr<'s> {
                 index_access_vec!(
                     indexes,
                     Some(ctx.get_field_value_unchecked(f)),
-                    default,
+                    default.clone(),
                     ctx,
                     func
                 )
