@@ -22,12 +22,8 @@ pub struct IndexExpr<'s> {
 }
 
 macro_rules! index_access_one {
-    ($indexes:ident, $first:expr, $default:ident, $ctx:ident, $func:expr) => {
-        $indexes[..(if let Some(&FieldIndex::MapEach) = $indexes.last() {
-            $indexes.len() - 1
-        } else {
-            $indexes.len()
-        })]
+    ($indexes:ident, $first:expr, $default:expr, $ctx:ident, $func:expr) => {
+        $indexes
             .iter()
             .fold($first, |value, idx| {
                 value.and_then(|val| val.get(idx).unwrap())
@@ -129,8 +125,15 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
     }
 }
 
+fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
+    if Some(&FieldIndex::MapEach) == indexes.last() {
+        indexes.pop();
+    }
+    indexes.into_boxed_slice()
+}
+
 impl<'s> IndexExpr<'s> {
-    pub(crate) fn compile_one_with<F: 's, C: Compiler + 's>(
+    fn compile_one_with<F: 's, C: Compiler + 's>(
         self,
         compiler: &mut C,
         default: bool,
@@ -140,6 +143,7 @@ impl<'s> IndexExpr<'s> {
         F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
+        let indexes = simplify_indexes(indexes);
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
@@ -175,6 +179,7 @@ impl<'s> IndexExpr<'s> {
         F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
+        let indexes = simplify_indexes(indexes);
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
