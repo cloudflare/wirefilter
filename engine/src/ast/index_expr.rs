@@ -33,11 +33,11 @@ macro_rules! index_access_one {
 }
 
 macro_rules! index_access_vec {
-    ($indexes:ident, $first:expr, $default:expr, $ctx:ident, $func:ident) => {
+    ($indexes:ident, $first:expr, $ctx:ident, $func:ident) => {
         index_access_one!(
             $indexes,
             $first,
-            $default,
+            Vec::new().into_boxed_slice(),
             $ctx,
             |val: &LhsValue<'_>, ctx: &C::ExecutionContext| {
                 let mut output = Vec::new();
@@ -186,7 +186,6 @@ impl<'s> IndexExpr<'s> {
     pub(crate) fn compile_vec_with<F: 's, C: Compiler + 's>(
         self,
         compiler: &mut C,
-        default: &'s [bool],
         func: F,
     ) -> CompiledVecExpr<'s, C>
     where
@@ -194,29 +193,15 @@ impl<'s> IndexExpr<'s> {
     {
         let Self { lhs, indexes } = self;
         let indexes = simplify_indexes(indexes);
-        let default = default.to_vec().into_boxed_slice();
         match lhs {
             LhsFieldExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    index_access_vec!(
-                        indexes,
-                        (&call.execute(ctx)).as_ref().ok(),
-                        default.clone(),
-                        ctx,
-                        func
-                    )
+                    index_access_vec!(indexes, (&call.execute(ctx)).as_ref().ok(), ctx, func)
                 })
             }
             LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx: &C::ExecutionContext| {
-                let default = default.to_vec().into_boxed_slice();
-                index_access_vec!(
-                    indexes,
-                    Some(ctx.get_field_value_unchecked(f)),
-                    default.clone(),
-                    ctx,
-                    func
-                )
+                index_access_vec!(indexes, Some(ctx.get_field_value_unchecked(f)), ctx, func)
             }),
         }
     }
@@ -224,7 +209,6 @@ impl<'s> IndexExpr<'s> {
     pub(crate) fn compile_iter_with<F: 's, C: Compiler + 's>(
         self,
         compiler: &mut C,
-        default: &'s [bool],
         func: F,
     ) -> CompiledVecExpr<'s, C>
     where
@@ -249,7 +233,7 @@ impl<'s> IndexExpr<'s> {
                     if let Ok(val) = call.execute(ctx) {
                         iter.reset(val);
                     } else {
-                        return default.to_vec().into_boxed_slice();
+                        return Vec::new().into_boxed_slice();
                     }
 
                     let mut output = Vec::new();
@@ -265,19 +249,18 @@ impl<'s> IndexExpr<'s> {
     pub(crate) fn compile_with<F: 's, C: Compiler + 's>(
         self,
         compiler: &mut C,
-        default_one: bool,
-        default_vec: &'s [bool],
+        default: bool,
         func: F,
     ) -> CompiledExpr<'s, C>
     where
         F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
     {
         match self.map_each_count() {
-            0 => CompiledExpr::One(self.compile_one_with(compiler, default_one, func)),
+            0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),
             1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
-                CompiledExpr::Vec(self.compile_vec_with(compiler, default_vec, func))
+                CompiledExpr::Vec(self.compile_vec_with(compiler, func))
             }
-            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, default_vec, func)),
+            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, func)),
         }
     }
 
