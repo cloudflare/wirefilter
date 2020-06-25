@@ -267,16 +267,8 @@ impl<'s> IndexExpr<'s> {
     pub(crate) fn map_each_count(&self) -> usize {
         self.indexes
             .iter()
-            .fold((self.lhs.get_type(), 0), |(ty, count), index| {
-                match (ty, index) {
-                    (Type::Array(idx), FieldIndex::ArrayIndex(_)) => (*idx, count),
-                    (Type::Array(idx), FieldIndex::MapEach) => (*idx, count + 1),
-                    (Type::Map(child), FieldIndex::MapKey(_)) => (*child, count),
-                    (Type::Map(child), FieldIndex::MapEach) => (*child, count + 1),
-                    (_, _) => unreachable!(),
-                }
-            })
-            .1
+            .filter(|&index| index == &FieldIndex::MapEach)
+            .count()
     }
 }
 
