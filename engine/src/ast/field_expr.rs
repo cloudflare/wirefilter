@@ -323,40 +323,40 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
         match self.op {
             ComparisonOpExpr::IsTrue => {
                 if lhs.get_type() == Type::Bool {
-                    lhs.compile_with(compiler, false, &[], move |x, _ctx| *cast_value!(x, Bool))
+                    lhs.compile_with(compiler, false, move |x, _ctx| *cast_value!(x, Bool))
                 } else if lhs.get_type().next() == Some(Type::Bool) {
                     // MapEach is impossible in this case, thus call `compile_vec_with` directly
                     // to coerce LhsValue to Vec<bool>
                     CompiledExpr::Vec(
-                        lhs.compile_vec_with(compiler, &[], move |x, _ctx| *cast_value!(x, Bool)),
+                        lhs.compile_vec_with(compiler, move |x, _ctx| *cast_value!(x, Bool)),
                     )
                 } else {
                     unreachable!()
                 }
             }
             ComparisonOpExpr::Ordering { op, rhs } => match op {
-                OrderingOp::NotEqual => lhs.compile_with(compiler, true, &[], move |x, _ctx| {
+                OrderingOp::NotEqual => lhs.compile_with(compiler, true, move |x, _ctx| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
-                _ => lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+                _ => lhs.compile_with(compiler, false, move |x, _ctx| {
                     op.matches_opt(x.strict_partial_cmp(&rhs))
                 }),
             },
             ComparisonOpExpr::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+            } => lhs.compile_with(compiler, false, move |x, _ctx| {
                 cast_value!(x, Int) & rhs != 0
             }),
             ComparisonOpExpr::Contains(bytes) => {
                 let searcher = HeapSearcher::from(bytes);
 
-                lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+                lhs.compile_with(compiler, false, move |x, _ctx| {
                     searcher.search_in(cast_value!(x, Bytes)).is_some()
                 })
             }
             ComparisonOpExpr::Matches(regex) => {
-                lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+                lhs.compile_with(compiler, false, move |x, _ctx| {
                     regex.is_match(cast_value!(x, Bytes))
                 })
             }
@@ -373,17 +373,15 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(compiler, false, &[], move |x, _ctx| {
-                        match cast_value!(x, Ip) {
-                            IpAddr::V4(addr) => v4.contains(addr),
-                            IpAddr::V6(addr) => v6.contains(addr),
-                        }
+                    lhs.compile_with(compiler, false, move |x, _ctx| match cast_value!(x, Ip) {
+                        IpAddr::V4(addr) => v4.contains(addr),
+                        IpAddr::V6(addr) => v6.contains(addr),
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.iter().cloned().collect();
 
-                    lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+                    lhs.compile_with(compiler, false, move |x, _ctx| {
                         values.contains(cast_value!(x, Int))
                     })
                 }
@@ -391,7 +389,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     let values: IndexSet<Box<[u8]>, FnvBuildHasher> =
                         values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(compiler, false, &[], move |x, _ctx| {
+                    lhs.compile_with(compiler, false, move |x, _ctx| {
                         values.contains(cast_value!(x, Bytes) as &[u8])
                     })
                 }
@@ -399,12 +397,10 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Map(_) => unreachable!(),
                 RhsValues::Array(_) => unreachable!(),
             },
-            ComparisonOpExpr::InList(list) => {
-                lhs.compile_with(compiler, false, &[], move |val, ctx| {
-                    ctx.get_list_matcher_unchecked(&val.get_type())
-                        .match_value(list.name(), &val)
-                })
-            }
+            ComparisonOpExpr::InList(list) => lhs.compile_with(compiler, false, move |val, ctx| {
+                ctx.get_list_matcher_unchecked(&val.get_type())
+                    .match_value(list.name(), &val)
+            }),
         }
     }
 }
