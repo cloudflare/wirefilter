@@ -2186,7 +2186,10 @@ mod tests {
         assert_eq!(expr.execute_one(ctx), true);
 
         let json = serde_json::to_string(ctx).unwrap();
-        assert_eq!(json, "{\"tcp.port\":1001,\"Int\":{}}");
+        assert_eq!(
+            json,
+            "{\"tcp.port\":1001,\"$lists\":[{\"type\":\"Int\",\"data\":{}}]}"
+        );
     }
 
     #[test]
