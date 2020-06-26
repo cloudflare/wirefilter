@@ -2,11 +2,11 @@ use crate::{
     compiler::ExecCtx,
     list_matcher::ListMatcherWrapper,
     scheme::{Field, List, Scheme, SchemeMismatchError},
-    types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
+    types::{GetType, LhsValue, LhsValueSeed, Type, TypeMismatchError},
     ListMatcher,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, Serializer};
+use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 use std::any::Any;
 use std::borrow::Cow;
 use std::fmt;
@@ -208,10 +208,39 @@ impl<'e> Serialize for ExecutionContext<'e> {
                 map.serialize_entry(name, value)?;
             }
         }
-        for (ty, list) in self.scheme.lists() {
-            if let Some(list_data) = &self.list_data[list.index()] {
-                map.serialize_entry(ty, &list_data.to_json_value())?;
+
+        struct ListDataSlice<'a>(&'a Scheme, &'a [Option<ListMatcherWrapper>]);
+
+        impl<'a> Serialize for ListDataSlice<'a> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                use serde::Serialize;
+
+                #[derive(Serialize)]
+                struct ListData<'b> {
+                    #[serde(rename = "type")]
+                    ty: &'b Type,
+                    data: serde_json::Value,
+                }
+
+                let mut seq = serializer
+                    .serialize_seq(Some(self.1.iter().filter(|list| list.is_some()).count()))?;
+                for (ty, list) in self.0.lists() {
+                    if let Some(list_data) = &self.1[list.index()] {
+                        seq.serialize_element(&ListData {
+                            ty,
+                            data: list_data.to_json_value(),
+                        })?;
+                    }
+                }
+                seq.end()
             }
+        }
+
+        if self.list_data.iter().any(|list_data| list_data.is_some()) {
+            map.serialize_entry("$lists", &ListDataSlice(self.scheme, &*self.list_data))?;
         }
         map.end()
     }
