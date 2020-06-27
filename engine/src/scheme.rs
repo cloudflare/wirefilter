@@ -4,7 +4,6 @@ use crate::{
     lex::{complete, expect, span, take_while, Lex, LexErrorKind, LexResult, LexWith},
     types::{GetType, RhsValue, Type},
 };
-use failure::Fail;
 use fnv::FnvBuildHasher;
 use indexmap::map::{Entry, IndexMap};
 use serde::ser::SerializeMap;
@@ -18,11 +17,12 @@ use std::{
     iter::Iterator,
     ptr,
 };
+use thiserror::Error;
 
 /// An error that occurs if two underlying [schemes](struct@Scheme)
 /// don't match.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "underlying schemes do not match")]
+#[derive(Debug, PartialEq, Error)]
+#[error("underlying schemes do not match")]
 pub struct SchemeMismatchError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -80,8 +80,8 @@ impl<'i> Lex<'i> for FieldIndex {
     }
 }
 
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "cannot access index {:?} for type {:?}", _0, _1)]
+#[derive(Debug, PartialEq, Error)]
+#[error("cannot access index {index:?} for type {actual:?}")]
 pub struct IndexAccessError {
     pub index: FieldIndex,
     pub actual: Type,
@@ -257,36 +257,36 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Identifier<'s> {
 
 /// An error that occurs if an unregistered field name was queried from a
 /// [`Scheme`](struct@Scheme).
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "unknown field")]
+#[derive(Debug, PartialEq, Error)]
+#[error("unknown field")]
 pub struct UnknownFieldError;
 
 /// An error that occurs if an unregistered function name was queried from a
 /// [`Scheme`](struct@Scheme).
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "unknown function")]
+#[derive(Debug, PartialEq, Error)]
+#[error("unknown function")]
 pub struct UnknownFunctionError;
 
 /// An error that occurs when previously defined field gets redefined.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "attempt to redefine field {}", _0)]
+#[derive(Debug, PartialEq, Error)]
+#[error("attempt to redefine field {0}")]
 pub struct FieldRedefinitionError(String);
 
 /// An error that occurs when previously defined function gets redefined.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "attempt to redefine function {}", _0)]
+#[derive(Debug, PartialEq, Error)]
+#[error("attempt to redefine function {0}")]
 pub struct FunctionRedefinitionError(String);
 
 /// An error that occurs when trying to redefine a field or function.
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 pub enum IdentifierRedefinitionError {
     /// An error that occurs when previously defined field gets redefined.
-    #[fail(display = "{}", _0)]
-    Field(#[cause] FieldRedefinitionError),
+    #[error("{0}")]
+    Field(#[source] FieldRedefinitionError),
 
     /// An error that occurs when previously defined function gets redefined.
-    #[fail(display = "{}", _0)]
-    Function(#[cause] FunctionRedefinitionError),
+    #[error("{0}")]
+    Function(#[source] FunctionRedefinitionError),
 }
 
 /// An opaque filter parsing error associated with the original input.

@@ -5,7 +5,6 @@ use crate::{
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
-use failure::Fail;
 use serde::de::{DeserializeSeed, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
@@ -18,6 +17,7 @@ use std::{
     net::IpAddr,
     ops::RangeInclusive,
 };
+use thiserror::Error;
 
 fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
     let mut input = expect(input, "{")?;
@@ -72,11 +72,8 @@ impl From<ExpectedType> for ExpectedTypeList {
 }
 
 /// An error that occurs on a type mismatch.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(
-    display = "expected value of type {:?}, but got {:?}",
-    expected, actual
-)]
+#[derive(Debug, PartialEq, Error)]
+#[error("expected value of type {expected:?}, but got {actual:?}")]
 pub struct TypeMismatchError {
     /// Expected value type.
     pub expected: ExpectedTypeList,
@@ -85,12 +82,12 @@ pub struct TypeMismatchError {
 }
 
 /// An error that occurs on a type mismatch.
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 pub enum SetValueError {
-    #[fail(display = "{}", _0)]
-    TypeMismatch(#[cause] TypeMismatchError),
-    #[fail(display = "{}", _0)]
-    IndexAccess(#[cause] IndexAccessError),
+    #[error("{0}")]
+    TypeMismatch(#[source] TypeMismatchError),
+    #[error("{0}")]
+    IndexAccess(#[source] IndexAccessError),
 }
 
 macro_rules! replace_underscore {

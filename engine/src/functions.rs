@@ -2,7 +2,6 @@ use crate::{
     filter::CompiledValueResult,
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };
-use failure::Fail;
 use std::any::Any;
 use std::convert::TryFrom;
 use std::{
@@ -10,6 +9,7 @@ use std::{
     fmt::{self, Debug},
     iter::once,
 };
+use thiserror::Error;
 
 pub(crate) struct ExactSizeChain<A, B>
 where
@@ -85,11 +85,8 @@ pub enum FunctionArgKind {
 }
 
 /// An error that occurs on a kind mismatch.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(
-    display = "expected argument of kind {:?}, but got {:?}",
-    expected, actual
-)]
+#[derive(Debug, PartialEq, Error)]
+#[error("expected argument of kind {expected:?}, but got {actual:?}")]
 pub struct FunctionArgKindMismatchError {
     /// Expected value type.
     pub expected: FunctionArgKind,
@@ -98,24 +95,24 @@ pub struct FunctionArgKindMismatchError {
 }
 
 /// An error that occurs on a kind mismatch.
-#[derive(Debug, PartialEq, Fail)]
-#[fail(display = "invalid argument: {:?}", msg)]
+#[derive(Debug, PartialEq, Error)]
+#[error("invalid argument: {msg:?}")]
 pub struct FunctionArgInvalidConstantError {
     msg: String,
 }
 
 /// An error that occurs for a bad function parameter
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 pub enum FunctionParamError {
     /// Function paramater value type has a different type than expected
-    #[fail(display = "expected {}", _0)]
-    TypeMismatch(#[cause] TypeMismatchError),
+    #[error("expected {0}")]
+    TypeMismatch(#[source] TypeMismatchError),
     /// Function parameter argument kind has a different kind than expected
-    #[fail(display = "expected {}", _0)]
-    KindMismatch(#[cause] FunctionArgKindMismatchError),
+    #[error("expected {0}")]
+    KindMismatch(#[source] FunctionArgKindMismatchError),
     /// Function parameter constant value is invalid
-    #[fail(display = "{}", _0)]
-    InvalidConstant(#[cause] FunctionArgInvalidConstantError),
+    #[error("{0}")]
+    InvalidConstant(#[source] FunctionArgInvalidConstantError),
 }
 
 /// Function parameter
