@@ -8,6 +8,7 @@ everything: &everything
       - ffi/Cargo.toml
       - ffi/tests/ctests/Cargo.toml
       - wasm/Cargo.toml
+      - wirefilter-parser/Cargo.toml
       - Cargo.lock
       - Cargo.toml
       - cfsetup-cargo.sh
@@ -67,5 +68,7 @@ everything: &everything
       - sudo ./cfsetup-cargo.sh clippy --all-targets --frozen -- -D clippy
       - sudo ./cfsetup-cargo.sh fmt -- --check
 
+buster: *everything
 stretch: *everything
-jessie: *everything
+
+default-flavor: buster

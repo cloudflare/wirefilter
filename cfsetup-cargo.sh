@@ -15,16 +15,20 @@ case $CMD in
 		# (workaround for https://github.com/rust-lang/cargo/issues/2644)
 
 		# Create dummy sources for our library
-		mkdir -p {engine,ffi,ffi/tests/ctests,wasm}/src
-		touch {engine,ffi,ffi/tests/ctests,wasm}/src/lib.rs
+		mkdir -p {engine,ffi,ffi/tests/ctests,wasm,wirefilter-parser}/src
+		touch {engine,ffi,ffi/tests/ctests,wasm,wirefilter-parser}/src/lib.rs
 		mkdir engine/benches
 		echo 'fn main() {}' > engine/benches/bench.rs
 
+		# Fetch all the dependencies
+		cargo fetch --locked
+
 		# Build library with Cargo.lock (including all the dependencies)
-		cargo build --locked --all $@
+		cargo build --frozen --offline --all $@
+		cargo bench --frozen --offline --all --no-run
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
+		cargo clean --locked -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm -p wirefilter-parser $@
 		;;
 	wasm-pack)
 		# Latest release of wasm-pack can't find target via CARGO_TARGET_DIR nor
