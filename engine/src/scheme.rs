@@ -384,6 +384,41 @@ enum SchemeItem {
     Function(Box<dyn FunctionDefinition>),
 }
 
+/// A structure to represent a list inside a [`scheme`](struct.Scheme.html).
+///
+/// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub struct List<'s> {
+    scheme: &'s Scheme,
+    index: usize,
+}
+
+impl<'s> List<'s> {
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    pub(crate) fn scheme(&self) -> &'s Scheme {
+        self.scheme
+    }
+}
+
+impl<'s> Debug for List<'s> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?}",
+            self.scheme.lists.get_index(self.index).unwrap().1
+        )
+    }
+}
+
+/// An error that occurs when previously defined list gets redefined.
+#[derive(Debug, PartialEq, Error)]
+#[error("attempt to redefine list for type {0:?}")]
+pub struct ListRedefinitionError(Type);
+
+use crate::list_matcher::ListDefinition;
 /// The main registry for fields and their associated types.
 ///
 /// This is necessary to provide typechecking for runtime values provided
@@ -392,6 +427,7 @@ enum SchemeItem {
 #[derive(Default, Debug)]
 pub struct Scheme {
     items: IndexMap<String, SchemeItem, FnvBuildHasher>,
+    lists: IndexMap<Type, Box<dyn ListDefinition>>,
 }
 
 impl PartialEq for Scheme {
@@ -407,7 +443,7 @@ impl Serialize for Scheme {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(self.len()))?;
+        let mut map = serializer.serialize_map(Some(self.len().0))?;
         for (k, v) in self.iter().filter_map(|(key, val)| match val {
             Identifier::Field(field) => Some((key, field)),
             Identifier::Function(_) => None,
@@ -438,6 +474,7 @@ impl<'s> Scheme {
     pub fn with_capacity(n: usize) -> Self {
         Scheme {
             items: IndexMap::with_capacity_and_hasher(n, FnvBuildHasher::default()),
+            ..Default::default()
         }
     }
 
@@ -497,8 +534,8 @@ impl<'s> Scheme {
     }
 
     /// Returns the number of element in the [`scheme`](struct@Scheme)
-    pub fn len(&self) -> usize {
-        self.items.len()
+    pub fn len(&self) -> (usize, usize) {
+        (self.items.len(), self.lists.len())
     }
 
     /// Returns true if the [`scheme`](struct@Scheme) is empty
@@ -573,6 +610,42 @@ impl<'s> Scheme {
                     }),
                 ),
             })
+    }
+
+    /// Registers a new [`list`](trait.ListDefinition.html) for a given [`type`](enum.Type.html).
+    pub fn add_list(
+        &mut self,
+        ty: Type,
+        list: Box<dyn ListDefinition>,
+    ) -> Result<(), ListRedefinitionError> {
+        match self.lists.entry(ty) {
+            Entry::Occupied(entry) => Err(ListRedefinitionError(entry.key().clone())),
+            Entry::Vacant(entry) => {
+                entry.insert(list);
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns the [`list`](struct.List.html) for a given [`type`](enum.Type.html).
+    pub fn get_list(&self, ty: &Type) -> Option<List<'_>> {
+        self.lists.get_index_of(ty).map(move |index| List {
+            scheme: self,
+            index,
+        })
+    }
+
+    /// Iterates over all registered [`lists`](trait.ListDefinition.html).
+    pub fn lists(&self) -> impl ExactSizeIterator<Item = (&Type, List<'_>)> {
+        self.lists.keys().enumerate().map(move |(index, key)| {
+            (
+                key,
+                List {
+                    scheme: self,
+                    index,
+                },
+            )
+        })
     }
 }
 

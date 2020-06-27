@@ -14,6 +14,7 @@ typedef struct wirefilter_filter_ast wirefilter_filter_ast_t;
 typedef struct wirefilter_filter wirefilter_filter_t;
 typedef struct wirefilter_map wirefilter_map_t;
 typedef struct wirefilter_array wirefilter_array_t;
+typedef struct wirefilter_list wirefilter_list_t;
 
 typedef struct {
     const char *data;
@@ -139,6 +140,16 @@ bool wirefilter_add_type_field_to_scheme(
     wirefilter_scheme_t *scheme,
     wirefilter_externally_allocated_str_t name,
     wirefilter_type_t type
+);
+
+wirefilter_list_t *wirefilter_create_always_list();
+
+wirefilter_list_t *wirefilter_create_never_list();
+
+bool wirefilter_add_type_list_to_scheme(
+    wirefilter_scheme_t *scheme,
+    wirefilter_type_t type,
+    wirefilter_list_t *list
 );
 
 wirefilter_parsing_result_t wirefilter_parse_filter(
