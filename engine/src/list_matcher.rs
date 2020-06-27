@@ -1,4 +1,5 @@
 use crate::LhsValue;
+use serde_json::Value;
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -6,6 +7,9 @@ use std::fmt::Debug;
 pub trait ListMatcher {
     /// Returns true if `val` is in the given list.
     fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool;
+
+    /// Convert the list matcher to a serde_json::Value in order to serialize it.
+    fn to_json_value(&self) -> Value;
 }
 
 /// Wrapper to ensure that any ListMatcher implements the required Traits.
@@ -15,6 +19,7 @@ pub struct ListMatcherWrapper {
     eq_cb: fn(&(dyn Any + Send + Sync), &(dyn Any + Send + Sync)) -> bool,
     fmt_cb: fn(&(dyn Any + Send + Sync), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
     match_cb: fn(&(dyn Any + Send + Sync), &str, &LhsValue<'_>) -> bool,
+    to_json_value_cb: fn(&(dyn Any + Send + Sync)) -> Value,
 }
 
 impl ListMatcherWrapper {
@@ -50,6 +55,11 @@ impl ListMatcherWrapper {
         t.downcast_ref::<T>().unwrap().match_value(list_name, v)
     }
 
+    #[allow(clippy::wrong_self_convention)]
+    fn to_json_value_any<T: Any + ListMatcher + Send + Sync>(t: &(dyn Any + Send + Sync)) -> Value {
+        t.downcast_ref::<T>().unwrap().to_json_value()
+    }
+
     /// Creates a new ListMatcherWrapper object containing user-defined  object of type `T`
     pub fn new<T: Any + Clone + Debug + PartialEq + ListMatcher + Send + Sync>(t: T) -> Self {
         Self {
@@ -58,6 +68,7 @@ impl ListMatcherWrapper {
             eq_cb: Self::eq_any::<T>,
             fmt_cb: Self::fmt_any::<T>,
             match_cb: Self::match_any::<T>,
+            to_json_value_cb: Self::to_json_value_any::<T>,
         }
     }
 }
@@ -82,6 +93,7 @@ impl Clone for ListMatcherWrapper {
             eq_cb: self.eq_cb,
             fmt_cb: self.fmt_cb,
             match_cb: self.match_cb,
+            to_json_value_cb: self.to_json_value_cb,
         }
     }
 }
@@ -106,5 +118,9 @@ impl PartialEq for ListMatcherWrapper {
 impl ListMatcher for ListMatcherWrapper {
     fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool {
         (self.match_cb)(&*self.inner, list_name, val)
+    }
+
+    fn to_json_value(&self) -> Value {
+        (self.to_json_value_cb)(&*self.inner)
     }
 }
