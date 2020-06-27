@@ -5,25 +5,25 @@ use crate::{
     types::{Type, TypeMismatchError},
 };
 use cidr::NetworkParseError;
-use failure::Fail;
 use std::num::ParseIntError;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 /// LexErrorKind occurs when there is an invalid or unexpected token.
 pub enum LexErrorKind {
     /// Expected the next token to be a Field
-    #[fail(display = "expected {}", _0)]
+    #[error("expected {0}")]
     ExpectedName(&'static str),
 
     /// Expected the next token to be a Literal
-    #[fail(display = "expected literal {:?}", _0)]
+    #[error("expected literal {0:?}")]
     ExpectedLiteral(&'static str),
 
     /// Expected the next token to be an int
-    #[fail(display = "{} while parsing with radix {}", err, radix)]
+    #[error("{err} while parsing with radix {radix}")]
     ParseInt {
         /// The error that occurred parsing the token as an int
-        #[cause]
+        #[source]
         err: ParseIntError,
         /// The base of the number
         radix: u32,
@@ -31,24 +31,24 @@ pub enum LexErrorKind {
 
     /// Expected the next token to be a network address such a CIDR, IPv4 or
     /// IPv6 address
-    #[fail(display = "{}", _0)]
-    ParseNetwork(#[cause] NetworkParseError),
+    #[error("{0}")]
+    ParseNetwork(#[source] NetworkParseError),
 
     /// Expected the next token to be a regular expression
-    #[fail(display = "{}", _0)]
-    ParseRegex(#[cause] RegexError),
+    #[error("{0}")]
+    ParseRegex(#[source] RegexError),
 
     /// Expected the next token to be an escape character
-    #[fail(display = "expected \", xHH or OOO after \\")]
+    #[error("expected \", xHH or OOO after \\")]
     InvalidCharacterEscape,
 
     /// Expected the next token to be an ending quote
-    #[fail(display = "could not find an ending quote")]
+    #[error("could not find an ending quote")]
     MissingEndingQuote,
 
     /// Expected to take some number of characters from the input but the
     /// input was too short
-    #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
+    #[error("expected {expected} {name}s, but found {actual}")]
     CountMismatch {
         /// This is set to "character" for all occurences of this error
         name: &'static str,
@@ -59,35 +59,35 @@ pub enum LexErrorKind {
     },
 
     /// The next token refers to a Field that is not present in the Scheme
-    #[fail(display = "{}", _0)]
-    UnknownField(#[cause] UnknownFieldError),
+    #[error("{0}")]
+    UnknownField(#[source] UnknownFieldError),
 
     /// The next token refers to a Function that is not present in the Scheme
-    #[fail(display = "{}", _0)]
-    UnknownFunction(#[cause] UnknownFunctionError),
+    #[error("{0}")]
+    UnknownFunction(#[source] UnknownFunctionError),
 
     /// The next token refers to an Identifier that is not present in the Scheme
     /// ie: neither as a Field or as a Function
-    #[fail(display = "unknown identifier")]
+    #[error("unknown identifier")]
     UnknownIdentifier,
 
     /// The operation cannot be performed on this Field
-    #[fail(display = "cannot perform this operation on type {:?}", lhs_type)]
+    #[error("cannot perform this operation on type {lhs_type:?}")]
     UnsupportedOp {
         /// The type of the Field
         lhs_type: Type,
     },
 
     /// This variant is not in use
-    #[fail(display = "incompatible range bounds")]
+    #[error("incompatible range bounds")]
     IncompatibleRangeBounds,
 
     /// End Of File
-    #[fail(display = "unrecognised input")]
+    #[error("unrecognised input")]
     EOF,
 
     /// Invalid number of arguments for the function
-    #[fail(display = "invalid number of arguments")]
+    #[error("invalid number of arguments")]
     InvalidArgumentsCount {
         /// The minimum number of arguments for the function
         expected_min: usize,
@@ -97,49 +97,49 @@ pub enum LexErrorKind {
     },
 
     /// Invalid argument kind for the function
-    #[fail(display = "invalid kind of argument #{}: {}", index, mismatch)]
+    #[error("invalid kind of argument #{index}: {mismatch}")]
     InvalidArgumentKind {
         /// The position of the argument in the function call
         index: usize,
         /// The expected and the actual kind for the argument
-        #[cause]
+        #[source]
         mismatch: FunctionArgKindMismatchError,
     },
 
     /// Invalid argument type for the function
-    #[fail(display = "invalid type of argument #{}: {}", index, mismatch)]
+    #[error("invalid type of argument #{index}: {mismatch}")]
     InvalidArgumentType {
         /// The position of the argument in the function call
         index: usize,
         /// The expected and actual type for the argument
-        #[cause]
+        #[source]
         mismatch: TypeMismatchError,
     },
 
     /// Invalid argument value for the function
-    #[fail(display = "invalid value of argument #{}: {}", index, invalid)]
+    #[error("invalid value of argument #{index}: {invalid}")]
     InvalidArgumentValue {
         /// The position of the argument in the function call
         index: usize,
         /// The error message that explains why the value is invalid
-        #[cause]
+        #[source]
         invalid: FunctionArgInvalidConstantError,
     },
 
     /// The index is invalid
-    #[fail(display = "{}", _0)]
-    InvalidIndexAccess(#[cause] IndexAccessError),
+    #[error("{0}")]
+    InvalidIndexAccess(#[source] IndexAccessError),
 
     /// Invalid type
-    #[fail(display = "{}", _0)]
-    TypeMismatch(#[cause] TypeMismatchError),
+    #[error("{0}")]
+    TypeMismatch(#[source] TypeMismatchError),
 
     /// Invalid usage of map each access operator
-    #[fail(display = "invalid use of map each access operator")]
+    #[error("invalid use of map each access operator")]
     InvalidMapEachAccess,
 
     /// Invalid list name
-    #[fail(display = "invalid list name {:?}", name)]
+    #[error("invalid list name {name:?}")]
     InvalidListName {
         /// Name of the list
         name: String,
