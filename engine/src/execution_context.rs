@@ -93,7 +93,12 @@ impl<'e> ExecutionContext<'e> {
         ExecutionContext {
             scheme,
             values: vec![None; values_len].into(),
-            list_data: vec![None; lists_len].into(),
+            list_data: {
+                let mut vec = Vec::new();
+                vec.resize_with(lists_len, || None);
+                vec
+            }
+            .into(),
         }
     }
 

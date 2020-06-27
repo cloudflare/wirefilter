@@ -31,7 +31,6 @@ pub trait ListMatcher {
 /// Wrapper to ensure that any ListMatcher implements the required Traits.
 pub struct ListMatcherWrapper {
     inner: Box<dyn Any + Send + Sync>,
-    clone_cb: fn(&(dyn Any + Send + Sync)) -> Box<dyn Any + Send + Sync>,
     eq_cb: fn(&(dyn Any + Send + Sync), &(dyn Any + Send + Sync)) -> bool,
     fmt_cb: fn(&(dyn Any + Send + Sync), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
     match_cb: fn(&(dyn Any + Send + Sync), &str, &LhsValue<'_>) -> bool,
@@ -39,12 +38,6 @@ pub struct ListMatcherWrapper {
 }
 
 impl ListMatcherWrapper {
-    fn clone_any<T: Any + Clone + Send + Sync>(
-        t: &(dyn Any + Send + Sync),
-    ) -> Box<dyn Any + Send + Sync> {
-        Box::new(t.downcast_ref::<T>().unwrap().clone())
-    }
-
     fn eq_any<T: Any + PartialEq + Send + Sync>(
         t1: &(dyn Any + Send + Sync),
         t2: &(dyn Any + Send + Sync),
@@ -80,7 +73,6 @@ impl ListMatcherWrapper {
     pub fn new<T: Any + Clone + Debug + PartialEq + ListMatcher + Send + Sync>(t: T) -> Self {
         Self {
             inner: Box::new(t),
-            clone_cb: Self::clone_any::<T>,
             eq_cb: Self::eq_any::<T>,
             fmt_cb: Self::fmt_any::<T>,
             match_cb: Self::match_any::<T>,
@@ -98,19 +90,6 @@ impl<T: Any> std::convert::AsRef<T> for ListMatcherWrapper {
 impl<T: Any> std::convert::AsMut<T> for ListMatcherWrapper {
     fn as_mut(&mut self) -> &mut T {
         self.inner.downcast_mut::<T>().unwrap()
-    }
-}
-
-impl Clone for ListMatcherWrapper {
-    fn clone(&self) -> Self {
-        Self {
-            inner: (self.clone_cb)(&*self.inner),
-            clone_cb: self.clone_cb,
-            eq_cb: self.eq_cb,
-            fmt_cb: self.fmt_cb,
-            match_cb: self.match_cb,
-            to_json_value_cb: self.to_json_value_cb,
-        }
     }
 }
 
