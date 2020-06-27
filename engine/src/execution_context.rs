@@ -191,6 +191,9 @@ impl<'e> Serialize for ExecutionContext<'e> {
                 map.serialize_entry(name, value)?;
             }
         }
+        for (ty, list) in &self.list_data {
+            map.serialize_entry(ty, &list.to_json_value())?;
+        }
         map.end()
     }
 }

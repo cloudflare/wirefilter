@@ -2059,7 +2059,7 @@ mod tests {
         );
     }
 
-    #[derive(Debug, PartialEq, Clone)]
+    #[derive(Debug, PartialEq, Serialize, Clone)]
     pub struct NumMatcher {}
 
     impl ListMatcher for NumMatcher {
@@ -2075,6 +2075,10 @@ mod tests {
                 LhsValue::Int(num) => self.num_matches(*num, list_id),
                 _ => unreachable!(), // TODO: is this unreachable?
             }
+        }
+
+        fn to_json_value(&self) -> serde_json::Value {
+            serde_json::from_str(&serde_json::ser::to_string(self).unwrap()).unwrap()
         }
     }
 
@@ -2149,6 +2153,9 @@ mod tests {
 
         ctx.set_field_value(field("tcp.port"), 1001).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
+
+        let json = serde_json::to_string(ctx).unwrap();
+        assert_eq!(json, "{\"tcp.port\":1001,\"Int\":{}}");
     }
 
     #[test]
