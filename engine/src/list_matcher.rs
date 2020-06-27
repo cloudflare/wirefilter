@@ -14,6 +14,9 @@ pub trait ListDefinition: Debug + Sync + Send {
     /// This method is necessary to support deserialization of lists during the
     /// the deserialization of an `ExecutionContext`.
     fn matcher_from_json_value(&self, ty: Type, value: Value) -> ListMatcherWrapper;
+
+    /// Verify an object is a valid `ListMatcher`.
+    fn is_valid_matcher(&self, matcher: &dyn Any) -> bool;
 }
 
 /// Implement this Trait to match a given `LhsValue` against a list.
@@ -150,6 +153,10 @@ impl ListDefinition for AlwaysList {
     fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
         ListMatcherWrapper::new(AlwaysListMatcher {})
     }
+
+    fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
+        matcher.is::<AlwaysListMatcher>()
+    }
 }
 
 impl ListMatcher for AlwaysListMatcher {
@@ -173,6 +180,10 @@ pub struct NeverListMatcher {}
 impl ListDefinition for NeverList {
     fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
         ListMatcherWrapper::new(NeverListMatcher {})
+    }
+
+    fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
+        matcher.is::<AlwaysListMatcher>()
     }
 }
 

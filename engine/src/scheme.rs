@@ -401,6 +401,10 @@ impl<'s> List<'s> {
     pub(crate) fn scheme(&self) -> &'s Scheme {
         self.scheme
     }
+
+    pub(crate) fn definition(&self) -> &'s dyn ListDefinition {
+        &**self.scheme.lists.get_index(self.index).unwrap().1
+    }
 }
 
 impl<'s> Debug for List<'s> {

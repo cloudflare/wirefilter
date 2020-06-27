@@ -436,7 +436,7 @@ mod tests {
     };
     use cidr::{Cidr, IpCidr};
     use lazy_static::lazy_static;
-    use std::{convert::TryFrom, iter::once, net::IpAddr};
+    use std::{any::Any, convert::TryFrom, iter::once, net::IpAddr};
 
     fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         match args.next()? {
@@ -560,6 +560,10 @@ mod tests {
     impl ListDefinition for NumMListDefinition {
         fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
             ListMatcherWrapper::new(NumMatcher {})
+        }
+
+        fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
+            matcher.is::<NumMatcher>()
         }
     }
 
@@ -2157,7 +2161,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, list_matcher).unwrap();
 
         ctx.set_field_value(field("tcp.port"), 1000).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
@@ -2173,7 +2177,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, list_matcher).unwrap();
 
         ctx.set_field_value(field("tcp.port"), 1000).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
@@ -2241,7 +2245,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, list_matcher).unwrap();
 
         let mut arr1 = Array::new(Type::Int);
         // 1 odd, 1 even

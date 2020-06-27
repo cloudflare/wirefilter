@@ -25,6 +25,14 @@ pub enum SetFieldValueError {
     SchemeMismatchError(#[source] SchemeMismatchError),
 }
 
+/// An error that occurs when previously defined list gets redefined.
+#[derive(Debug, PartialEq, Error)]
+#[error("Invalid list matcher {matcher} for list {list}")]
+pub struct InvalidListMatcherError {
+    matcher: String,
+    list: String,
+}
+
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
 /// set of runtime values to execute [`Filter`](::Filter) against.
 ///
@@ -123,8 +131,15 @@ impl<'e> ExecutionContext<'e> {
         &mut self,
         list: List<'e>,
         matcher: T,
-    ) {
+    ) -> Result<(), InvalidListMatcherError> {
+        if !list.definition().is_valid_matcher(&matcher) {
+            return Err(InvalidListMatcherError {
+                matcher: format!("{:?}", matcher),
+                list: format!("{:?}", list),
+            });
+        }
         self.list_data[list.index()] = Some(ListMatcherWrapper::new(matcher));
+        Ok(())
     }
 }
 
