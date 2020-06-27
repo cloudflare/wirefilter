@@ -1,6 +1,6 @@
-use cc;
-
 fn main() {
+    println!("cargo::rerun-if-changed=src/tests.c");
+    #[cfg(unix)]
     cc::Build::new()
         .include("../../include")
         .file("src/tests.c")

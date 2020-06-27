@@ -1,10 +1,10 @@
 use std::env::args;
 use wirefilter::{
-    Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
-    LhsValue, Scheme, Type,
+    FunctionArgKind, FunctionArgs, LhsValue, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl,
+    SimpleFunctionOptParam, SimpleFunctionParam, Type,
 };
 
-fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
+fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     panic!();
 }
 
@@ -18,28 +18,31 @@ fn main() {
         str: Bytes,
         int: Int,
         bool: Bool,
+        str_arr: Array(Bytes),
+        str_map: Map(Bytes),
+        bool_arr: Array(Bool),
     };
 
     scheme
         .add_function(
-            "panic".into(),
-            Function {
-                params: vec![FunctionParam {
+            "panic",
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
                     arg_kind: FunctionArgKind::Field,
                     val_type: Type::Bytes,
                 }],
-                opt_params: vec![FunctionOptParam {
+                opt_params: vec![SimpleFunctionOptParam {
                     arg_kind: FunctionArgKind::Literal,
                     default_value: "".into(),
                 }],
                 return_type: Type::Bytes,
-                implementation: FunctionImpl::new(panic_function),
+                implementation: SimpleFunctionImpl::new(panic_function),
             },
         )
         .unwrap();
 
     match scheme.parse(&filter) {
-        Ok(res) => println!("{:#?}", res),
-        Err(err) => println!("{}", err),
+        Ok(res) => println!("{res:#?}"),
+        Err(err) => println!("{err}"),
     }
 }

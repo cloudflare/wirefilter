@@ -2,21 +2,22 @@ use crate::{
     lex::{expect, span, take_while, Lex, LexErrorKind, LexResult},
     strict_partial_ord::StrictPartialOrd,
 };
+use serde::Serialize;
 use std::ops::RangeInclusive;
 
 fn lex_digits(input: &str) -> LexResult<'_, &str> {
     // Lex any supported digits (up to radix 16) for better error locations.
-    take_while(input, "digit", |c| c.is_digit(16))
+    take_while(input, "digit", |c| c.is_ascii_hexdigit())
 }
 
-fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<'_, i32> {
-    match i32::from_str_radix(input, radix) {
+fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<'i, i64> {
+    match i64::from_str_radix(input, radix) {
         Ok(res) => Ok((res, rest)),
         Err(err) => Err((LexErrorKind::ParseInt { err, radix }, input)),
     }
 }
 
-impl<'i> Lex<'i> for i32 {
+impl<'i> Lex<'i> for i64 {
     fn lex(input: &str) -> LexResult<'_, Self> {
         if let Ok(input) = expect(input, "0x") {
             parse_number(lex_digits(input)?, 16)
@@ -36,12 +37,29 @@ impl<'i> Lex<'i> for i32 {
     }
 }
 
-impl<'i> Lex<'i> for RangeInclusive<i32> {
+/// A range of integers defined by start and end.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct IntRange(RangeInclusive<i64>);
+
+impl From<i64> for IntRange {
+    fn from(i: i64) -> Self {
+        IntRange(i..=i)
+    }
+}
+
+impl From<RangeInclusive<i64>> for IntRange {
+    fn from(r: RangeInclusive<i64>) -> Self {
+        IntRange(r)
+    }
+}
+
+impl<'i> Lex<'i> for IntRange {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let initial_input = input;
-        let (first, input) = i32::lex(input)?;
+        let (first, input) = i64::lex(input)?;
         let (last, input) = if let Ok(input) = expect(input, "..") {
-            i32::lex(input)?
+            i64::lex(input)?
         } else {
             (first, input)
         };
@@ -51,53 +69,65 @@ impl<'i> Lex<'i> for RangeInclusive<i32> {
                 span(initial_input, input),
             ));
         }
-        Ok((first..=last, input))
+        Ok(((first..=last).into(), input))
     }
 }
 
-impl StrictPartialOrd for i32 {}
+impl From<IntRange> for RangeInclusive<i64> {
+    fn from(range: IntRange) -> Self {
+        range.0
+    }
+}
+
+impl<'a> From<&'a IntRange> for RangeInclusive<i64> {
+    fn from(range: &'a IntRange) -> Self {
+        RangeInclusive::new(*range.0.start(), *range.0.end())
+    }
+}
+
+impl StrictPartialOrd for i64 {}
 
 #[test]
 fn test() {
     use std::str::FromStr;
 
-    assert_ok!(i32::lex("0"), 0i32, "");
-    assert_ok!(i32::lex("0-"), 0i32, "-");
-    assert_ok!(i32::lex("0x1f5+"), 501i32, "+");
-    assert_ok!(i32::lex("0123;"), 83i32, ";");
-    assert_ok!(i32::lex("78!"), 78i32, "!");
-    assert_ok!(i32::lex("0xefg"), 239i32, "g");
-    assert_ok!(i32::lex("-12-"), -12i32, "-");
+    assert_ok!(i64::lex("0"), 0i64, "");
+    assert_ok!(i64::lex("0-"), 0i64, "-");
+    assert_ok!(i64::lex("0x1f5+"), 501i64, "+");
+    assert_ok!(i64::lex("0123;"), 83i64, ";");
+    assert_ok!(i64::lex("78!"), 78i64, "!");
+    assert_ok!(i64::lex("0xefg"), 239i64, "g");
+    assert_ok!(i64::lex("-12-"), -12i64, "-");
     assert_err!(
-        i32::lex("-2147483649!"),
+        i64::lex("-9223372036854775809!"),
         LexErrorKind::ParseInt {
-            err: i32::from_str("-2147483649").unwrap_err(),
+            err: i64::from_str("-9223372036854775809").unwrap_err(),
             radix: 10
         },
-        "-2147483649"
+        "-9223372036854775809"
     );
     assert_err!(
-        i32::lex("2147483648!"),
+        i64::lex("9223372036854775808!"),
         LexErrorKind::ParseInt {
-            err: i32::from_str("2147483648").unwrap_err(),
+            err: i64::from_str("9223372036854775808").unwrap_err(),
             radix: 10
         },
-        "2147483648"
+        "9223372036854775808"
     );
     assert_err!(
-        i32::lex("10fex"),
+        i64::lex("10fex"),
         LexErrorKind::ParseInt {
-            err: i32::from_str("10fe").unwrap_err(),
+            err: i64::from_str("10fe").unwrap_err(),
             radix: 10
         },
         "10fe"
     );
-    assert_ok!(RangeInclusive::lex("78!"), 78i32..=78i32, "!");
-    assert_ok!(RangeInclusive::lex("0..10"), 0i32..=10i32);
-    assert_ok!(RangeInclusive::lex("0123..0xefg"), 83i32..=239i32, "g");
-    assert_ok!(RangeInclusive::lex("-20..-10"), -20i32..=-10i32);
+    assert_ok!(IntRange::lex("78!"), 78i64.into(), "!");
+    assert_ok!(IntRange::lex("0..10"), (0i64..=10i64).into());
+    assert_ok!(IntRange::lex("0123..0xefg"), (83i64..=239i64).into(), "g");
+    assert_ok!(IntRange::lex("-20..-10"), (-20i64..=-10i64).into());
     assert_err!(
-        <RangeInclusive<i32>>::lex("10..0"),
+        IntRange::lex("10..0"),
         LexErrorKind::IncompatibleRangeBounds,
         "10..0"
     );

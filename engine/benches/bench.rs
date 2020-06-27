@@ -5,17 +5,15 @@ use std::alloc::System;
 #[global_allocator]
 static A: System = System;
 
-use criterion::{
-    criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
-};
+use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, Function, FunctionArgKind, FunctionArgs, FunctionImpl,
-    FunctionParam, GetType, LhsValue, Scheme, Type,
+    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, Scheme,
+    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
 };
 
-fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-    let input = args.next().unwrap();
+fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_lowercase = match bytes {
@@ -25,14 +23,14 @@ fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
             if make_lowercase {
                 bytes.to_mut().make_ascii_lowercase();
             }
-            LhsValue::Bytes(bytes)
+            Some(LhsValue::Bytes(bytes))
         }
-        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+        _ => panic!("Invalid type: expected Bytes, got {input:?}"),
     }
 }
 
-fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
-    let input = args.next().unwrap();
+fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_uppercase = match bytes {
@@ -42,15 +40,15 @@ fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> LhsValue<'a> {
             if make_uppercase {
                 bytes.to_mut().make_ascii_uppercase();
             }
-            LhsValue::Bytes(bytes)
+            Some(LhsValue::Bytes(bytes))
         }
-        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+        _ => panic!("Invalid type: expected Bytes, got {input:?}"),
     }
 }
 
 struct FieldBench<'a, T: 'static> {
     field: &'static str,
-    functions: &'a [(&'static str, Function)],
+    functions: &'a [(&'static str, SimpleFunctionDefinition)],
     filters: &'static [&'static str],
     values: &'a [T],
 }
@@ -78,66 +76,62 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 filter
             };
 
-            c.bench(
-                "parsing",
-                Benchmark::new(name, {
-                    let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty).unwrap();
-                    for (name, function) in functions {
-                        scheme
-                            .add_function((*name).into(), function.clone())
+            let mut group = c.benchmark_group("parsing");
+
+            group.bench_function(name, {
+                let mut scheme = Scheme::default();
+                scheme.add_field(field, ty).unwrap();
+                for (name, function) in functions {
+                    scheme.add_function(name, function.clone()).unwrap();
+                }
+                move |b: &mut Bencher| {
+                    b.iter(|| scheme.parse(filter).unwrap());
+                }
+            });
+
+            group.finish();
+
+            let mut group = c.benchmark_group("compilation");
+
+            group.bench_function(name, {
+                let mut scheme = Scheme::default();
+                scheme.add_field(field, ty).unwrap();
+                for (name, function) in functions {
+                    scheme.add_function(name, function.clone()).unwrap();
+                }
+                move |b: &mut Bencher| {
+                    let filter = scheme.parse(filter).unwrap();
+
+                    b.iter_with_setup(move || filter.clone(), FilterAst::compile);
+                }
+            });
+
+            group.finish();
+
+            let mut group = c.benchmark_group("execution");
+
+            group.bench_with_input(name, values, {
+                let mut scheme = Scheme::default();
+                scheme.add_field(field, ty).unwrap();
+                for (name, function) in functions {
+                    scheme.add_function(name, function.clone()).unwrap();
+                }
+                move |b: &mut Bencher, values: &[T]| {
+                    let filter = scheme.parse(filter).unwrap();
+
+                    let filter = filter.compile();
+
+                    let mut exec_ctx = ExecutionContext::new(&scheme);
+                    for value in values {
+                        exec_ctx
+                            .set_field_value(scheme.get_field(field).unwrap(), *value)
                             .unwrap();
+                        b.iter(|| filter.execute(&exec_ctx));
                     }
-                    move |b: &mut Bencher| {
-                        b.iter(|| scheme.parse(filter).unwrap());
-                    }
-                }),
-            );
+                }
+            });
 
-            c.bench(
-                "compilation",
-                Benchmark::new(name, {
-                    let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty).unwrap();
-                    for (name, function) in functions {
-                        scheme
-                            .add_function((*name).into(), function.clone())
-                            .unwrap();
-                    }
-                    move |b: &mut Bencher| {
-                        let filter = scheme.parse(filter).unwrap();
-
-                        b.iter_with_setup(move || filter.clone(), FilterAst::compile);
-                    }
-                }),
-            );
-
-            c.bench(
-                "execution",
-                ParameterizedBenchmark::new(
-                    name,
-                    {
-                        let mut scheme = Scheme::default();
-                        scheme.add_field(field.to_owned(), ty).unwrap();
-                        for (name, function) in functions {
-                            scheme
-                                .add_function((*name).into(), function.clone())
-                                .unwrap();
-                        }
-                        move |b: &mut Bencher, value: &T| {
-                            let filter = scheme.parse(filter).unwrap();
-
-                            let filter = filter.compile();
-
-                            let mut exec_ctx = ExecutionContext::new(&scheme);
-                            exec_ctx.set_field_value(field, *value).unwrap();
-
-                            b.iter(|| filter.execute(&exec_ctx));
-                        }
-                    },
-                    values.iter().cloned(),
-                ),
-            );
+            group.finish();
         }
     }
 }
@@ -210,26 +204,26 @@ fn bench_string_function_comparison(c: &mut Criterion) {
         functions: &[
             (
                 "lowercase",
-                Function {
-                    params: vec![FunctionParam {
+                SimpleFunctionDefinition {
+                    params: vec![SimpleFunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(lowercase),
+                    implementation: SimpleFunctionImpl::new(lowercase),
                 },
             ),
             (
                 "uppercase",
-                Function {
-                    params: vec![FunctionParam {
+                SimpleFunctionDefinition {
+                    params: vec![SimpleFunctionParam {
                         arg_kind: FunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
-                    implementation: FunctionImpl::new(uppercase),
+                    implementation: SimpleFunctionImpl::new(uppercase),
                 },
             ),
         ],

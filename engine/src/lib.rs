@@ -8,7 +8,7 @@
 //! ```
 //! use wirefilter::{ExecutionContext, Scheme, Type};
 //!
-//! fn main() -> Result<(), failure::Error> {
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a map of possible filter fields.
 //!     let scheme = Scheme! {
 //!         http.method: Bytes,
@@ -33,20 +33,20 @@
 //!     // Set runtime field values to test the filter against.
 //!     let mut ctx = ExecutionContext::new(&scheme);
 //!
-//!     ctx.set_field_value("http.method", "GET")?;
+//!     ctx.set_field_value(scheme.get_field("http.method").unwrap(), "GET")?;
 //!
 //!     ctx.set_field_value(
-//!         "http.ua",
+//!         scheme.get_field("http.ua").unwrap(),
 //!         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:66.0) Gecko/20100101 Firefox/66.0",
 //!     )?;
 //!
-//!     ctx.set_field_value("port", 443)?;
+//!     ctx.set_field_value(scheme.get_field("port").unwrap(), 443)?;
 //!
 //!     // Execute the filter with given runtime values.
 //!     println!("Filter matches: {:?}", filter.execute(&ctx)?); // true
 //!
 //!     // Amend one of the runtime values and execute the filter again.
-//!     ctx.set_field_value("port", 8080)?;
+//!     ctx.set_field_value(scheme.get_field("port").unwrap(), 8080)?;
 //!
 //!     println!("Filter matches: {:?}", filter.execute(&ctx)?); // false
 //!
@@ -54,6 +54,9 @@
 //! }
 //! ```
 #![warn(missing_docs)]
+#![warn(rust_2018_idioms)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::needless_raw_string_hashes)]
 
 #[macro_use]
 mod lex;
@@ -62,22 +65,62 @@ mod lex;
 mod scheme;
 
 mod ast;
+mod compiler;
 mod execution_context;
 mod filter;
 mod functions;
-mod heap_searcher;
+mod lhs_types;
+mod list_matcher;
+mod panic;
 mod range_set;
 mod rhs_types;
+mod searcher;
 mod strict_partial_ord;
 mod types;
 
 pub use self::{
-    ast::FilterAst,
-    execution_context::ExecutionContext,
-    filter::{Filter, SchemeMismatchError},
-    functions::{
-        Function, FunctionArgKind, FunctionArgs, FunctionImpl, FunctionOptParam, FunctionParam,
+    ast::{
+        field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, IntOp, OrderingOp},
+        function_expr::{FunctionCallArgExpr, FunctionCallExpr},
+        index_expr::IndexExpr,
+        logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr, UnaryOp},
+        parse::{FilterParser, ParseError},
+        visitor::{Visitor, VisitorMut},
+        Expr, FilterAst, FilterValueAst, ValueExpr,
     },
-    scheme::{FieldRedefinitionError, ParseError, Scheme, UnknownFieldError},
-    types::{GetType, LhsValue, Type, TypeMismatchError},
+    compiler::{Compiler, DefaultCompiler},
+    execution_context::{
+        ExecutionContext, ExecutionContextGuard, InvalidListMatcherError, SetFieldValueError,
+    },
+    filter::{
+        CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, Filter, FilterValue,
+    },
+    functions::{
+        FunctionArgInvalidConstantError, FunctionArgKind, FunctionArgKindMismatchError,
+        FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
+        FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam,
+        SimpleFunctionParam,
+    },
+    lex::LexErrorKind,
+    lhs_types::{Array, ArrayMut, Map, MapIter, MapMut, TypedArray},
+    list_matcher::{
+        AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
+    },
+    panic::{
+        catch_panic, panic_catcher_disable, panic_catcher_enable, panic_catcher_get_backtrace,
+        panic_catcher_set_fallback_mode, panic_catcher_set_hook, PanicCatcherFallbackMode,
+    },
+    rhs_types::{
+        Bytes, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,
+        RegexFormat,
+    },
+    scheme::{
+        Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
+        IdentifierRedefinitionError, IndexAccessError, List, Scheme, SchemeMismatchError,
+        UnknownFieldError,
+    },
+    types::{
+        ExpectedType, ExpectedTypeList, GetType, LhsValue, LhsValueMut, RhsValue, RhsValues, Type,
+        TypeMismatchError,
+    },
 };

@@ -1,72 +1,156 @@
 use crate::{
-    rhs_types::RegexError,
-    scheme::{UnknownFieldError, UnknownFunctionError},
+    functions::{FunctionArgInvalidConstantError, FunctionArgKindMismatchError},
+    rhs_types::{RegexError, WildcardError},
+    scheme::{IndexAccessError, UnknownFieldError, UnknownFunctionError},
     types::{Type, TypeMismatchError},
 };
-use cidr::NetworkParseError;
-use failure::Fail;
+use cidr::errors::NetworkParseError;
 use std::num::ParseIntError;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
+/// LexErrorKind occurs when there is an invalid or unexpected token.
 pub enum LexErrorKind {
-    #[fail(display = "expected {}", _0)]
+    /// Expected the next token to be a Field
+    #[error("expected {0}")]
     ExpectedName(&'static str),
 
-    #[fail(display = "expected literal {:?}", _0)]
+    /// Expected the next token to be a Literal
+    #[error("expected literal {0:?}")]
     ExpectedLiteral(&'static str),
 
-    #[fail(display = "{} while parsing with radix {}", err, radix)]
+    /// Expected the next token to be an int
+    #[error("{err} while parsing with radix {radix}")]
     ParseInt {
-        #[cause]
+        /// The error that occurred parsing the token as an int
+        #[source]
         err: ParseIntError,
+        /// The base of the number
         radix: u32,
     },
 
-    #[fail(display = "{}", _0)]
-    ParseNetwork(#[cause] NetworkParseError),
+    /// Expected the next token to be a network address such a CIDR, IPv4 or
+    /// IPv6 address
+    #[error("{0}")]
+    ParseNetwork(#[source] NetworkParseError),
 
-    #[fail(display = "{}", _0)]
-    ParseRegex(#[cause] RegexError),
+    /// Expected the next token to be a regular expression
+    #[error("{0}")]
+    ParseRegex(#[source] RegexError),
 
-    #[fail(display = "expected \", xHH or OOO after \\")]
+    /// Expected the next token to be a wildcard expression
+    #[error("{0}")]
+    ParseWildcard(#[source] WildcardError),
+
+    /// Expected the next token to be an escape character
+    #[error("expected \", xHH or OOO after \\")]
     InvalidCharacterEscape,
 
-    #[fail(display = "could not find an ending quote")]
+    /// Invalid raw string hash count
+    #[error("invalid raw string hash count, there can't be more than 255 #s")]
+    InvalidRawStringHashCount,
+
+    /// Expected the next token to be an ending quote
+    #[error("could not find an ending quote")]
     MissingEndingQuote,
 
-    #[fail(display = "expected {} {}s, but found {}", expected, name, actual)]
+    /// Expected to take some number of characters from the input but the
+    /// input was too short
+    #[error("expected {expected} {name}s, but found {actual}")]
     CountMismatch {
+        /// This is set to "character" for all occurences of this error
         name: &'static str,
+        /// The actual number of characters
         actual: usize,
+        /// The expected number of characters
         expected: usize,
     },
 
-    #[fail(display = "{}", _0)]
-    UnknownField(#[cause] UnknownFieldError),
+    /// The next token refers to a Field that is not present in the Scheme
+    #[error("{0}")]
+    UnknownField(#[source] UnknownFieldError),
 
-    #[fail(display = "{}", _0)]
-    UnknownFunction(#[cause] UnknownFunctionError),
+    /// The next token refers to a Function that is not present in the Scheme
+    #[error("{0}")]
+    UnknownFunction(#[source] UnknownFunctionError),
 
-    #[fail(display = "cannot use this operation type {:?}", lhs_type)]
-    UnsupportedOp { lhs_type: Type },
+    /// The next token refers to an Identifier that is not present in the Scheme
+    /// ie: neither as a Field or as a Function
+    #[error("unknown identifier")]
+    UnknownIdentifier,
 
-    #[fail(display = "incompatible range bounds")]
-    IncompatibleRangeBounds,
-
-    #[fail(display = "unrecognised input")]
-    EOF,
-
-    #[fail(display = "invalid number of arguments")]
-    InvalidArgumentsCount {
-        expected_min: usize,
-        expected_max: usize,
+    /// The operation cannot be performed on this Field
+    #[error("cannot perform this operation on type {lhs_type:?}")]
+    UnsupportedOp {
+        /// The type of the Field
+        lhs_type: Type,
     },
 
-    #[fail(display = "invalid type of argument #{}: {}", index, mismatch)]
-    InvalidArgumentType {
+    /// This variant is not in use
+    #[error("incompatible range bounds")]
+    IncompatibleRangeBounds,
+
+    /// End Of File
+    #[error("unrecognised input")]
+    EOF,
+
+    /// Invalid number of arguments for the function
+    #[error("invalid number of arguments")]
+    InvalidArgumentsCount {
+        /// The minimum number of arguments for the function
+        expected_min: usize,
+        /// The maximum number of arguments for the function or None if the
+        /// function takes an unlimited number of arguments
+        expected_max: Option<usize>,
+    },
+
+    /// Invalid argument kind for the function
+    #[error("invalid kind of argument #{index}: {mismatch}")]
+    InvalidArgumentKind {
+        /// The position of the argument in the function call
         index: usize,
-        #[cause]
+        /// The expected and the actual kind for the argument
+        #[source]
+        mismatch: FunctionArgKindMismatchError,
+    },
+
+    /// Invalid argument type for the function
+    #[error("invalid type of argument #{index}: {mismatch}")]
+    InvalidArgumentType {
+        /// The position of the argument in the function call
+        index: usize,
+        /// The expected and actual type for the argument
+        #[source]
         mismatch: TypeMismatchError,
+    },
+
+    /// Invalid argument value for the function
+    #[error("invalid value of argument #{index}: {invalid}")]
+    InvalidArgumentValue {
+        /// The position of the argument in the function call
+        index: usize,
+        /// The error message that explains why the value is invalid
+        #[source]
+        invalid: FunctionArgInvalidConstantError,
+    },
+
+    /// The index is invalid
+    #[error("{0}")]
+    InvalidIndexAccess(#[source] IndexAccessError),
+
+    /// Invalid type
+    #[error("{0}")]
+    TypeMismatch(#[source] TypeMismatchError),
+
+    /// Invalid usage of map each access operator
+    #[error("invalid use of map each access operator")]
+    InvalidMapEachAccess,
+
+    /// Invalid list name
+    #[error("invalid list name {name:?}")]
+    InvalidListName {
+        /// Name of the list
+        name: String,
     },
 }
 
@@ -89,8 +173,8 @@ impl<'i, T: Lex<'i>, E> LexWith<'i, E> for T {
 }
 
 pub fn expect<'i>(input: &'i str, s: &'static str) -> Result<&'i str, LexError<'i>> {
-    if input.starts_with(s) {
-        Ok(&input[s.len()..])
+    if let Some(index) = input.strip_prefix(s) {
+        Ok(index)
     } else {
         Err((LexErrorKind::ExpectedLiteral(s), input))
     }
@@ -120,11 +204,12 @@ macro_rules! lex_enum {
     // On the parser side, tries to parse `SomeType` and wraps into the variant
     // on success.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
-        $ty:ty => $item:ident,
+        $(#[$meta:meta])* $ty:ty => $item:ident,
         $($rest:tt)*
     }) => {
         lex_enum!(@decl $preamble $name $input {
             $($decl)*
+            $(#[$meta])*
             $item($ty),
         } {
             $($expr)*
@@ -142,11 +227,12 @@ macro_rules! lex_enum {
     // On the parser side, tries to parse either of the given string values,
     // and returns the variant if any of them succeeded.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
-        $($s:tt)|+ => $item:ident $(= $value:expr)*,
+        $(#[$meta:meta])* $($s:literal)|+ => $item:ident $(= $value:expr)*,
         $($rest:tt)*
     }) => {
         lex_enum!(@decl $preamble $name $input {
             $($decl)*
+            $(#[$meta])*
             $item $(= $value)*,
         } {
             $($expr)*
@@ -161,12 +247,12 @@ macro_rules! lex_enum {
     // This is invoked when no more variants are left to process.
     // At this point declaration and lexer body are considered complete.
     (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize)]
         $($preamble)*
         pub enum $name $decl
 
         impl<'i> $crate::lex::Lex<'i> for $name {
-            fn lex($input: &'i str) -> $crate::lex::LexResult<'_, Self> {
+            fn lex($input: &'i str) -> $crate::lex::LexResult<'i, Self> {
                 $($expr)*
                 Err((
                     $crate::lex::LexErrorKind::ExpectedName(stringify!($name)),
@@ -177,9 +263,9 @@ macro_rules! lex_enum {
     };
 
     // The public entry point to the macro.
-    ($(# $attrs:tt)* $name:ident $items:tt) => {
+    ($(#[$meta:meta])* $name:ident $items:tt) => {
         lex_enum!(@decl {
-            $(# $attrs)*
+            $(#[$meta])*
         } $name input {} {} $items);
     };
 }
@@ -212,7 +298,7 @@ pub fn take_while<'i, F: Fn(char) -> bool>(
 pub fn take(input: &str, expected: usize) -> LexResult<'_, &str> {
     let mut chars = input.chars();
     for i in 0..expected {
-        chars.next().ok_or_else(|| {
+        chars.next().ok_or({
             (
                 LexErrorKind::CountMismatch {
                     name: "character",
@@ -258,10 +344,9 @@ macro_rules! assert_err {
 
 #[cfg(test)]
 macro_rules! assert_json {
-    ($expr:expr, $json:tt) => {
-        assert_eq!(
-            ::serde_json::to_value(&$expr).unwrap(),
-            ::serde_json::json!($json)
-        );
-    };
+    ($expr:expr, $json:tt) => {{
+        let json = ::serde_json::to_value(&$expr).unwrap();
+        assert_eq!(json, ::serde_json::json!($json));
+        json
+    }};
 }

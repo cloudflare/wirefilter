@@ -1,8 +1,10 @@
+pub use cidr::IpCidr;
+
 use crate::{
     lex::{take_while, Lex, LexError, LexErrorKind, LexResult},
     strict_partial_ord::StrictPartialOrd,
 };
-use cidr::{Cidr, IpCidr, Ipv4Cidr, Ipv6Cidr, NetworkParseError};
+use cidr::{errors::NetworkParseError, Ipv4Cidr, Ipv6Cidr};
 use serde::Serialize;
 use std::{
     cmp::Ordering,
@@ -12,10 +14,11 @@ use std::{
 };
 
 fn match_addr_or_cidr(input: &str) -> LexResult<'_, &str> {
-    take_while(input, "IP address character", |c| match c {
-        '0'..='9' | 'a'..='f' | 'A'..='F' | ':' | '.' | '/' => true,
-        _ => false,
-    })
+    take_while(
+        input,
+        "IP address character",
+        |c| matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F' | ':' | '.' | '/'),
+    )
 }
 
 fn parse_addr(input: &str) -> Result<IpAddr, LexError<'_>> {
@@ -34,18 +37,33 @@ impl<'i> Lex<'i> for IpAddr {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Serialize, Debug)]
+/// An IP range defined explicitly by start and end
+#[derive(PartialEq, Eq, Clone, Hash, Serialize, Debug)]
 #[serde(untagged)]
 pub enum ExplicitIpRange {
+    /// An explicit range of IPv4 addresses
     V4(RangeInclusive<Ipv4Addr>),
+    /// An explicit range of IPv6 addresses
     V6(RangeInclusive<Ipv6Addr>),
 }
 
-#[derive(PartialEq, Eq, Clone, Serialize, Debug)]
+/// A range of IP addresses
+#[derive(PartialEq, Eq, Clone, Hash, Serialize, Debug)]
 #[serde(untagged)]
 pub enum IpRange {
+    /// An IP range defined explicitly by start and end
     Explicit(ExplicitIpRange),
+    /// A CIDR IP range
     Cidr(IpCidr),
+}
+
+impl From<IpAddr> for IpRange {
+    fn from(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(ip) => IpRange::Explicit(ip.into()),
+            IpAddr::V6(ip) => IpRange::Explicit(ip.into()),
+        }
+    }
 }
 
 impl<'i> Lex<'i> for IpRange {
@@ -70,7 +88,7 @@ impl<'i> Lex<'i> for IpRange {
             })
         } else {
             IpRange::Cidr(cidr::IpCidr::from_str(chunk).map_err(|err| {
-                let split_pos = chunk.find('/').unwrap_or_else(|| chunk.len());
+                let split_pos = chunk.find('/').unwrap_or(chunk.len());
                 let err_span = match err {
                     NetworkParseError::AddrParseError(_) | NetworkParseError::InvalidHostPart => {
                         &chunk[..split_pos]
@@ -124,6 +142,7 @@ impl From<IpRange> for ExplicitIpRange {
 }
 
 impl StrictPartialOrd for IpAddr {
+    #[inline]
     fn strict_partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (IpAddr::V4(lhs), IpAddr::V4(rhs)) => Some(lhs.cmp(rhs)),
@@ -190,12 +209,13 @@ fn test_lex() {
         range([0, 0, 0, 0, 0, 0, 0, 1]..=[0, 0, 0, 0, 0, 0, 0, 2]),
         "||"
     );
+    assert_ok!(IpRange::lex("1.1.1.01"), cidr([1, 1, 1, 1], 32), "");
     match IpRange::lex("10.0.0.0/100") {
         Err((
             LexErrorKind::ParseNetwork(NetworkParseError::NetworkLengthTooLongError(_)),
             "10.0.0.0/100",
         )) => {}
-        err => panic!("Expected NetworkLengthTooLongError, got {:?}", err),
+        err => panic!("Expected NetworkLengthTooLongError, got {err:?}"),
     }
     assert_err!(
         IpRange::lex("::/.1"),
