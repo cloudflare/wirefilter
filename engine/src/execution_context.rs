@@ -5,7 +5,6 @@ use crate::{
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
     ListMatcher, Type,
 };
-use failure::Fail;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::any::Any;
@@ -13,17 +12,18 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
+use thiserror::Error;
 
 /// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 pub enum SetFieldValueError {
     /// An error that occurs when trying to assign a value of the wrong type to a field.
-    #[fail(display = "{}", _0)]
-    TypeMismatchError(#[cause] TypeMismatchError),
+    #[error("{0}")]
+    TypeMismatchError(#[source] TypeMismatchError),
 
     /// An error that occurs when trying to set the value of a field from a different scheme.
-    #[fail(display = "{}", _0)]
-    SchemeMismatchError(#[cause] SchemeMismatchError),
+    #[error("{0}")]
+    SchemeMismatchError(#[source] SchemeMismatchError),
 }
 
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
