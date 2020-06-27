@@ -3,15 +3,15 @@ use serde::Serialize;
 use std::str;
 
 #[derive(PartialEq, Eq, Clone, Serialize, Debug)]
-pub struct List(Box<str>);
+pub struct ListName(Box<str>);
 
-impl From<String> for List {
+impl From<String> for ListName {
     fn from(src: String) -> Self {
-        List(src.into_boxed_str())
+        ListName(src.into_boxed_str())
     }
 }
 
-impl<'i> Lex<'i> for List {
+impl<'i> Lex<'i> for ListName {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let mut res = String::new();
         let mut rest;
@@ -49,8 +49,8 @@ impl<'i> Lex<'i> for List {
     }
 }
 
-impl List {
-    pub fn name(&self) -> &str {
+impl ListName {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -61,27 +61,35 @@ mod test {
 
     #[test]
     fn valid() {
-        assert_ok!(List::lex("$hello;"), List::from("hello".to_string()), ";");
-
         assert_ok!(
-            List::lex("$hello_world;"),
-            List::from("hello_world".to_string()),
+            ListName::lex("$hello;"),
+            ListName::from("hello".to_string()),
             ";"
         );
 
         assert_ok!(
-            List::lex("$hello1234567890;"),
-            List::from("hello1234567890".to_string()),
+            ListName::lex("$hello_world;"),
+            ListName::from("hello_world".to_string()),
             ";"
         );
 
-        assert_ok!(List::lex("$hello"), List::from("hello".to_string()), "");
+        assert_ok!(
+            ListName::lex("$hello1234567890;"),
+            ListName::from("hello1234567890".to_string()),
+            ";"
+        );
+
+        assert_ok!(
+            ListName::lex("$hello"),
+            ListName::from("hello".to_string()),
+            ""
+        );
     }
 
     #[test]
     fn invalid_char() {
         assert_err!(
-            List::lex("$;"),
+            ListName::lex("$;"),
             LexErrorKind::InvalidListName {
                 name: ";".to_string(),
             },
@@ -92,7 +100,7 @@ mod test {
     #[test]
     fn eof_after_dollar() {
         assert_err!(
-            List::lex("$"),
+            ListName::lex("$"),
             LexErrorKind::InvalidListName {
                 name: "".to_string(),
             },
@@ -102,6 +110,10 @@ mod test {
 
     #[test]
     fn no_dollar() {
-        assert_err!(List::lex("abc"), LexErrorKind::ExpectedLiteral("$"), "abc");
+        assert_err!(
+            ListName::lex("abc"),
+            LexErrorKind::ExpectedLiteral("$"),
+            "abc"
+        );
     }
 }

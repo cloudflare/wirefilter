@@ -12,7 +12,7 @@ pub use self::{
     bool::UninhabitedBool,
     bytes::Bytes,
     ip::{ExplicitIpRange, IpRange},
-    list::List,
+    list::ListName,
     map::UninhabitedMap,
     regex::{Error as RegexError, Regex},
 };

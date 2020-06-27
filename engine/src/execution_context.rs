@@ -1,15 +1,14 @@
 use crate::{
     compiler::ExecCtx,
     list_matcher::ListMatcherWrapper,
-    scheme::{Field, Scheme, SchemeMismatchError},
+    scheme::{Field, List, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, TypeMismatchError},
-    ListMatcher, Type,
+    ListMatcher,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 use std::any::Any;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use thiserror::Error;
@@ -35,7 +34,7 @@ pub enum SetFieldValueError {
 pub struct ExecutionContext<'e> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
-    list_data: HashMap<Type, ListMatcherWrapper>,
+    list_data: Box<[Option<ListMatcherWrapper>]>,
 }
 
 // This is only used by Filter::execute to check if the current `Filter`
@@ -67,9 +66,11 @@ impl<'e> ExecCtx for ExecutionContext<'e> {
     }
 
     /// Get the `ListMatcher` for the specified type.
-    fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper {
-        self.list_data
-            .get(t)
+    fn get_list_matcher_unchecked<'s>(&self, list: List<'s>) -> &ListMatcherWrapper {
+        debug_assert!(self.scheme() == list.scheme());
+
+        self.list_data[list.index()]
+            .as_ref()
             .expect("no list matcher for the given type")
     }
 }
@@ -79,10 +80,11 @@ impl<'e> ExecutionContext<'e> {
     ///
     /// This scheme will be used for resolving any field names and indices.
     pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self {
+        let (values_len, lists_len) = scheme.len();
         ExecutionContext {
             scheme,
-            values: vec![None; scheme.len()].into(),
-            list_data: Default::default(),
+            values: vec![None; values_len].into(),
+            list_data: vec![None; lists_len].into(),
         }
     }
 
@@ -119,10 +121,10 @@ impl<'e> ExecutionContext<'e> {
     /// Set the `ListMatcher` for the specified type.
     pub fn set_list_matcher<T: Any + Clone + Debug + PartialEq + ListMatcher + Send + Sync>(
         &mut self,
-        t: Type,
+        list: List<'e>,
         matcher: T,
     ) {
-        self.list_data.insert(t, ListMatcherWrapper::new(matcher));
+        self.list_data[list.index()] = Some(ListMatcherWrapper::new(matcher));
     }
 }
 
@@ -191,8 +193,10 @@ impl<'e> Serialize for ExecutionContext<'e> {
                 map.serialize_entry(name, value)?;
             }
         }
-        for (ty, list) in &self.list_data {
-            map.serialize_entry(ty, &list.to_json_value())?;
+        for (ty, list) in self.scheme.lists() {
+            if let Some(list_data) = &self.list_data[list.index()] {
+                map.serialize_entry(ty, &list_data.to_json_value())?;
+            }
         }
         map.end()
     }

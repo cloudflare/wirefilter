@@ -1,7 +1,20 @@
 use crate::LhsValue;
+use crate::Type;
 use serde_json::Value;
 use std::any::Any;
 use std::fmt::Debug;
+
+/// Defines a new list to match against.
+///
+/// `ListDefinition` needs to be registered in the `Scheme` for a given `Type`.
+/// See `Scheme::add_list`.
+pub trait ListDefinition: Debug + Sync + Send {
+    /// Converts a deserialized `serde_json::Value` into a `ListMatcher`.
+    ///
+    /// This method is necessary to support deserialization of lists during the
+    /// the deserialization of an `ExecutionContext`.
+    fn matcher_from_json_value(&self, ty: Type, value: Value) -> ListMatcherWrapper;
+}
 
 /// Implement this Trait to match a given `LhsValue` against a list.
 pub trait ListMatcher {
@@ -122,5 +135,53 @@ impl ListMatcher for ListMatcherWrapper {
 
     fn to_json_value(&self) -> Value {
         (self.to_json_value_cb)(&*self.inner)
+    }
+}
+
+/// List that always matches.
+#[derive(Debug, Default)]
+pub struct AlwaysList {}
+
+/// Matcher for `AlwaysList`
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AlwaysListMatcher {}
+
+impl ListDefinition for AlwaysList {
+    fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
+        ListMatcherWrapper::new(AlwaysListMatcher {})
+    }
+}
+
+impl ListMatcher for AlwaysListMatcher {
+    fn match_value(&self, _: &str, _: &LhsValue<'_>) -> bool {
+        false
+    }
+
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+}
+
+/// List that never matches.
+#[derive(Debug, Default)]
+pub struct NeverList {}
+
+/// Matcher for `NeverList`
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NeverListMatcher {}
+
+impl ListDefinition for NeverList {
+    fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
+        ListMatcherWrapper::new(NeverListMatcher {})
+    }
+}
+
+impl ListMatcher for NeverListMatcher {
+    fn match_value(&self, _: &str, _: &LhsValue<'_>) -> bool {
+        false
+    }
+
+    fn to_json_value(&self) -> serde_json::Value {
+        serde_json::Value::Null
     }
 }
