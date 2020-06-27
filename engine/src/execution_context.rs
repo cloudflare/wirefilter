@@ -6,7 +6,8 @@ use crate::{
     ListMatcher,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
+use serde::ser::{SerializeMap, SerializeSeq, Serializer};
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::borrow::Cow;
 use std::fmt;
@@ -143,6 +144,13 @@ impl<'e> ExecutionContext<'e> {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct ListData<'b> {
+    #[serde(rename = "type")]
+    ty: Cow<'b, Type>,
+    data: serde_json::Value,
+}
+
 impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
     type Value = ();
 
@@ -164,25 +172,37 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
                 M: MapAccess<'de>,
             {
                 while let Some(key) = access.next_key::<Cow<'_, str>>()? {
-                    let field = self
-                        .0
-                        .scheme
-                        .get_field(&key)
-                        .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
-                    let value = access
-                        .next_value_seed::<LhsValueSeed<'_>>(LhsValueSeed(&field.get_type()))?;
-                    let field = self
-                        .0
-                        .scheme()
-                        .get_field(&key)
-                        .map_err(|_| de::Error::custom(format!("unknown field: {}", key)))?;
-                    self.0.set_field_value(field, value).map_err(|e| match e {
-                        SetFieldValueError::TypeMismatchError(e) => de::Error::custom(format!(
-                            "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        )),
-                        SetFieldValueError::SchemeMismatchError(_) => unreachable!(),
-                    })?;
+                    if key == "$lists" {
+                        // Deserialize lists
+                        let vec = access.next_value::<Vec<ListData<'_>>>()?;
+                        for ListData { ty, data } in vec.into_iter() {
+                            let list = self.0.scheme.get_list(&ty).ok_or_else(|| {
+                                de::Error::custom(format!("unknown list for type: {:?}", ty))
+                            })?;
+                            self.0.list_data[list.index()] = Some(
+                                list.definition()
+                                    .matcher_from_json_value(ty.into_owned(), data),
+                            );
+                        }
+                    } else {
+                        let field =
+                            self.0.scheme.get_field(&key).map_err(|_| {
+                                de::Error::custom(format!("unknown field: {}", key))
+                            })?;
+                        let value = access
+                            .next_value_seed::<LhsValueSeed<'_>>(LhsValueSeed(&field.get_type()))?;
+                        let field =
+                            self.0.scheme().get_field(&key).map_err(|_| {
+                                de::Error::custom(format!("unknown field: {}", key))
+                            })?;
+                        self.0.set_field_value(field, value).map_err(|e| match e {
+                            SetFieldValueError::TypeMismatchError(e) => de::Error::custom(format!(
+                                "invalid type: {:?}, expected {:?}",
+                                e.actual, e.expected
+                            )),
+                            SetFieldValueError::SchemeMismatchError(_) => unreachable!(),
+                        })?;
+                    }
                 }
 
                 Ok(())
@@ -216,21 +236,12 @@ impl<'e> Serialize for ExecutionContext<'e> {
             where
                 S: Serializer,
             {
-                use serde::Serialize;
-
-                #[derive(Serialize)]
-                struct ListData<'b> {
-                    #[serde(rename = "type")]
-                    ty: &'b Type,
-                    data: serde_json::Value,
-                }
-
                 let mut seq = serializer
                     .serialize_seq(Some(self.1.iter().filter(|list| list.is_some()).count()))?;
                 for (ty, list) in self.0.lists() {
                     if let Some(list_data) = &self.1[list.index()] {
                         seq.serialize_element(&ListData {
-                            ty,
+                            ty: Cow::Borrowed(ty),
                             data: list_data.to_json_value(),
                         })?;
                     }
