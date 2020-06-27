@@ -1,14 +1,14 @@
 [package]
-authors = ["Ingvar Stepanyan <me@rreverser.com>"]
+authors = [ "Ingvar Stepanyan <me@rreverser.com>" ]
 name = "wirefilter-engine"
 version = "0.7.0"
 description = "An execution engine for Wireshark-like filters"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/cloudflare/wirefilter"
-keywords = ["wireshark", "filter", "engine", "parser", "runtime"]
-categories = ["config", "parser-implementations"]
-edition = "2018"
+keywords = [ "wireshark", "filter", "engine", "parser", "runtime" ]
+categories = [ "config", "parser-implementations" ]
+edition = "2021"
 
 [lib]
 name = "wirefilter"
@@ -19,20 +19,22 @@ name = "bench"
 harness = false
 
 [dependencies]
-cidr = "0.1.0"
-failure = "0.1.1"
-fnv = "1.0.6"
-indexmap = { version = "1.0.1", features = ["serde-1"] }
-regex = { version = "1.1.5", optional = true }
-memmem = "0.1.1"
-serde = { version = "1.0.78", features = ["derive"] }
-cfg-if = "0.1.6"
+backtrace.workspace = true
+cfg-if.workspace = true
+cidr.workspace = true
+fnv.workspace = true
+memmem.workspace = true
+rand.workspace = true
+regex = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sliceslice.workspace = true
+thiserror.workspace = true
+wildcard.workspace = true
 
 [dev-dependencies]
-indoc = "0.3.0"
-criterion = "0.2.11"
-serde_json = "1.0.27"
-lazy_static = "1.1.0"
+criterion.workspace = true
+indoc.workspace = true
 
 [features]
-default = ["regex"]
+default = [ "regex" ]

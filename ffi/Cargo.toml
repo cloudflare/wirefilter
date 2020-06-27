@@ -1,29 +1,31 @@
 [package]
-authors = ["Ingvar Stepanyan <me@rreverser.com>"]
+authors = [ "Ingvar Stepanyan <me@rreverser.com>" ]
 name = "wirefilter-ffi"
 version = "0.7.0"
 description = "FFI bindings for the Wirefilter engine"
 publish = false
-edition = "2018"
+edition = "2021"
 
 [package.metadata.deb]
-assets = [["target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644"]]
+assets = [ [ "target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644" ] ]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = [ "cdylib", "rlib" ]
 # Avoid duplicate compilation error messages as we don't have doctests anyway
 doctest = false
 bench = false
 
 [dependencies]
-fnv = "1.0.6"
-libc = "0.2.42"
-serde_json = "1.0.27"
-
-[dependencies.wirefilter-engine]
-path = "../engine"
+fnv.workspace = true
+libc.workspace = true
+num_enum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wirefilter.workspace = true
 
 [dev-dependencies]
-regex = "1.1.5"
-indoc = "0.3.0"
-wirefilter-ffi-ctests = {path = "tests/ctests"}
+indoc.workspace = true
+regex.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+wirefilter-ffi-ctests = { path = "tests/ctests" }

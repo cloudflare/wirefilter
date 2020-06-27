@@ -1,0 +1,72 @@
+name: Rust
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        components: clippy,rustfmt
+    - name: Print versions
+      run: |
+        cargo --version
+        rustc --version
+        clippy-driver --version
+        rustfmt --version
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Run clippy
+      run: cargo clippy --verbose --all-targets -- -D clippy::all
+    - name: Check code formatting
+      run: cargo fmt --verbose --all -- --check
+
+  miri-test:
+    name: Test with miri
+    runs-on: ubuntu-latest
+    env:
+      MIRIFLAGS: -Zmiri-disable-isolation
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+        components: miri
+    - run: cargo miri test --verbose --no-default-features
+    - run: cargo miri test --verbose --all-features
+
+  sanitizer-test:
+    name: Test with -Zsanitizer=${{ matrix.sanitizer }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread, leak]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: nightly
+        components: rust-src
+    - name: Test with sanitizer
+      env:
+        RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+        RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+        # only needed by asan
+        ASAN_OPTIONS: detect_stack_use_after_return=1,detect_leaks=0
+        # Asan's leak detection occasionally complains
+        # about some small leaks if backtraces are captured,
+        # so ensure they're not
+        RUST_BACKTRACE: 0
+      run: cargo test -Zbuild-std --verbose --target=x86_64-unknown-linux-gnu

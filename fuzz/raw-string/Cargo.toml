@@ -1,0 +1,13 @@
+[package]
+name = "fuzz-raw-string"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+afl = "0.14"
+
+[dependencies.wirefilter-engine]
+path = "../../engine"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

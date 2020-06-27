@@ -11,7 +11,7 @@ pub struct Ref<'a, T: ?Sized + ExternPtrRepr> {
 // potentially expensive checks and consume unsafe wrapper once.
 impl<'a, T: ?Sized + ExternPtrRepr> Ref<'a, T> {
     pub fn into_ref(self) -> &'a T {
-        let slice: *mut T = ExternPtrRepr::from_extern_repr(self.ptr);
+        let slice: *const T = ExternPtrRepr::from_extern_repr(self.ptr);
         unsafe { &*slice }
     }
 }
@@ -19,7 +19,7 @@ impl<'a, T: ?Sized + ExternPtrRepr> Ref<'a, T> {
 impl<'a, T: ?Sized + ExternPtrRepr> From<&'a T> for Ref<'a, T> {
     fn from(ptr: &'a T) -> Self {
         Ref {
-            ptr: (ptr as *const T as *mut T).into(),
+            ptr: (ptr as *const T).into(),
             ownership_marker: PhantomData,
         }
     }
