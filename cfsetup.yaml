@@ -10,6 +10,7 @@ everything: &everything
       - fuzz/bytes/Cargo.toml
       - fuzz/map-keys/Cargo.toml
       - wasm/Cargo.toml
+      - wirefilter-parser/Cargo.toml
       - Cargo.lock
       - Cargo.toml
       - cfsetup-cargo.sh

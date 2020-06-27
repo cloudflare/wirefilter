@@ -16,8 +16,8 @@ case $CMD in
 		# (workaround for https://github.com/rust-lang/cargo/issues/2644)
 
 		# Create dummy sources for our library
-		mkdir -p {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm}/src
-		touch {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm}/src/lib.rs
+		mkdir -p {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm,wirefilter-parser}/src
+		touch {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm,wirefilter-parser}/src/lib.rs
 		mkdir engine/benches
 		echo 'fn main() {}' > engine/benches/bench.rs
 
@@ -29,7 +29,7 @@ case $CMD in
 		cargo bench --frozen --offline --all --no-run
 
 		# Clean artifacts of the library itself but keep prebuilt deps
-		cargo clean --frozen --offline -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
+		cargo clean --frozen --offline -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm -p wirefilter-parser $@
 
 		# Give unpriviledge user permission to access cargo home directory
 		chown -R 1000:1000 $CARGO_HOME
