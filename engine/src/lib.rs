@@ -8,7 +8,7 @@
 //! ```
 //! use wirefilter::{ExecutionContext, Scheme, Type};
 //!
-//! fn main() -> Result<(), failure::Error> {
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a map of possible filter fields.
 //!     let scheme = Scheme! {
 //!         http.method: Bytes,

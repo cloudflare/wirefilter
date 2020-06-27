@@ -1,15 +1,8 @@
-use failure::Fail;
-use std::fmt;
 use std::str::FromStr;
+use thiserror::Error;
 
-#[derive(Debug, PartialEq, Fail)]
+#[derive(Debug, PartialEq, Error)]
 pub enum Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
 
 #[derive(Clone)]
 pub struct Regex(String);
