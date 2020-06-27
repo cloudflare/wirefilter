@@ -44,6 +44,11 @@ void initialize_scheme(wirefilter_scheme_t *scheme) {
         wirefilter_string("http.cookies"),
         wirefilter_create_array_type(WIREFILTER_TYPE_BYTES)
     ), "could not add field http.cookies of type \"Array<Bytes>\" to scheme");
+    rust_assert(wirefilter_add_type_list_to_scheme(
+            scheme,
+            WIREFILTER_TYPE_IP,
+            wirefilter_create_always_list()
+    ), "could not add list for type \"Ip\" to scheme");
 }
 
 void wirefilter_ffi_ctest_create_array_type() {

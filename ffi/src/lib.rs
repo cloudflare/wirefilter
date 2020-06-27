@@ -17,8 +17,8 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    Array, DefaultCompiler, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, Map,
-    ParseError, Scheme, Type,
+    AlwaysList, Array, DefaultCompiler, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue,
+    ListDefinition, Map, NeverList, ParseError, Scheme, Type,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -165,6 +165,28 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
 ) -> bool {
     scheme
         .add_field(name.into_ref().to_owned(), ty.into())
+        .is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_create_always_list() -> *mut Box<dyn ListDefinition> {
+    Box::into_raw(Box::new(Box::new(AlwaysList::default())))
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_create_never_list() -> *mut Box<dyn ListDefinition> {
+    Box::into_raw(Box::new(Box::new(NeverList::default())))
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn wirefilter_add_type_list_to_scheme(
+    scheme: &mut Scheme,
+    ty: CType,
+    list: *mut Box<dyn ListDefinition>,
+) -> bool {
+    scheme
+        .add_list(ty.into(), *unsafe { Box::from_raw(list) })
         .is_ok()
 }
 
@@ -706,6 +728,12 @@ mod ffi_test {
             wirefilter_create_map_type(Type::Bytes.into()),
         );
 
+        wirefilter_add_type_list_to_scheme(
+            &mut scheme,
+            Type::Int.into(),
+            wirefilter_create_always_list(),
+        );
+
         scheme
     }
 
@@ -999,34 +1027,38 @@ mod ffi_test {
         {
             let filter = parse_filter(
                 &scheme,
-                r#"num1 in $numbers && num2 == 1337 && str1 in $countries && str2 != "hi" && ip1 in $bad && ip2 == 10.10.10.10"#,
+                r#"num1 in $numbers && num2 == 1337 && str2 != "hi" && ip2 == 10.10.10.10"#,
             )
             .unwrap();
 
-            assert!(
-                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num1")).unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num1")).unwrap(),
+                true,
             );
 
-            assert!(
-                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num2"))
-                    .unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("num2")).unwrap(),
+                false,
             );
 
-            assert!(
-                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str1")).unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str1")).unwrap(),
+                false
             );
 
-            assert!(
-                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str2"))
-                    .unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("str2")).unwrap(),
+                false,
             );
 
-            assert!(
-                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip1")).unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip1")).unwrap(),
+                false,
             );
 
-            assert!(
-                !wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip2")).unwrap()
+            assert_eq!(
+                wirefilter_filter_uses_list(&filter, ExternallyAllocatedStr::from("ip2")).unwrap(),
+                false,
             );
 
             wirefilter_free_parsed_filter(filter);

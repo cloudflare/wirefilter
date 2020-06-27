@@ -1,6 +1,6 @@
 use crate::{
     CompiledValueExpr, ExecutionContext, Field, FunctionCallArgExpr, FunctionCallExpr, IndexExpr,
-    LhsValue, ListMatcherWrapper, Type, ValueExpr,
+    LhsValue, List, ListMatcherWrapper, ValueExpr,
 };
 
 /// Trait used to represent a runtime context that will be used to execute a compiled [`Filter`].
@@ -8,7 +8,7 @@ pub trait ExecCtx {
     /// Fetches the value of a [`Field`].
     fn get_field_value_unchecked<'s>(&self, f: Field<'s>) -> &LhsValue<'_>;
     /// Fetches a [`ListMatcherWrapper`] given its [`Type`].
-    fn get_list_matcher_unchecked(&self, t: &Type) -> &ListMatcherWrapper;
+    fn get_list_matcher_unchecked<'s>(&self, l: List<'s>) -> &ListMatcherWrapper;
 }
 
 /// Trait used to drive the compilation of a [`FilterAst`] into a [`Filter`].

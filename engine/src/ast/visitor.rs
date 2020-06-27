@@ -114,7 +114,7 @@ impl<'s> UsesListVisitor<'s> {
 impl<'s> Visitor<'s, ()> for UsesListVisitor<'s> {
     fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'s>) -> Option<()> {
         match comparison_expr.op {
-            ComparisonOpExpr::InList(ref _list) => Some(()),
+            ComparisonOpExpr::InList { .. } => Some(()),
             _ => None,
         }
         .and_then(|()| UsesVisitor::new(self.field).visit_comparison_expr(comparison_expr))
@@ -125,8 +125,8 @@ impl<'s> Visitor<'s, ()> for UsesListVisitor<'s> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        FunctionArgKind, Identifier, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl,
-        SimpleFunctionParam, Type,
+        AlwaysList, FunctionArgKind, Identifier, Scheme, SimpleFunctionDefinition,
+        SimpleFunctionImpl, SimpleFunctionParam, Type,
     };
     use lazy_static::lazy_static;
 
@@ -154,6 +154,9 @@ mod tests {
                         implementation: SimpleFunctionImpl::new(|args| args.next()?.ok()),
                     },
                 )
+                .unwrap();
+            scheme
+                .add_list(Type::Bytes, Box::new(AlwaysList::default()))
                 .unwrap();
             scheme
         };

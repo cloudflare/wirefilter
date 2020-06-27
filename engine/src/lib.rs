@@ -96,10 +96,14 @@ pub use self::{
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map},
-    list_matcher::{ListMatcher, ListMatcherWrapper},
+    list_matcher::{
+        AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, ListMatcherWrapper, NeverList,
+        NeverListMatcher,
+    },
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
-        IdentifierRedefinitionError, ParseError, Scheme, SchemeMismatchError, UnknownFieldError,
+        IdentifierRedefinitionError, List, ParseError, Scheme, SchemeMismatchError,
+        UnknownFieldError,
     },
     types::{ExpectedType, GetType, LhsValue, Type, TypeMismatchError},
 };

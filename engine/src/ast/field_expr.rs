@@ -8,8 +8,8 @@ use crate::{
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     list_matcher::ListMatcher,
     range_set::RangeSet,
-    rhs_types::{Bytes, ExplicitIpRange, List, Regex},
-    scheme::{Field, Identifier, Scheme},
+    rhs_types::{Bytes, ExplicitIpRange, ListName, Regex},
+    scheme::{Field, Identifier, List, Scheme},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
 };
@@ -72,7 +72,7 @@ lex_enum!(ComparisonOp {
 /// comparison expression.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-pub enum ComparisonOpExpr {
+pub enum ComparisonOpExpr<'s> {
     /// Boolean field verification
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
@@ -114,7 +114,12 @@ pub enum ComparisonOpExpr {
 
     /// "in $..." comparison
     #[serde(serialize_with = "serialize_list")]
-    InList(List),
+    InList {
+        /// `List` from the `Scheme`
+        list: List<'s>,
+        /// List name
+        name: ListName,
+    },
 }
 
 fn serialize_op_rhs<T: Serialize, S: Serializer>(
@@ -150,8 +155,8 @@ fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::
     serialize_op_rhs("OneOf", rhs, ser)
 }
 
-fn serialize_list<S: Serializer>(rhs: &List, ser: S) -> Result<S::Ok, S::Error> {
-    serialize_op_rhs("InList", rhs, ser)
+fn serialize_list<S: Serializer>(_: &List<'_>, name: &ListName, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("InList", name, ser)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
@@ -203,7 +208,7 @@ pub struct ComparisonExpr<'s> {
 
     /// Operator + right-hand side of the comparison expression
     #[serde(flatten)]
-    pub op: ComparisonOpExpr,
+    pub op: ComparisonOpExpr<'s>,
 }
 
 impl<'s> GetType for ComparisonExpr<'s> {
@@ -230,7 +235,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for ComparisonExpr<'s> {
 impl<'s> ComparisonExpr<'s> {
     pub(crate) fn lex_with_lhs<'i>(
         input: &'i str,
-        _scheme: &'s Scheme,
+        scheme: &'s Scheme,
         lhs: IndexExpr<'s>,
     ) -> LexResult<'i, Self> {
         let lhs_type = lhs.get_type();
@@ -263,8 +268,12 @@ impl<'s> ComparisonExpr<'s> {
                 | (Type::Bytes, ComparisonOp::In)
                 | (Type::Int, ComparisonOp::In) => {
                     if expect(input, "$").is_ok() {
-                        let (list, input) = List::lex(input)?;
-                        (ComparisonOpExpr::InList(list), input)
+                        let (name, input) = ListName::lex(input)?;
+                        let list = scheme.get_list(&lhs_type).ok_or((
+                            LexErrorKind::UnsupportedOp { lhs_type },
+                            span(initial_input, input),
+                        ))?;
+                        (ComparisonOpExpr::InList { name, list }, input)
                     } else {
                         let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
                         (ComparisonOpExpr::OneOf(rhs), input)
@@ -397,10 +406,12 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Map(_) => unreachable!(),
                 RhsValues::Array(_) => unreachable!(),
             },
-            ComparisonOpExpr::InList(list) => lhs.compile_with(compiler, false, move |val, ctx| {
-                ctx.get_list_matcher_unchecked(&val.get_type())
-                    .match_value(list.name(), &val)
-            }),
+            ComparisonOpExpr::InList { name, list } => {
+                lhs.compile_with(compiler, false, move |val, ctx| {
+                    ctx.get_list_matcher_unchecked(list)
+                        .match_value(name.as_str(), &val)
+                })
+            }
         }
     }
 }
@@ -418,7 +429,7 @@ mod tests {
             SimpleFunctionOptParam, SimpleFunctionParam,
         },
         lhs_types::{Array, Map},
-        list_matcher::ListMatcherWrapper,
+        list_matcher::{ListDefinition, ListMatcherWrapper},
         rhs_types::IpRange,
         scheme::{FieldIndex, IndexAccessError},
         types::ExpectedType,
@@ -543,6 +554,15 @@ mod tests {
         }
     }
 
+    #[derive(Debug, PartialEq, Serialize, Clone)]
+    pub struct NumMListDefinition {}
+
+    impl ListDefinition for NumMListDefinition {
+        fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
+            ListMatcherWrapper::new(NumMatcher {})
+        }
+    }
+
     lazy_static! {
         static ref SCHEME: Scheme = {
             let mut scheme: Scheme = Scheme! {
@@ -634,6 +654,9 @@ mod tests {
                         implementation: SimpleFunctionImpl::new(len_function),
                     },
                 )
+                .unwrap();
+            scheme
+                .add_list(Type::Int, Box::new(NumMListDefinition {}))
                 .unwrap();
             scheme
         };
@@ -2105,6 +2128,7 @@ mod tests {
 
     #[test]
     fn test_number_in_list() {
+        let list = SCHEME.get_list(&Type::Int).unwrap();
         let expr = assert_ok!(
             ComparisonExpr::lex_with(r#"tcp.port in $even"#, &SCHEME),
             ComparisonExpr {
@@ -2112,7 +2136,10 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
                 },
-                op: ComparisonOpExpr::InList(List::from("even".to_string()))
+                op: ComparisonOpExpr::InList {
+                    list,
+                    name: ListName::from("even".to_string())
+                }
             }
         );
 
@@ -2130,7 +2157,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
 
         ctx.set_field_value(field("tcp.port"), 1000).unwrap();
         assert_eq!(expr.execute_one(ctx), true);
@@ -2146,7 +2173,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
 
         ctx.set_field_value(field("tcp.port"), 1000).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
@@ -2160,6 +2187,7 @@ mod tests {
 
     #[test]
     fn test_any_number_in_list() {
+        let list = SCHEME.get_list(&Type::Int).unwrap();
         let expr = assert_ok!(
             ComparisonExpr::lex_with(r#"any(tcp.ports[*] in $even)"#, &SCHEME),
             ComparisonExpr {
@@ -2173,7 +2201,10 @@ mod tests {
                                     lhs: LhsFieldExpr::Field(field("tcp.ports")),
                                     indexes: vec![FieldIndex::MapEach],
                                 },
-                                op: ComparisonOpExpr::InList(List::from("even".to_string())),
+                                op: ComparisonOpExpr::InList {
+                                    list,
+                                    name: ListName::from("even".to_string()),
+                                },
                             }
                         ))],
                         return_type: Type::Bool,
@@ -2210,7 +2241,7 @@ mod tests {
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
         let list_matcher = NumMatcher::new();
-        ctx.set_list_matcher(Type::Int, ListMatcherWrapper::new(list_matcher));
+        ctx.set_list_matcher(list, ListMatcherWrapper::new(list_matcher));
 
         let mut arr1 = Array::new(Type::Int);
         // 1 odd, 1 even
