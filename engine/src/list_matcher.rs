@@ -13,7 +13,11 @@ pub trait ListDefinition: Debug + Sync + Send {
     ///
     /// This method is necessary to support deserialization of lists during the
     /// the deserialization of an `ExecutionContext`.
-    fn matcher_from_json_value(&self, ty: Type, value: Value) -> ListMatcherWrapper;
+    fn matcher_from_json_value(
+        &self,
+        ty: Type,
+        value: Value,
+    ) -> Result<ListMatcherWrapper, serde_json::Error>;
 
     /// Verify an object is a valid `ListMatcher`.
     fn is_valid_matcher(&self, matcher: &dyn Any) -> bool;
@@ -129,8 +133,12 @@ pub struct AlwaysList {}
 pub struct AlwaysListMatcher {}
 
 impl ListDefinition for AlwaysList {
-    fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
-        ListMatcherWrapper::new(AlwaysListMatcher {})
+    fn matcher_from_json_value(
+        &self,
+        _: Type,
+        _: serde_json::Value,
+    ) -> Result<ListMatcherWrapper, serde_json::Error> {
+        Ok(ListMatcherWrapper::new(AlwaysListMatcher {}))
     }
 
     fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
@@ -157,8 +165,12 @@ pub struct NeverList {}
 pub struct NeverListMatcher {}
 
 impl ListDefinition for NeverList {
-    fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
-        ListMatcherWrapper::new(NeverListMatcher {})
+    fn matcher_from_json_value(
+        &self,
+        _: Type,
+        _: serde_json::Value,
+    ) -> Result<ListMatcherWrapper, serde_json::Error> {
+        Ok(ListMatcherWrapper::new(NeverListMatcher {}))
     }
 
     fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
