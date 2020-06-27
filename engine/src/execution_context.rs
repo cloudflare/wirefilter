@@ -186,7 +186,13 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
                             })?;
                             self.0.list_data[list.index()] = Some(
                                 list.definition()
-                                    .matcher_from_json_value(ty.into_owned(), data),
+                                    .matcher_from_json_value(ty.into_owned(), data)
+                                    .map_err(|err| {
+                                        de::Error::custom(format!(
+                                            "failed to deserialize list matcher: {:?}",
+                                            err
+                                        ))
+                                    })?,
                             );
                         }
                     } else {

@@ -558,8 +558,12 @@ mod tests {
     pub struct NumMListDefinition {}
 
     impl ListDefinition for NumMListDefinition {
-        fn matcher_from_json_value(&self, _: Type, _: serde_json::Value) -> ListMatcherWrapper {
-            ListMatcherWrapper::new(NumMatcher {})
+        fn matcher_from_json_value(
+            &self,
+            _: Type,
+            _: serde_json::Value,
+        ) -> Result<ListMatcherWrapper, serde_json::Error> {
+            Ok(ListMatcherWrapper::new(NumMatcher {}))
         }
 
         fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
