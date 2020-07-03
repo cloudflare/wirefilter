@@ -2,10 +2,10 @@ use super::{field_expr::LhsFieldExpr, visitor::Visitor, ValueExpr};
 use crate::{
     compiler::{Compiler, ExecCtx},
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
-    lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{complete, expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     lhs_types::{Array, Map},
-    scheme::{FieldIndex, IndexAccessError, Scheme},
-    types::{GetType, IntoIter, LhsValue, Type},
+    scheme::{FieldIndex, IndexAccessError, ParseError, Scheme},
+    types::{GetType, IntoIter, LhsValue, Type, TypeMismatchError},
 };
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
@@ -270,6 +270,25 @@ impl<'s> IndexExpr<'s> {
             .filter(|&index| index == &FieldIndex::MapEach)
             .count()
     }
+
+    /// Parses an expression into an AST form.
+    pub fn parse<'i>(scheme: &'s Scheme, input: &'i str) -> Result<Self, ParseError<'i>> {
+        complete(Self::lex_with(input.trim(), scheme))
+            .and_then(|ast| {
+                if ast.map_each_count() > 0 {
+                    Err((
+                        LexErrorKind::TypeMismatch(TypeMismatchError {
+                            expected: ast.get_type().into(),
+                            actual: Type::Array(Box::new(ast.get_type())),
+                        }),
+                        input,
+                    ))
+                } else {
+                    Ok(ast)
+                }
+            })
+            .map_err(|err| ParseError::new(input, err))
+    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for IndexExpr<'s> {
@@ -478,6 +497,7 @@ impl<'a, 'b> Iterator for MapEachIterator<'a, 'b> {
 mod tests {
     use super::*;
     use crate::{ast::field_expr::LhsFieldExpr, Array, FieldIndex};
+    use indoc::indoc;
     use lazy_static::lazy_static;
 
     lazy_static! {
@@ -669,5 +689,41 @@ mod tests {
             j = (j + 1) % 10;
             i += (j == 0) as u32;
         }
+    }
+
+    #[test]
+    fn test_parse() {
+        let err = IndexExpr::parse(&*SCHEME, "test[*]").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::TypeMismatch(TypeMismatchError {
+                    expected: Type::Bytes.into(),
+                    actual: Type::Array(Box::new(Type::Bytes)),
+                }),
+                input: "test[*]",
+                line_number: 0,
+                span_start: 0,
+                span_len: 7,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:1):
+                test[*]
+                ^^^^^^^ expected value of type {Type(Bytes)}, but got Array(Bytes)
+                "#
+            )
+        );
+
+        assert_eq!(
+            IndexExpr::parse(&*SCHEME, "test[42]"),
+            Ok(IndexExpr {
+                lhs: LhsFieldExpr::Field(SCHEME.get_field("test").unwrap()),
+                indexes: vec![FieldIndex::ArrayIndex(42)],
+            })
+        );
     }
 }

@@ -295,19 +295,19 @@ pub enum IdentifierRedefinitionError {
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'i> {
     /// The error that occurred when parsing the input
-    kind: LexErrorKind,
+    pub(crate) kind: LexErrorKind,
 
     /// The input that caused the parse error
-    input: &'i str,
+    pub(crate) input: &'i str,
 
     /// The line number on the input where the error occurred
-    line_number: usize,
+    pub(crate) line_number: usize,
 
     /// The start of the bad input
-    span_start: usize,
+    pub(crate) span_start: usize,
 
     /// The number of characters that span the bad input
-    span_len: usize,
+    pub(crate) span_len: usize,
 }
 
 impl<'i> Error for ParseError<'i> {}
