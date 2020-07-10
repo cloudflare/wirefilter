@@ -39,6 +39,8 @@ everything: &everything
       - rust
       - wasm-pack
       - nodejs
+      - libssl-dev
+      - pkg-config
     pre-cache-copy-paths: *paths
     pre-cache:
       - ./cfsetup-cargo.sh prebuild --target wasm32-unknown-unknown
