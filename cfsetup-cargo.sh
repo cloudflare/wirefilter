@@ -3,6 +3,7 @@
 export CARGO_HOME=/var/lib/cargo
 export CARGO_TARGET_DIR=$CARGO_HOME/target
 export RUSTFLAGS="-D warnings"
+export PATH=/var/lib/cargo/bin:$PATH
 
 CMD=$1
 shift
@@ -30,10 +31,13 @@ case $CMD in
 		# Clean artifacts of the library itself but keep prebuilt deps
 		cargo clean --frozen --offline -p wirefilter-engine -p wirefilter-ffi -p wirefilter-wasm $@
 
-		# Give unpriviledge user permission to access cargo target directory
-		chown -R 1000:1000 $CARGO_TARGET_DIR
+		# Give unpriviledge user permission to access cargo home directory
+		chown -R 1000:1000 $CARGO_HOME
 		;;
 	wasm-pack)
+		# Install wasm-bindgen-cli
+		cargo install -f wasm-bindgen-cli --version 0.2.64
+
 		# Latest release of wasm-pack can't find target via CARGO_TARGET_DIR nor
 		# in a workspace root.
 		#
