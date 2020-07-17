@@ -4,7 +4,6 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
-    borrow::Borrow,
     fmt::{self, Debug, Formatter},
     hash::{Hash, Hasher},
     ops::Deref,
@@ -59,6 +58,15 @@ impl From<Bytes> for Vec<u8> {
     }
 }
 
+impl Bytes {
+    pub fn into_boxed_bytes(self) -> Box<[u8]> {
+        match self {
+            Bytes::Str(s) => s.into_boxed_bytes(),
+            Bytes::Raw(b) => b,
+        }
+    }
+}
+
 impl Debug for Bytes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -84,12 +92,6 @@ impl Deref for Bytes {
             Bytes::Str(s) => s.as_bytes(),
             Bytes::Raw(b) => b,
         }
-    }
-}
-
-impl Borrow<[u8]> for Bytes {
-    fn borrow(&self) -> &[u8] {
-        self
     }
 }
 

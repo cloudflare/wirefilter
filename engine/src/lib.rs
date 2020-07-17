@@ -67,11 +67,11 @@ mod compiler;
 mod execution_context;
 mod filter;
 mod functions;
-mod heap_searcher;
 mod lhs_types;
 mod list_matcher;
 mod range_set;
 mod rhs_types;
+mod searcher;
 mod strict_partial_ord;
 mod types;
 

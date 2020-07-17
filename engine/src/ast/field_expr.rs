@@ -1,27 +1,40 @@
-// use crate::filter::CompiledExpr;
 use super::{function_expr::FunctionCallExpr, visitor::Visitor, Expr};
 use crate::{
     ast::index_expr::IndexExpr,
     compiler::{Compiler, ExecCtx},
     filter::{CompiledExpr, CompiledValueExpr},
-    heap_searcher::HeapSearcher,
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     list_matcher::ListMatcher,
     range_set::RangeSet,
     rhs_types::{Bytes, ExplicitIpRange, ListName, Regex},
     scheme::{Field, Identifier, List, Scheme},
+    searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
 };
 use fnv::FnvBuildHasher;
 use indexmap::IndexSet;
-use memmem::Searcher;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use lazy_static::lazy_static;
 use serde::{Serialize, Serializer};
+use sliceslice::memchr::MemchrSearcher;
 use std::{cmp::Ordering, net::IpAddr};
 
 const LESS: u8 = 0b001;
 const GREATER: u8 = 0b010;
 const EQUAL: u8 = 0b100;
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+lazy_static! {
+    static ref USE_AVX2: bool = {
+        use std::env;
+
+        const NO_VALUES: &[&str] = &["0", "no", "false"];
+
+        let use_avx2 = env::var("WIREFILTER_USE_AVX2").unwrap_or_default();
+        is_x86_feature_detected!("avx2") && !NO_VALUES.contains(&use_avx2.as_str())
+    };
+}
 
 lex_enum!(#[repr(u8)] OrderingOp {
     "eq" | "==" => Equal = EQUAL,
@@ -358,11 +371,51 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 cast_value!(x, Int) & rhs != 0
             }),
             ComparisonOpExpr::Contains(bytes) => {
-                let searcher = HeapSearcher::from(bytes);
+                macro_rules! search {
+                    ($searcher:expr) => {{
+                        let searcher = $searcher;
+                        lhs.compile_with(compiler, false, move |x, _ctx| {
+                            searcher.search_in(cast_value!(x, Bytes).as_ref())
+                        })
+                    }};
+                }
 
-                lhs.compile_with(compiler, false, move |x, _ctx| {
-                    searcher.search_in(cast_value!(x, Bytes)).is_some()
-                })
+                let bytes = bytes.into_boxed_bytes();
+
+                if bytes.is_empty() {
+                    return search!(EmptySearcher);
+                }
+
+                if let [byte] = *bytes {
+                    return search!(MemchrSearcher::new(byte));
+                }
+
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                if *USE_AVX2 {
+                    use rand::{thread_rng, Rng};
+                    use sliceslice::x86::avx2::*;
+
+                    let position = thread_rng().gen_range(1, bytes.len());
+                    return unsafe {
+                        match bytes.len() {
+                            2 => search!(Avx2Searcher2::with_position(bytes, position)),
+                            3 => search!(Avx2Searcher3::with_position(bytes, position)),
+                            4 => search!(Avx2Searcher4::with_position(bytes, position)),
+                            5 => search!(Avx2Searcher5::with_position(bytes, position)),
+                            6 => search!(Avx2Searcher6::with_position(bytes, position)),
+                            7 => search!(Avx2Searcher7::with_position(bytes, position)),
+                            8 => search!(Avx2Searcher8::with_position(bytes, position)),
+                            9 => search!(Avx2Searcher9::with_position(bytes, position)),
+                            10 => search!(Avx2Searcher10::with_position(bytes, position)),
+                            11 => search!(Avx2Searcher11::with_position(bytes, position)),
+                            12 => search!(Avx2Searcher12::with_position(bytes, position)),
+                            13 => search!(Avx2Searcher13::with_position(bytes, position)),
+                            _ => search!(Avx2Searcher::with_position(bytes, position)),
+                        }
+                    };
+                }
+
+                search!(TwoWaySearcher::new(bytes))
             }
             ComparisonOpExpr::Matches(regex) => {
                 lhs.compile_with(compiler, false, move |x, _ctx| {
