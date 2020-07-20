@@ -180,7 +180,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
                 RhsValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
-            .or_else(|_| Err((LexErrorKind::EOF, _initial_input)))
+            .map_err(|_| (LexErrorKind::EOF, _initial_input))
     }
 }
 
