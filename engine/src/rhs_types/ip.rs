@@ -34,14 +34,14 @@ impl<'i> Lex<'i> for IpAddr {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Hash, Serialize, Debug)]
 #[serde(untagged)]
 pub enum ExplicitIpRange {
     V4(RangeInclusive<Ipv4Addr>),
     V6(RangeInclusive<Ipv6Addr>),
 }
 
-#[derive(PartialEq, Eq, Clone, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Hash, Serialize, Debug)]
 #[serde(untagged)]
 pub enum IpRange {
     Explicit(ExplicitIpRange),

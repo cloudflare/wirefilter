@@ -3,6 +3,7 @@ use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::{
     fmt::{self, Debug, Formatter},
+    hash::{Hash, Hasher},
     str::FromStr,
 };
 
@@ -23,6 +24,12 @@ impl PartialEq for Regex {
 }
 
 impl Eq for Regex {}
+
+impl Hash for Regex {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
 
 impl Debug for Regex {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

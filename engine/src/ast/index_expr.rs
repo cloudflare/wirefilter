@@ -15,7 +15,7 @@ use serde::{ser::SerializeSeq, Serialize, Serializer};
 /// as a map of string to list of strings, then the expression
 /// http.request.headers["Cookie"][0] would have an LhsFieldExpr
 /// http.request.headers and indexes ["Cookie", 0].
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct IndexExpr<'s> {
     pub(crate) lhs: LhsFieldExpr<'s>,
     pub(crate) indexes: Vec<FieldIndex>,

@@ -214,7 +214,7 @@ macro_rules! declare_types {
 
         declare_types! {
             /// An RHS value parsed from a filter string.
-            #[derive(PartialEq, Eq, Clone, Serialize)]
+            #[derive(PartialEq, Eq, Clone, Hash, Serialize)]
             #[serde(untagged)]
             enum RhsValue {
                 $($(# $attrs)* $name($rhs_ty),)*
@@ -248,7 +248,7 @@ macro_rules! declare_types {
             ///
             /// This is used for `field in { ... }` operation that allows
             /// only same-typed values in a list.
-            #[derive(PartialEq, Eq, Clone, Serialize)]
+            #[derive(PartialEq, Eq, Clone, Hash, Serialize)]
             #[serde(untagged)]
             enum RhsValues {
                 $($(# $attrs)* $name(Vec<$multi_rhs_ty>),)*
