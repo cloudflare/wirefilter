@@ -237,7 +237,7 @@ macro_rules! lex_enum {
     // This is invoked when no more variants are left to process.
     // At this point declaration and lexer body are considered complete.
     (@decl { $($preamble:tt)* } $name:ident $input:ident $decl:tt { $($expr:stmt)* } {}) => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+        #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize)]
         $($preamble)*
         pub enum $name $decl
 

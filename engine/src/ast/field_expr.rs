@@ -83,7 +83,7 @@ lex_enum!(ComparisonOp {
 
 /// Operator and right-hand side expression of a
 /// comparison expression.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
 pub enum ComparisonOpExpr<'s> {
     /// Boolean field verification
@@ -172,7 +172,7 @@ fn serialize_list<S: Serializer>(_: &List<'_>, name: &ListName, ser: S) -> Resul
     serialize_op_rhs("InList", name, ser)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
 pub(crate) enum LhsFieldExpr<'s> {
     Field(Field<'s>),
@@ -214,7 +214,7 @@ impl<'s> GetType for LhsFieldExpr<'s> {
 }
 
 /// Comparison expression
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 pub struct ComparisonExpr<'s> {
     /// Lef-hand side of the comparison expression
     pub lhs: IndexExpr<'s>,

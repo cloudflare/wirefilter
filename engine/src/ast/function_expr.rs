@@ -23,7 +23,7 @@ use std::iter::once;
 
 /// FunctionCallArgExpr is a function argument. It can be a sub-expression with
 /// [`SimpleExpr`], a field with [`IndexExpr`] or a literal with [`Literal`].
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub enum FunctionCallArgExpr<'s> {
     /// IndexExpr is a field that supports the indexing operator.
@@ -206,7 +206,7 @@ impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionParam<'a> {
 
 /// FunctionCallExpr represents a function call expression.
 #[derive(Derivative, Serialize)]
-#[derivative(Debug, PartialEq, Eq, Clone)]
+#[derivative(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct FunctionCallExpr<'s> {
     #[serde(rename = "name")]
     pub(crate) function: Function<'s>,
@@ -214,7 +214,7 @@ pub struct FunctionCallExpr<'s> {
     pub(crate) return_type: Type,
     pub(crate) args: Vec<FunctionCallArgExpr<'s>>,
     #[serde(skip)]
-    #[derivative(PartialEq = "ignore")]
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub(crate) context: Option<FunctionDefinitionContext>,
 }
 
