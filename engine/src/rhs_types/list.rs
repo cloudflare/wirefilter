@@ -2,7 +2,7 @@ use crate::lex::{expect, Lex, LexErrorKind, LexResult};
 use serde::Serialize;
 use std::str;
 
-#[derive(PartialEq, Eq, Clone, Serialize, Debug)]
+#[derive(PartialEq, Eq, Clone, Serialize, Hash, Debug)]
 pub struct ListName(Box<str>);
 
 impl From<String> for ListName {

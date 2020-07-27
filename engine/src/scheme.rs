@@ -14,6 +14,7 @@ use std::{
     convert::TryFrom,
     error::Error,
     fmt::{self, Debug, Display, Formatter},
+    hash::{Hash, Hasher},
     iter::Iterator,
     ptr,
 };
@@ -25,7 +26,7 @@ use thiserror::Error;
 #[error("underlying schemes do not match")]
 pub struct SchemeMismatchError;
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(tag = "kind", content = "value")]
 /// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
 /// representing an index into an Array, or `[MapKey(String)`],
@@ -87,7 +88,7 @@ pub struct IndexAccessError {
     pub actual: Type,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 /// A structure to represent a field inside a [`Scheme`](struct@Scheme).
 pub struct Field<'s> {
     scheme: &'s Scheme,
@@ -147,7 +148,7 @@ impl<'s> GetType for Field<'s> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 /// A structure to represent a function inside a [`Scheme`](struct@Scheme).
 pub struct Function<'s> {
     scheme: &'s Scheme,
@@ -387,7 +388,7 @@ enum SchemeItem {
 /// A structure to represent a list inside a [`scheme`](struct.Scheme.html).
 ///
 /// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub struct List<'s> {
     scheme: &'s Scheme,
     index: usize,
@@ -441,6 +442,12 @@ impl PartialEq for Scheme {
 }
 
 impl Eq for Scheme {}
+
+impl Hash for Scheme {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (self as *const Scheme).hash(state);
+    }
+}
 
 impl Serialize for Scheme {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

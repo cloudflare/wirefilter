@@ -24,7 +24,7 @@ pub enum Bytes {
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Bytes {
     fn hash<H: Hasher>(&self, h: &mut H) {
-        (self as &[u8]).hash(h)
+        (self as &[u8]).hash(h);
     }
 }
 

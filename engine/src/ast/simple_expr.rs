@@ -15,7 +15,7 @@ lex_enum!(UnaryOp {
 /// SimpleExpr is a "generic" expression. It can be either a comparison
 /// expression with [`SimpleExpr::Comparison`], a parenthesized expression
 /// with [`SimpleExpr::Parenthesized`] or a unary expression with [`SimpleExpr::Unary`].
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
 pub enum SimpleExpr<'s> {
     /// A comparison expression.

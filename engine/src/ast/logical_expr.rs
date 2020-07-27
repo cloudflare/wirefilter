@@ -16,7 +16,7 @@ lex_enum!(#[derive(PartialOrd, Ord)] LogicalOp {
 
 /// LogicalExpr is a either a generic sub-expression
 /// or a logical conjunction expression.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
 pub enum LogicalExpr<'s> {
     /// Sub-expression
