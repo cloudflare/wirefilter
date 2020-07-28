@@ -219,21 +219,12 @@ impl<'a> FunctionParam<'a> {
 pub struct FunctionDefinitionContext {
     inner: Box<dyn Any + Send>,
     clone_cb: fn(&(dyn Any + Send)) -> Box<dyn Any + Send>,
-    eq_cb: fn(&(dyn Any + Send), &(dyn Any + Send)) -> bool,
     fmt_cb: fn(&(dyn Any + Send), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
 }
 
 impl FunctionDefinitionContext {
     fn clone_any<T: Any + Clone + Send>(t: &(dyn Any + Send)) -> Box<dyn Any + Send> {
         Box::new(t.downcast_ref::<T>().unwrap().clone())
-    }
-
-    fn eq_any<T: Any + PartialEq + Send>(t1: &(dyn Any + Send), t2: &(dyn Any + Send)) -> bool {
-        let t1 = t1.downcast_ref::<T>().unwrap();
-        match t2.downcast_ref::<T>() {
-            Some(t2) => t1.eq(t2),
-            None => false,
-        }
     }
 
     fn fmt_any<T: Any + Debug + Send>(
@@ -245,11 +236,10 @@ impl FunctionDefinitionContext {
 
     /// Creates a new FunctionDefinitionContext object containing user-defined
     /// object of type `T`
-    pub fn new<T: Any + Clone + Debug + PartialEq + Send>(t: T) -> Self {
+    pub fn new<T: Any + Clone + Debug + Send>(t: T) -> Self {
         Self {
             inner: Box::new(t),
             clone_cb: Self::clone_any::<T>,
-            eq_cb: Self::eq_any::<T>,
             fmt_cb: Self::fmt_any::<T>,
         }
     }
@@ -271,13 +261,11 @@ impl FunctionDefinitionContext {
         let Self {
             inner,
             clone_cb,
-            eq_cb,
             fmt_cb,
         } = self;
         inner.downcast::<T>().map_err(|inner| Self {
             inner,
             clone_cb,
-            eq_cb,
             fmt_cb,
         })
     }
@@ -300,7 +288,6 @@ impl Clone for FunctionDefinitionContext {
         Self {
             inner: (self.clone_cb)(&*self.inner),
             clone_cb: self.clone_cb,
-            eq_cb: self.eq_cb,
             fmt_cb: self.fmt_cb,
         }
     }
@@ -312,14 +299,6 @@ impl std::fmt::Debug for FunctionDefinitionContext {
         (self.fmt_cb)(&*self.inner, f)?;
         write!(f, ")")?;
         Ok(())
-    }
-}
-
-impl Eq for FunctionDefinitionContext {}
-
-impl PartialEq for FunctionDefinitionContext {
-    fn eq(&self, other: &Self) -> bool {
-        (self.eq_cb)(&*self.inner, &*other.inner)
     }
 }
 
@@ -481,24 +460,29 @@ mod tests {
 
     #[test]
     fn test_function_definition_context() {
-        let ctx1 = FunctionDefinitionContext::new(Some(42));
+        let ctx1 = FunctionDefinitionContext::new(Some(42u8));
 
         assert_eq!(
             "FunctionDefinitionContext(Some(42))".to_owned(),
             format!("{:?}", ctx1)
         );
 
-        assert_eq!(ctx1, ctx1.clone());
-
-        let ctx2 = FunctionDefinitionContext::new("Hello world!\n");
-
         assert_eq!(
-            "FunctionDefinitionContext(\"Hello world!\\n\")".to_owned(),
-            format!("{:?}", ctx2)
+            ctx1.as_any_ref().downcast_ref::<Option<u8>>().unwrap(),
+            &Some(42u8)
         );
 
-        assert_eq!(ctx2, ctx2.clone());
+        let ctx2 = ctx1.clone();
 
-        assert!(ctx1 != ctx2);
+        let value = ctx1.downcast::<Option<u8>>().unwrap();
+
+        assert_eq!(value, Box::new(Some(42u8)));
+
+        assert_eq!(
+            ctx2.as_any_ref().downcast_ref::<Option<u8>>().unwrap(),
+            &*value
+        );
+
+        assert_eq!(ctx2.downcast::<Option<u8>>().unwrap(), value);
     }
 }
