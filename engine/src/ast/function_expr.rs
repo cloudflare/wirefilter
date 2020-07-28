@@ -208,9 +208,7 @@ impl<'a, 's> From<&'a FunctionCallArgExpr<'s>> for FunctionParam<'a> {
 #[derive(Derivative, Serialize)]
 #[derivative(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionCallExpr<'s> {
-    pub(crate) name: String,
-    #[serde(skip)]
-    #[derivative(PartialEq = "ignore")]
+    #[serde(rename = "name")]
     pub(crate) function: Function<'s>,
     #[serde(skip)]
     pub(crate) return_type: Type,
@@ -279,7 +277,6 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
 
 impl<'s> FunctionCallExpr<'s> {
     pub(crate) fn new(
-        name: &str,
         function: Function<'s>,
         args: Vec<FunctionCallArgExpr<'s>>,
         context: Option<FunctionDefinitionContext>,
@@ -289,7 +286,6 @@ impl<'s> FunctionCallExpr<'s> {
             (&context).as_ref(),
         );
         Self {
-            name: name.into(),
             function,
             args,
             return_type,
@@ -302,7 +298,6 @@ impl<'s> FunctionCallExpr<'s> {
         function: Function<'s>,
     ) -> LexResult<'i, Self> {
         let scheme = function.scheme();
-        let name = function.name();
         let definition = function.as_definition();
 
         let mut input = skip_space(input);
@@ -390,7 +385,7 @@ impl<'s> FunctionCallExpr<'s> {
 
         input = expect(input, ")")?;
 
-        let function_call = FunctionCallExpr::new(name, function, args, ctx);
+        let function_call = FunctionCallExpr::new(function, args, ctx);
 
         Ok((function_call, input))
     }
@@ -570,7 +565,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with(r#"echo ( http.host, 1, 2 );"#, &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -610,7 +604,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("echo ( http.host );", &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
@@ -639,7 +632,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with(r#"echo (http.host,1,2);"#, &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -700,11 +692,9 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("echo ( echo ( http.host ) );", &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("echo"),
                         function: SCHEME.get_function("echo").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(SCHEME.get_field("http.host").unwrap()),
@@ -749,7 +739,6 @@ mod tests {
                 &SCHEME
             ),
             FunctionCallExpr {
-                name: String::from("any"),
                 function: SCHEME.get_function("any").unwrap(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Parenthesized(
                     Box::new(LogicalExpr::Combining {
@@ -810,7 +799,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("echo ( http.request.headers.names[*] );", &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
@@ -840,7 +828,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("echo ( http.headers[*] );", &SCHEME),
             FunctionCallExpr {
-                name: String::from("echo"),
                 function: SCHEME.get_function("echo").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(SCHEME.get_field("http.headers").unwrap()),
@@ -890,13 +877,11 @@ mod tests {
                 &SCHEME
             ),
             FunctionCallExpr {
-                name: "any".into(),
                 function: SCHEME.get_function("any").unwrap(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
                     ComparisonExpr {
                         lhs: IndexExpr {
                             lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                                name: "lower".into(),
                                 function: SCHEME.get_function("lower").unwrap(),
                                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                                     lhs: LhsFieldExpr::Field(
@@ -953,7 +938,6 @@ mod tests {
         let expr = assert_ok!(
             FunctionCallExpr::lex_with("len(http.request.headers.names[*])", &SCHEME),
             FunctionCallExpr {
-                name: "len".into(),
                 function: SCHEME.get_function("len").unwrap(),
                 args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                     lhs: LhsFieldExpr::Field(
@@ -979,7 +963,6 @@ mod tests {
                 &SCHEME
             ),
             FunctionCallExpr {
-                name: "any".into(),
                 function: SCHEME.get_function("any").unwrap(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
                     op: UnaryOp::Not,
@@ -1038,7 +1021,6 @@ mod tests {
                 &SCHEME
             ),
             FunctionCallExpr {
-                name: "any".into(),
                 function: SCHEME.get_function("any").unwrap(),
                 args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Unary {
                     op: UnaryOp::Not,

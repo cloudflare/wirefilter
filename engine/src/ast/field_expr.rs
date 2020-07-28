@@ -1285,7 +1285,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("echo"),
                         function: SCHEME.get_function("echo").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
@@ -1339,7 +1338,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("lowercase"),
                         function: SCHEME.get_function("lowercase").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
@@ -1537,7 +1535,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("concat"),
                         function: SCHEME.get_function("concat").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.host")),
@@ -1588,7 +1585,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("concat"),
                         function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -1653,7 +1649,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("filter"),
                         function: SCHEME.get_function("filter").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -1736,7 +1731,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("concat"),
                         function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -1808,7 +1802,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("concat"),
                         function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -1976,7 +1969,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("concat"),
                         function: SCHEME.get_function("concat").unwrap(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
@@ -2048,7 +2040,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("len"),
                         function: SCHEME.get_function("len").unwrap(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
                             lhs: LhsFieldExpr::Field(field("http.cookies")),
@@ -2257,7 +2248,6 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     lhs: LhsFieldExpr::FunctionCallExpr(FunctionCallExpr {
-                        name: String::from("any"),
                         function: SCHEME.get_function("any").unwrap(),
                         args: vec![FunctionCallArgExpr::SimpleExpr(SimpleExpr::Comparison(
                             ComparisonExpr {
