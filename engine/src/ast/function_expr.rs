@@ -214,6 +214,7 @@ pub struct FunctionCallExpr<'s> {
     pub(crate) return_type: Type,
     pub(crate) args: Vec<FunctionCallArgExpr<'s>>,
     #[serde(skip)]
+    #[derivative(PartialEq = "ignore")]
     pub(crate) context: Option<FunctionDefinitionContext>,
 }
 
