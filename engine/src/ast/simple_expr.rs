@@ -17,7 +17,6 @@ lex_enum!(UnaryOp {
 /// with [`SimpleExpr::Parenthesized`] or a unary expression with [`SimpleExpr::Unary`].
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
 pub enum SimpleExpr<'s> {
     /// A comparison expression.
     Comparison(ComparisonExpr<'s>),
