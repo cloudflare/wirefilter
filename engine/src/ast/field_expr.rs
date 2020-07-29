@@ -441,7 +441,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     })
                 }
                 RhsValues::Int(values) => {
-                    let values: RangeSet<_> = values.iter().cloned().collect();
+                    let values: RangeSet<_> = values.into_iter().map(Into::into).collect();
 
                     lhs.compile_with(compiler, false, move |x, _ctx| {
                         values.contains(cast_value!(x, Int))
@@ -946,7 +946,11 @@ mod tests {
                     lhs: LhsFieldExpr::Field(field("tcp.port")),
                     indexes: vec![],
                 },
-                op: ComparisonOpExpr::OneOf(RhsValues::Int(vec![80..=80, 443..=443, 2082..=2083])),
+                op: ComparisonOpExpr::OneOf(RhsValues::Int(vec![
+                    80.into(),
+                    443.into(),
+                    (2082..=2083).into()
+                ])),
             }
         );
 

@@ -2,6 +2,7 @@ use crate::{
     lex::{expect, span, take_while, Lex, LexErrorKind, LexResult},
     strict_partial_ord::StrictPartialOrd,
 };
+use serde::Serialize;
 use std::ops::RangeInclusive;
 
 fn lex_digits(input: &str) -> LexResult<'_, &str> {
@@ -36,7 +37,23 @@ impl<'i> Lex<'i> for i32 {
     }
 }
 
-impl<'i> Lex<'i> for RangeInclusive<i32> {
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(transparent)]
+pub struct IntRange(RangeInclusive<i32>);
+
+impl From<i32> for IntRange {
+    fn from(i: i32) -> Self {
+        IntRange(i..=i)
+    }
+}
+
+impl From<RangeInclusive<i32>> for IntRange {
+    fn from(r: RangeInclusive<i32>) -> Self {
+        IntRange(r)
+    }
+}
+
+impl<'i> Lex<'i> for IntRange {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let initial_input = input;
         let (first, input) = i32::lex(input)?;
@@ -51,7 +68,13 @@ impl<'i> Lex<'i> for RangeInclusive<i32> {
                 span(initial_input, input),
             ));
         }
-        Ok((first..=last, input))
+        Ok(((first..=last).into(), input))
+    }
+}
+
+impl From<IntRange> for RangeInclusive<i32> {
+    fn from(range: IntRange) -> Self {
+        range.0
     }
 }
 
@@ -92,12 +115,12 @@ fn test() {
         },
         "10fe"
     );
-    assert_ok!(RangeInclusive::lex("78!"), 78i32..=78i32, "!");
-    assert_ok!(RangeInclusive::lex("0..10"), 0i32..=10i32);
-    assert_ok!(RangeInclusive::lex("0123..0xefg"), 83i32..=239i32, "g");
-    assert_ok!(RangeInclusive::lex("-20..-10"), -20i32..=-10i32);
+    assert_ok!(IntRange::lex("78!"), 78i32.into(), "!");
+    assert_ok!(IntRange::lex("0..10"), (0i32..=10i32).into());
+    assert_ok!(IntRange::lex("0123..0xefg"), (83i32..=239i32).into(), "g");
+    assert_ok!(IntRange::lex("-20..-10"), (-20i32..=-10i32).into());
     assert_err!(
-        <RangeInclusive<i32>>::lex("10..0"),
+        IntRange::lex("10..0"),
         LexErrorKind::IncompatibleRangeBounds,
         "10..0"
     );

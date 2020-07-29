@@ -48,6 +48,15 @@ pub enum IpRange {
     Cidr(IpCidr),
 }
 
+impl From<IpAddr> for IpRange {
+    fn from(ip: IpAddr) -> Self {
+        match ip {
+            IpAddr::V4(ip) => IpRange::Explicit(ip.into()),
+            IpAddr::V6(ip) => IpRange::Explicit(ip.into()),
+        }
+    }
+}
+
 impl<'i> Lex<'i> for IpRange {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let (chunk, rest) = match_addr_or_cidr(input)?;
