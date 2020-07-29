@@ -1,7 +1,7 @@
 use crate::{
     lex::{expect, skip_space, Lex, LexResult, LexWith},
     lhs_types::{Array, ArrayIterator, Map, MapIter, MapValuesIntoIter},
-    rhs_types::{Bytes, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
+    rhs_types::{Bytes, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
@@ -15,7 +15,6 @@ use std::{
     fmt::{self, Debug, Formatter},
     iter::once,
     net::IpAddr,
-    ops::RangeInclusive,
 };
 use thiserror::Error;
 
@@ -252,6 +251,40 @@ macro_rules! declare_types {
             #[serde(untagged)]
             enum RhsValues {
                 $($(# $attrs)* $name(Vec<$multi_rhs_ty>),)*
+            }
+        }
+
+        impl From<RhsValue> for RhsValues {
+            fn from(rhs: RhsValue) -> Self {
+                match rhs {
+                    $(RhsValue::$name(rhs) => RhsValues::$name(vec![rhs.into()]),)*
+                }
+            }
+        }
+
+        impl RhsValues {
+            pub fn push(&mut self, rhs: RhsValue) -> Result<(), TypeMismatchError> {
+                match self {
+                    $(RhsValues::$name(vec) => match rhs {
+                        RhsValue::$name(rhs) => Ok(vec.push(rhs.into())),
+                        _ => Err(TypeMismatchError {
+                            expected: self.get_type().into(),
+                            actual: rhs.get_type(),
+                        }),
+                    },)*
+                }
+            }
+
+            pub fn extend(&mut self, other: Self) -> Result<(), TypeMismatchError> {
+                match self {
+                    $(RhsValues::$name(vec) => match other {
+                        RhsValues::$name(other) => Ok(vec.extend(other)),
+                        _ => Err(TypeMismatchError {
+                            expected: self.get_type().into(),
+                            actual: other.get_type(),
+                        }),
+                    },)*
+                }
             }
         }
 
@@ -602,6 +635,12 @@ impl<'a> Iterator for Iter<'a> {
 }
 
 declare_types!(
+    /// A boolean.
+    Bool(bool | UninhabitedBool | UninhabitedBool),
+
+    /// A 32-bit integer number.
+    Int(i32 | i32 | IntRange),
+
     /// An IPv4 or IPv6 address.
     ///
     /// These are represented as a single type to allow interop comparisons.
@@ -612,12 +651,6 @@ declare_types!(
     /// These are completely interchangeable in runtime and differ only in
     /// syntax representation, so we represent them as a single type.
     Bytes(#[serde(borrow)] Cow<'a, [u8]> | Bytes | Bytes),
-
-    /// A 32-bit integer number.
-    Int(i32 | i32 | RangeInclusive<i32>),
-
-    /// A boolean.
-    Bool(bool | UninhabitedBool | UninhabitedBool),
 
     /// An Array of [`Type`].
     Array[Box<Type>](#[serde(skip_deserializing)] Array<'a> | UninhabitedArray | UninhabitedArray),

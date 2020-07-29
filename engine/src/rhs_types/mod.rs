@@ -11,6 +11,7 @@ pub use self::{
     array::UninhabitedArray,
     bool::UninhabitedBool,
     bytes::Bytes,
+    int::IntRange,
     ip::{ExplicitIpRange, IpRange},
     list::ListName,
     map::UninhabitedMap,
