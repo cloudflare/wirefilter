@@ -8,7 +8,7 @@ use super::{
 };
 use crate::scheme::{Field, Function};
 
-/// Trait used to visit all nodes in the AST.
+/// Trait used to immutably visit all nodes in the AST.
 pub trait Visitor<'s>: Sized {
     // `Expr` node visitor methods
 
@@ -59,6 +59,77 @@ pub trait Visitor<'s>: Sized {
     /// Visit [`FunctionCallArgExpr`] node.
     #[inline(always)]
     fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'s>) {
+        self.visit_value_expr(node)
+    }
+
+    // Leaf node visitor methods
+
+    /// Visit [`Field`] node.
+    #[inline(always)]
+    fn visit_field(&mut self, _: &Field<'s>) {}
+
+    /// Visit [`Function`] node.
+    #[inline(always)]
+    fn visit_function(&mut self, _: &Function<'s>) {}
+
+    // TODO: add visitor methods for literals?
+}
+
+/// Trait used to mutably visit all nodes in the AST.
+///
+/// Note that this trait is dangerous and any modification
+/// to the AST should be done with cautions and respect
+/// some invariants such as keeping type coherency.
+pub trait VisitorMut<'s>: Sized {
+    // `Expr` node visitor methods
+
+    /// Visit [`Expr`] node.
+    #[inline(always)]
+    fn visit_expr(&mut self, node: &mut impl Expr<'s>) {
+        node.walk_mut(self)
+    }
+
+    /// Visit [`SimpleExpr`] node.
+    #[inline(always)]
+    fn visit_simple_expr(&mut self, node: &mut SimpleExpr<'s>) {
+        self.visit_expr(node)
+    }
+
+    /// Visit [`LogicalExpr`] node.
+    #[inline(always)]
+    fn visit_logical_expr(&mut self, node: &mut LogicalExpr<'s>) {
+        self.visit_expr(node)
+    }
+
+    /// Visit [`ComparisonExpr`] node.
+    #[inline(always)]
+    fn visit_comparison_expr(&mut self, node: &mut ComparisonExpr<'s>) {
+        self.visit_expr(node)
+    }
+
+    // `ValueExpr` node visitor methods
+
+    /// Visit [`ValueExpr`] node.
+    #[inline(always)]
+    fn visit_value_expr(&mut self, node: &mut impl ValueExpr<'s>) {
+        node.walk_mut(self)
+    }
+
+    /// Visit [`IndexExpr`] node.
+    #[inline(always)]
+    fn visit_index_expr(&mut self, node: &mut IndexExpr<'s>) {
+        self.visit_value_expr(node)
+    }
+
+    /// Visit [`FunctionCallExpr`] node.
+    #[inline(always)]
+    fn visit_function_call_expr(&mut self, node: &mut FunctionCallExpr<'s>) {
+        self.visit_value_expr(node)
+    }
+
+    /// Visit [`FunctionCallArgExpr`] node.
+    #[inline(always)]
+    fn visit_function_call_arg_expr(&mut self, node: &mut FunctionCallArgExpr<'s>) {
         self.visit_value_expr(node)
     }
 
