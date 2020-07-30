@@ -1,4 +1,7 @@
-use super::{visitor::Visitor, ValueExpr};
+use super::{
+    visitor::{Visitor, VisitorMut},
+    ValueExpr,
+};
 use crate::{
     ast::{
         field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
@@ -38,6 +41,14 @@ pub enum FunctionCallArgExpr<'s> {
 
 impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
+        match self {
+            FunctionCallArgExpr::IndexExpr(index_expr) => visitor.visit_index_expr(index_expr),
+            FunctionCallArgExpr::Literal(_) => {}
+            FunctionCallArgExpr::SimpleExpr(simple_expr) => visitor.visit_simple_expr(simple_expr),
+        }
+    }
+
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => visitor.visit_index_expr(index_expr),
             FunctionCallArgExpr::Literal(_) => {}
@@ -222,6 +233,13 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         self.args
             .iter()
+            .for_each(|arg| visitor.visit_function_call_arg_expr(arg));
+        visitor.visit_function(&self.function)
+    }
+
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
+        self.args
+            .iter_mut()
             .for_each(|arg| visitor.visit_function_call_arg_expr(arg));
         visitor.visit_function(&self.function)
     }

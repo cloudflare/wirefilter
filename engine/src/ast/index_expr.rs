@@ -1,4 +1,8 @@
-use super::{field_expr::LhsFieldExpr, visitor::Visitor, ValueExpr};
+use super::{
+    field_expr::LhsFieldExpr,
+    visitor::{Visitor, VisitorMut},
+    ValueExpr,
+};
 use crate::{
     compiler::{Compiler, ExecCtx},
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
@@ -55,6 +59,13 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         match self.lhs {
             LhsFieldExpr::Field(field) => visitor.visit_field(&field),
             LhsFieldExpr::FunctionCallExpr(ref call) => visitor.visit_function_call_expr(call),
+        }
+    }
+
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
+        match self.lhs {
+            LhsFieldExpr::Field(field) => visitor.visit_field(&field),
+            LhsFieldExpr::FunctionCallExpr(ref mut call) => visitor.visit_function_call_expr(call),
         }
     }
 

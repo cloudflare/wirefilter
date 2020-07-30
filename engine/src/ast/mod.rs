@@ -15,12 +15,14 @@ use crate::{
 };
 use serde::Serialize;
 use std::fmt::{self, Debug};
-use visitor::{UsesListVisitor, UsesVisitor, Visitor};
+use visitor::{UsesListVisitor, UsesVisitor, Visitor, VisitorMut};
 
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
 pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
+    /// Recursively visit all nodes in the AST.
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
@@ -34,6 +36,8 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
 pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
+    /// Recursively visit all nodes in the AST.
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].

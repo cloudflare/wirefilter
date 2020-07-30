@@ -1,4 +1,8 @@
-use super::{function_expr::FunctionCallExpr, visitor::Visitor, Expr};
+use super::{
+    function_expr::FunctionCallExpr,
+    visitor::{Visitor, VisitorMut},
+    Expr,
+};
 use crate::{
     ast::index_expr::IndexExpr,
     compiler::{Compiler, ExecCtx},
@@ -328,6 +332,10 @@ impl<'s> ComparisonExpr<'s> {
 impl<'s> Expr<'s> for ComparisonExpr<'s> {
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         visitor.visit_index_expr(&self.lhs)
+    }
+
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
+        visitor.visit_index_expr(&mut self.lhs)
     }
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {

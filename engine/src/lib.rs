@@ -82,7 +82,7 @@ pub use self::{
         index_expr::IndexExpr,
         logical_expr::LogicalExpr,
         simple_expr::SimpleExpr,
-        visitor::Visitor,
+        visitor::{Visitor, VisitorMut},
         Expr, FilterAst, ValueExpr,
     },
     compiler::{Compiler, DefaultCompiler, ExecCtx},
