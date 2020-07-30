@@ -9,30 +9,30 @@ use super::{
 use crate::scheme::{Field, Function};
 
 /// Trait used to visit all nodes in the AST.
-pub trait Visitor<'s, T>: Sized {
+pub trait Visitor<'s>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
     #[inline(always)]
-    fn visit_expr(&mut self, node: &impl Expr<'s>) -> Option<T> {
+    fn visit_expr(&mut self, node: &impl Expr<'s>) {
         node.walk(self)
     }
 
     /// Visit [`SimpleExpr`] node.
     #[inline(always)]
-    fn visit_simple_expr(&mut self, node: &SimpleExpr<'s>) -> Option<T> {
+    fn visit_simple_expr(&mut self, node: &SimpleExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`LogicalExpr`] node.
     #[inline(always)]
-    fn visit_logical_expr(&mut self, node: &LogicalExpr<'s>) -> Option<T> {
+    fn visit_logical_expr(&mut self, node: &LogicalExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
     #[inline(always)]
-    fn visit_comparison_expr(&mut self, node: &ComparisonExpr<'s>) -> Option<T> {
+    fn visit_comparison_expr(&mut self, node: &ComparisonExpr<'s>) {
         self.visit_expr(node)
     }
 
@@ -40,25 +40,25 @@ pub trait Visitor<'s, T>: Sized {
 
     /// Visit [`ValueExpr`] node.
     #[inline(always)]
-    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) -> Option<T> {
+    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
         node.walk(self)
     }
 
     /// Visit [`IndexExpr`] node.
     #[inline(always)]
-    fn visit_index_expr(&mut self, node: &IndexExpr<'s>) -> Option<T> {
+    fn visit_index_expr(&mut self, node: &IndexExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
     #[inline(always)]
-    fn visit_function_call_expr(&mut self, node: &FunctionCallExpr<'s>) -> Option<T> {
+    fn visit_function_call_expr(&mut self, node: &FunctionCallExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
     #[inline(always)]
-    fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'s>) -> Option<T> {
+    fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'s>) {
         self.visit_value_expr(node)
     }
 
@@ -66,15 +66,11 @@ pub trait Visitor<'s, T>: Sized {
 
     /// Visit [`Field`] node.
     #[inline(always)]
-    fn visit_field(&mut self, _: &Field<'s>) -> Option<T> {
-        None
-    }
+    fn visit_field(&mut self, _: &Field<'s>) {}
 
     /// Visit [`Function`] node.
     #[inline(always)]
-    fn visit_function(&mut self, _: &Function<'s>) -> Option<T> {
-        None
-    }
+    fn visit_function(&mut self, _: &Function<'s>) {}
 
     // TODO: add visitor methods for literals?
 }
@@ -82,20 +78,37 @@ pub trait Visitor<'s, T>: Sized {
 /// Recursively check if a [`Field`] is being used.
 pub(crate) struct UsesVisitor<'s> {
     field: Field<'s>,
+    uses: bool,
 }
 
 impl<'s> UsesVisitor<'s> {
     pub fn new(field: Field<'s>) -> Self {
-        Self { field }
+        Self { field, uses: false }
+    }
+
+    pub fn uses(&self) -> bool {
+        self.uses
     }
 }
 
-impl<'s> Visitor<'s, ()> for UsesVisitor<'s> {
-    fn visit_field(&mut self, f: &Field<'s>) -> Option<()> {
+impl<'s> Visitor<'s> for UsesVisitor<'s> {
+    fn visit_expr(&mut self, node: &impl Expr<'s>) {
+        // Stop visiting the AST once we have found one occurence of the field
+        if !self.uses {
+            node.walk(self)
+        }
+    }
+
+    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
+        // Stop visiting the AST once we have found one occurence of the field
+        if !self.uses {
+            node.walk(self)
+        }
+    }
+
+    fn visit_field(&mut self, f: &Field<'s>) {
         if self.field == *f {
-            Some(())
-        } else {
-            None
+            self.uses = true;
         }
     }
 }
@@ -103,22 +116,45 @@ impl<'s> Visitor<'s, ()> for UsesVisitor<'s> {
 /// Recursively check if a [`Field`] is being used in a list comparison.
 pub(crate) struct UsesListVisitor<'s> {
     field: Field<'s>,
+    uses: bool,
 }
 
 impl<'s> UsesListVisitor<'s> {
     pub fn new(field: Field<'s>) -> Self {
-        Self { field }
+        Self { field, uses: false }
+    }
+
+    pub fn uses(&self) -> bool {
+        self.uses
     }
 }
 
-impl<'s> Visitor<'s, ()> for UsesListVisitor<'s> {
-    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'s>) -> Option<()> {
-        match comparison_expr.op {
-            ComparisonOpExpr::InList { .. } => Some(()),
-            _ => None,
+impl<'s> Visitor<'s> for UsesListVisitor<'s> {
+    fn visit_expr(&mut self, node: &impl Expr<'s>) {
+        // Stop visiting the AST once we have found one occurence of the field
+        if !self.uses {
+            node.walk(self)
         }
-        .and_then(|()| UsesVisitor::new(self.field).visit_comparison_expr(comparison_expr))
-        .or_else(|| comparison_expr.walk(self))
+    }
+
+    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
+        // Stop visiting the AST once we have found one occurence of the field
+        if !self.uses {
+            node.walk(self)
+        }
+    }
+
+    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'s>) {
+        if let ComparisonOpExpr::InList { .. } = comparison_expr.op {
+            let mut visitor = UsesVisitor::new(self.field);
+            visitor.visit_comparison_expr(comparison_expr);
+            if visitor.uses {
+                self.uses = true;
+            }
+        }
+        if !self.uses {
+            comparison_expr.walk(self)
+        }
     }
 }
 

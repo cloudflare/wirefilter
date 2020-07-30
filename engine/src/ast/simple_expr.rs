@@ -67,7 +67,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
 }
 
 impl<'s> Expr<'s> for SimpleExpr<'s> {
-    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         match self {
             SimpleExpr::Comparison(node) => visitor.visit_comparison_expr(node),
             SimpleExpr::Parenthesized(node) => visitor.visit_logical_expr(node),

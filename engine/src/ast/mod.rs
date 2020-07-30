@@ -20,7 +20,7 @@ use visitor::{UsesListVisitor, UsesVisitor, Visitor};
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
 pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
-    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T>;
+    fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
@@ -33,7 +33,7 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
 /// Trait used to represent node that evaluates to an [`LhsValue`].
 pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
     /// Recursively visit all nodes in the AST.
-    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T>;
+    fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
@@ -92,7 +92,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 
 impl<'s> FilterAst<'s> {
     /// Recursively visit all nodes in the AST.
-    pub fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
+    pub fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         visitor.visit_logical_expr(&self.op)
     }
 
@@ -100,16 +100,20 @@ impl<'s> FilterAst<'s> {
     ///
     /// This is useful to lazily initialise expensive fields only if necessary.
     pub fn uses(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
-        self.scheme
-            .get_field(field_name)
-            .map(|field| self.walk(&mut UsesVisitor::new(field)).is_some())
+        self.scheme.get_field(field_name).map(|field| {
+            let mut visitor = UsesVisitor::new(field);
+            self.walk(&mut visitor);
+            visitor.uses()
+        })
     }
 
     /// Recursively checks whether a [`FilterAst`] uses a list.
     pub fn uses_list(&self, field_name: &str) -> Result<bool, UnknownFieldError> {
-        self.scheme
-            .get_field(field_name)
-            .map(|field| self.walk(&mut UsesListVisitor::new(field)).is_some())
+        self.scheme.get_field(field_name).map(|field| {
+            let mut visitor = UsesListVisitor::new(field);
+            self.walk(&mut visitor);
+            visitor.uses()
+        })
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].
