@@ -37,10 +37,10 @@ pub enum FunctionCallArgExpr<'s> {
 }
 
 impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
-    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
+    fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => visitor.visit_index_expr(index_expr),
-            FunctionCallArgExpr::Literal(_) => None,
+            FunctionCallArgExpr::Literal(_) => {}
             FunctionCallArgExpr::SimpleExpr(simple_expr) => visitor.visit_simple_expr(simple_expr),
         }
     }
@@ -219,13 +219,11 @@ pub struct FunctionCallExpr<'s> {
 }
 
 impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
-    fn walk<T, V: Visitor<'s, T>>(&self, visitor: &mut V) -> Option<T> {
-        let mut result = None;
-        self.args.iter().any(|arg| {
-            result = visitor.visit_function_call_arg_expr(arg);
-            result.is_some()
-        });
-        result.or_else(|| visitor.visit_function(&self.function))
+    fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
+        self.args
+            .iter()
+            .for_each(|arg| visitor.visit_function_call_arg_expr(arg));
+        visitor.visit_function(&self.function)
     }
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
