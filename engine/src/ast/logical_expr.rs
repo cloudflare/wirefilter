@@ -1,4 +1,8 @@
-use super::{simple_expr::SimpleExpr, visitor::Visitor, Expr};
+use super::{
+    simple_expr::SimpleExpr,
+    visitor::{Visitor, VisitorMut},
+    Expr,
+};
 use crate::{
     compiler::Compiler,
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
@@ -129,6 +133,17 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
             LogicalExpr::Combining { items, .. } => {
                 items
                     .iter()
+                    .for_each(|node| visitor.visit_logical_expr(node));
+            }
+        }
+    }
+
+    fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
+        match self {
+            LogicalExpr::Simple(node) => visitor.visit_simple_expr(node),
+            LogicalExpr::Combining { items, .. } => {
+                items
+                    .iter_mut()
                     .for_each(|node| visitor.visit_logical_expr(node));
             }
         }
