@@ -19,9 +19,9 @@ use visitor::{UsesListVisitor, UsesVisitor, Visitor, VisitorMut};
 
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
 pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
-    /// Recursively visit all nodes in the AST.
+    /// Recursively visit all nodes in the AST using a [`Visitor`].
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
-    /// Recursively visit all nodes in the AST.
+    /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
@@ -34,9 +34,9 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
 
 /// Trait used to represent node that evaluates to an [`LhsValue`].
 pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Serialize {
-    /// Recursively visit all nodes in the AST.
+    /// Recursively visit all nodes in the AST using a [`Visitor`].
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V);
-    /// Recursively visit all nodes in the AST.
+    /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
@@ -95,9 +95,14 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 }
 
 impl<'s> FilterAst<'s> {
-    /// Recursively visit all nodes in the AST.
+    /// Recursively visit all nodes in the AST using a [`Visitor`].
     pub fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         visitor.visit_logical_expr(&self.op)
+    }
+
+    /// Recursively visit all nodes in the AST using a [`VisitorMut`].
+    pub fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
+        visitor.visit_logical_expr(&mut self.op)
     }
 
     /// Recursively checks whether a [`FilterAst`] uses a given field name.
