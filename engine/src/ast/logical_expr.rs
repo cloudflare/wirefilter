@@ -12,11 +12,18 @@ use crate::{
 };
 use serde::Serialize;
 
-lex_enum!(#[derive(PartialOrd, Ord)] LogicalOp {
-    "or" | "||" => Or,
-    "xor" | "^^" => Xor,
-    "and" | "&&" => And,
-});
+lex_enum!(
+    /// LogicalOp is an operator for a [`LogicalExpr`]. Its ordering is defined
+    /// by the operators' precedences in ascending order.
+    #[derive(PartialOrd, Ord)] LogicalOp {
+        /// `or` / `||` operator
+        "or" | "||" => Or,
+        /// `xor` / `^^` operator
+        "xor" | "^^" => Xor,
+        /// `and` / `&&` operator
+        "and" | "&&" => And,
+    }
+);
 
 /// LogicalExpr is a either a generic sub-expression
 /// or a logical conjunction expression.
@@ -27,7 +34,7 @@ pub enum LogicalExpr<'s> {
     Simple(SimpleExpr<'s>),
     /// Logical conjunction expression
     Combining {
-        /// Logical operator (&&, ||)
+        /// Logical operator
         op: LogicalOp,
         /// List of sub-expressions
         items: Vec<LogicalExpr<'s>>,

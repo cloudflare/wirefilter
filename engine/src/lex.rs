@@ -196,11 +196,12 @@ macro_rules! lex_enum {
     // On the parser side, tries to parse `SomeType` and wraps into the variant
     // on success.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
-        $ty:ty => $item:ident,
+        $(#[$meta:meta])* $ty:ty => $item:ident,
         $($rest:tt)*
     }) => {
         lex_enum!(@decl $preamble $name $input {
             $($decl)*
+            $(#[$meta])*
             $item($ty),
         } {
             $($expr)*
@@ -218,11 +219,12 @@ macro_rules! lex_enum {
     // On the parser side, tries to parse either of the given string values,
     // and returns the variant if any of them succeeded.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
-        $($s:tt)|+ => $item:ident $(= $value:expr)*,
+        $(#[$meta:meta])* $($s:literal)|+ => $item:ident $(= $value:expr)*,
         $($rest:tt)*
     }) => {
         lex_enum!(@decl $preamble $name $input {
             $($decl)*
+            $(#[$meta])*
             $item $(= $value)*,
         } {
             $($expr)*
@@ -253,9 +255,9 @@ macro_rules! lex_enum {
     };
 
     // The public entry point to the macro.
-    ($(# $attrs:tt)* $name:ident $items:tt) => {
+    ($(#[$meta:meta])* $name:ident $items:tt) => {
         lex_enum!(@decl {
-            $(# $attrs)*
+            $(#[$meta])*
         } $name input {} {} $items);
     };
 }
