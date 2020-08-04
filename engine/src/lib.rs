@@ -80,7 +80,7 @@ pub use self::{
         field_expr::{ComparisonExpr, ComparisonOpExpr},
         function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         index_expr::IndexExpr,
-        logical_expr::LogicalExpr,
+        logical_expr::{LogicalExpr, LogicalOp},
         simple_expr::SimpleExpr,
         visitor::{Visitor, VisitorMut},
         Expr, FilterAst, ValueExpr,
