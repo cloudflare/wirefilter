@@ -13,25 +13,25 @@ pub trait Visitor<'s>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_expr(&mut self, node: &impl Expr<'s>) {
         node.walk(self)
     }
 
     /// Visit [`SimpleExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_simple_expr(&mut self, node: &SimpleExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`LogicalExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_logical_expr(&mut self, node: &LogicalExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_comparison_expr(&mut self, node: &ComparisonExpr<'s>) {
         self.visit_expr(node)
     }
@@ -39,25 +39,25 @@ pub trait Visitor<'s>: Sized {
     // `ValueExpr` node visitor methods
 
     /// Visit [`ValueExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
         node.walk(self)
     }
 
     /// Visit [`IndexExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_index_expr(&mut self, node: &IndexExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function_call_expr(&mut self, node: &FunctionCallExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function_call_arg_expr(&mut self, node: &FunctionCallArgExpr<'s>) {
         self.visit_value_expr(node)
     }
@@ -65,11 +65,11 @@ pub trait Visitor<'s>: Sized {
     // Leaf node visitor methods
 
     /// Visit [`Field`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_field(&mut self, _: &Field<'s>) {}
 
     /// Visit [`Function`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function(&mut self, _: &Function<'s>) {}
 
     // TODO: add visitor methods for literals?
@@ -84,25 +84,25 @@ pub trait VisitorMut<'s>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_expr(&mut self, node: &mut impl Expr<'s>) {
         node.walk_mut(self)
     }
 
     /// Visit [`SimpleExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_simple_expr(&mut self, node: &mut SimpleExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`LogicalExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_logical_expr(&mut self, node: &mut LogicalExpr<'s>) {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_comparison_expr(&mut self, node: &mut ComparisonExpr<'s>) {
         self.visit_expr(node)
     }
@@ -110,25 +110,25 @@ pub trait VisitorMut<'s>: Sized {
     // `ValueExpr` node visitor methods
 
     /// Visit [`ValueExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_value_expr(&mut self, node: &mut impl ValueExpr<'s>) {
         node.walk_mut(self)
     }
 
     /// Visit [`IndexExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_index_expr(&mut self, node: &mut IndexExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function_call_expr(&mut self, node: &mut FunctionCallExpr<'s>) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function_call_arg_expr(&mut self, node: &mut FunctionCallArgExpr<'s>) {
         self.visit_value_expr(node)
     }
@@ -136,11 +136,11 @@ pub trait VisitorMut<'s>: Sized {
     // Leaf node visitor methods
 
     /// Visit [`Field`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_field(&mut self, _: &Field<'s>) {}
 
     /// Visit [`Function`] node.
-    #[inline(always)]
+    #[inline]
     fn visit_function(&mut self, _: &Function<'s>) {}
 
     // TODO: add visitor methods for literals?

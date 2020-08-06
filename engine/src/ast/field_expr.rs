@@ -330,10 +330,12 @@ impl<'s> ComparisonExpr<'s> {
 }
 
 impl<'s> Expr<'s> for ComparisonExpr<'s> {
+    #[inline]
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         visitor.visit_index_expr(&self.lhs)
     }
 
+    #[inline]
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         visitor.visit_index_expr(&mut self.lhs)
     }

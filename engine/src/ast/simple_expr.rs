@@ -72,6 +72,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for SimpleExpr<'s> {
 }
 
 impl<'s> Expr<'s> for SimpleExpr<'s> {
+    #[inline]
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         match self {
             SimpleExpr::Comparison(node) => visitor.visit_comparison_expr(node),
@@ -80,6 +81,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
+    #[inline]
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         match self {
             SimpleExpr::Comparison(node) => visitor.visit_comparison_expr(node),

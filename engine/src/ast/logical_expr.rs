@@ -134,6 +134,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for LogicalExpr<'s> {
 }
 
 impl<'s> Expr<'s> for LogicalExpr<'s> {
+    #[inline]
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         match self {
             LogicalExpr::Simple(node) => visitor.visit_simple_expr(node),
@@ -145,6 +146,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
         }
     }
 
+    #[inline]
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         match self {
             LogicalExpr::Simple(node) => visitor.visit_simple_expr(node),
