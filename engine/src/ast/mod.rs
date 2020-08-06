@@ -96,11 +96,13 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FilterAst<'s> {
 
 impl<'s> FilterAst<'s> {
     /// Recursively visit all nodes in the AST using a [`Visitor`].
+    #[inline]
     pub fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         visitor.visit_logical_expr(&self.op)
     }
 
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
+    #[inline]
     pub fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         visitor.visit_logical_expr(&mut self.op)
     }

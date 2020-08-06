@@ -17,13 +17,13 @@ pub trait Compiler: Sized {
     type ExecutionContext: ExecCtx;
 
     /// Compiles a [`ValueExpr`] node into a [`CompiledValueExpr`] (boxed closure).
-    #[inline(always)]
+    #[inline]
     fn compile_value_expr<'s>(&mut self, node: impl ValueExpr<'s>) -> CompiledValueExpr<'s, Self> {
         node.compile_with_compiler(self)
     }
 
     /// Compiles a [`FunctionCallExpr`] node into a [`CompiledValueExpr`] (boxed closure).
-    #[inline(always)]
+    #[inline]
     fn compile_function_call_expr<'s>(
         &mut self,
         node: FunctionCallExpr<'s>,
@@ -32,7 +32,7 @@ pub trait Compiler: Sized {
     }
 
     /// Compiles a [`FunctionCallArgExpr`] node into a [`CompiledValueExpr`] (boxed closure).
-    #[inline(always)]
+    #[inline]
     fn compile_function_call_arg_expr<'s>(
         &mut self,
         node: FunctionCallArgExpr<'s>,
@@ -41,7 +41,7 @@ pub trait Compiler: Sized {
     }
 
     /// Compiles a [`IndexExpr`] node into a [`CompiledValueExpr`] (boxed closure).
-    #[inline(always)]
+    #[inline]
     fn compile_index_expr<'s>(&mut self, node: IndexExpr<'s>) -> CompiledValueExpr<'s, Self> {
         self.compile_value_expr(node)
     }

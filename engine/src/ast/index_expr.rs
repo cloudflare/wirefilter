@@ -55,6 +55,7 @@ macro_rules! index_access_vec {
 }
 
 impl<'s> ValueExpr<'s> for IndexExpr<'s> {
+    #[inline]
     fn walk<V: Visitor<'s>>(&self, visitor: &mut V) {
         match self.lhs {
             LhsFieldExpr::Field(field) => visitor.visit_field(&field),
@@ -62,6 +63,7 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         }
     }
 
+    #[inline]
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V) {
         match self.lhs {
             LhsFieldExpr::Field(field) => visitor.visit_field(&field),
