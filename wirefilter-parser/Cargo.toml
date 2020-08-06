@@ -1,0 +1,14 @@
+[package]
+name = "wirefilter-parser"
+version = "0.1.0"
+authors = ["Ivan Nikulin <inikulin@cloudflare.com>"]
+edition = "2018"
+
+[dependencies]
+cidr = "0.1.0"
+pest_consume = "1.0.4"
+pest = "2.1.3"
+regex = { version = "1.3.7", default-features = false, features = ["std", "perf"] }
+
+[dev-dependencies]
+indoc = "0.3.5"

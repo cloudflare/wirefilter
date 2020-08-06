@@ -16,8 +16,8 @@ case $CMD in
 		# (workaround for https://github.com/rust-lang/cargo/issues/2644)
 
 		# Create dummy sources for our library
-		mkdir -p {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm}/src
-		touch {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm}/src/lib.rs
+		mkdir -p {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm,wirefilter-parser}/src
+		touch {engine,ffi,ffi/tests/ctests,fuzz/bytes,fuzz/map-keys,wasm,wirefilter-parser}/src/lib.rs
 		mkdir engine/benches
 		echo 'fn main() {}' > engine/benches/bench.rs
 

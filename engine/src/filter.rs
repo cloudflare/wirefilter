@@ -157,7 +157,8 @@ impl<'s, C: Compiler + 's> Filter<'s, C> {
 
 #[cfg(test)]
 mod tests {
-    use super::SchemeMismatchError;
+    use super::{Filter, SchemeMismatchError};
+    use crate::compiler::DefaultCompiler;
     use crate::execution_context::ExecutionContext;
 
     #[test]
@@ -168,5 +169,14 @@ mod tests {
         let ctx = ExecutionContext::new(&scheme2);
 
         assert_eq!(filter.execute(&ctx), Err(SchemeMismatchError));
+    }
+
+    #[test]
+    fn ensure_send_and_sync() {
+        fn is_send<T: Send>() {}
+        fn is_sync<T: Sync>() {}
+
+        is_send::<Filter<'_, DefaultCompiler<'_>>>();
+        is_sync::<Filter<'_, DefaultCompiler<'_>>>();
     }
 }
