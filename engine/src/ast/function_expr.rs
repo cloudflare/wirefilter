@@ -27,7 +27,7 @@ impl<'s> FunctionCallArgExpr<'s> {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
                 LhsFieldExpr::Field(field) => {
-                    ctx.get_field_value_unchecked(*field)
+                    ctx.get_field_value(*field)
                 },
                 LhsFieldExpr::FunctionCallExpr(call) => Some(call.execute(ctx)),
             },

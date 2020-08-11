@@ -212,7 +212,7 @@ pub extern "C" fn wirefilter_match<'s>(
     filter: &Filter<'s>,
     exec_context: &ExecutionContext<'s>,
 ) -> bool {
-    filter.execute(exec_context).unwrap()
+    filter.execute(exec_context).unwrap().unwrap_or(false)
 }
 
 #[no_mangle]
