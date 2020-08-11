@@ -80,6 +80,15 @@ mod tests {
     }
 
     #[test]
+    fn test_filter_against_present_value_1() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("bar", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(Some(true)));
+    }
+
+    #[test]
     fn test_filter_against_missing_value_1() {
         let scheme = Scheme! { foo: Int, bar: Int };
         let filter = scheme.parse("bar == 41").unwrap().compile();
@@ -102,6 +111,15 @@ mod tests {
         let mut ctx = ExecutionContext::new(&scheme);
         ctx.set_field_value("foo", LhsValue::Int(52)).unwrap();
         ctx.set_field_value("bar", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(Some(true)));
+    }
+
+    #[test]
+    fn test_filter_against_or_value() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41 || foo == 52").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("foo", LhsValue::Int(52)).unwrap();
         assert_eq!(filter.execute(&ctx), Ok(Some(true)));
     }
 
