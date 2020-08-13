@@ -23,13 +23,15 @@ impl<'s> FunctionCallArgExpr<'s> {
         }
     }
 
-    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'s> {
+    pub fn execute(&'s self, ctx: &'s ExecutionContext<'s>) -> Option<LhsValue<'s>> {
         match self {
             FunctionCallArgExpr::LhsFieldExpr(lhs) => match lhs {
-                LhsFieldExpr::Field(field) => ctx.get_field_value_unchecked(*field),
-                LhsFieldExpr::FunctionCallExpr(call) => call.execute(ctx),
+                LhsFieldExpr::Field(field) => {
+                    ctx.get_field_value(*field)
+                },
+                LhsFieldExpr::FunctionCallExpr(call) => Some(call.execute(ctx)),
             },
-            FunctionCallArgExpr::Literal(literal) => literal.into(),
+            FunctionCallArgExpr::Literal(literal) => Some(literal.into()),
         }
     }
 }
@@ -93,7 +95,7 @@ impl<'s> FunctionCallExpr<'s> {
 
     pub fn execute(&self, ctx: &'s ExecutionContext<'s>) -> LhsValue<'_> {
         self.function.implementation.execute(
-            self.args.iter().map(|arg| arg.execute(ctx)).chain(
+            self.args.iter().flat_map(|arg| arg.execute(ctx)).chain(
                 self.function.opt_params[self.args.len() - self.function.params.len()..]
                     .iter()
                     .map(|opt_arg| opt_arg.default_value.as_ref()),

@@ -106,15 +106,29 @@ impl<'s> Expr<'s> for CombinedExpr<'s> {
 
                 match op {
                     CombiningOp::And => {
-                        CompiledExpr::new(move |ctx| items.iter().all(|item| item.execute(ctx)))
+                        CompiledExpr::new(move |ctx| {
+                            let r = items
+                                .iter()
+                                .map(|item| item.execute(ctx))
+                                .all(|r| r.unwrap_or_else(|| false));
+                            Some(r)
+                        })
                     }
                     CombiningOp::Or => {
-                        CompiledExpr::new(move |ctx| items.iter().any(|item| item.execute(ctx)))
+                        CompiledExpr::new(move |ctx| {
+                            let r = items
+                                .iter()
+                                .map(|item| item.execute(ctx))
+                                .any(|r| r.unwrap_or_else(|| false));
+                            Some(r)
+                        })
                     }
                     CombiningOp::Xor => CompiledExpr::new(move |ctx| {
                         items
                             .iter()
-                            .fold(false, |acc, item| acc ^ item.execute(ctx))
+                            .fold(Some(false), |acc, item| {
+                                acc.xor( item.execute(ctx))
+                            })
                     }),
                 }
             }
@@ -162,7 +176,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     {
@@ -193,7 +207,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Some(false));
     }
 
     {
@@ -224,7 +238,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     {
@@ -238,7 +252,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Some(false));
     }
 
     {
@@ -269,7 +283,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     {
@@ -283,7 +297,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Some(false));
     }
 
     {
@@ -297,7 +311,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     assert_ok!(

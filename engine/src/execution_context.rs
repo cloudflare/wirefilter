@@ -29,22 +29,14 @@ impl<'e> ExecutionContext<'e> {
         self.scheme
     }
 
-    pub(crate) fn get_field_value_unchecked(&'e self, field: Field<'e>) -> LhsValue<'e> {
+    pub(crate) fn get_field_value(&'e self, field: Field<'e>) -> Option<LhsValue<'e>> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.
         debug_assert!(self.scheme() == field.scheme());
 
-        // For now we panic in this, but later we are going to align behaviour
-        // with wireshark: resolve all subexpressions that don't have RHS value
-        // to `false`.
-        let lhs_value = self.values[field.index()].as_ref().unwrap_or_else(|| {
-            panic!(
-                "Field {} was registered but not given a value",
-                field.name()
-            );
-        });
-        lhs_value.as_ref()
+        let lhs_value = self.values[field.index()].as_ref();
+        lhs_value.map(|e| e.as_ref())
     }
 
     /// Sets a runtime value for a given field name.
@@ -87,3 +79,4 @@ fn test_field_value_type_mismatch() {
         })
     );
 }
+

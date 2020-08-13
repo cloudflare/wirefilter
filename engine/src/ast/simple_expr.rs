@@ -63,7 +63,7 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
                 arg,
             } => {
                 let arg = arg.compile();
-                CompiledExpr::new(move |ctx| !arg.execute(ctx))
+                CompiledExpr::new(move |ctx| arg.execute(ctx).map(|x| !x))
             }
         }
     }
@@ -94,7 +94,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     let parenthesized_expr = |expr| SimpleExpr::Parenthesized(Box::new(CombinedExpr::Simple(expr)));
@@ -115,7 +115,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     let not_expr = |expr| SimpleExpr::Unary {
@@ -139,7 +139,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), false);
+        assert_eq!(expr.execute(ctx), Some(false));
     }
 
     assert_ok!(SimpleExpr::lex_with("!t", scheme), not_expr(t_expr()));
@@ -166,7 +166,7 @@ fn test() {
 
         let expr = expr.compile();
 
-        assert_eq!(expr.execute(ctx), true);
+        assert_eq!(expr.execute(ctx), Some(true));
     }
 
     assert_ok!(

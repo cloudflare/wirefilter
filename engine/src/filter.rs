@@ -13,16 +13,16 @@ pub struct SchemeMismatchError;
 // under the hood propagates field values to its leafs by recursively calling
 // their `execute` methods and aggregating results into a single boolean value
 // as recursion unwinds.
-pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext) -> bool + Sync + Send>);
+pub(crate) struct CompiledExpr<'s>(Box<dyn 's + Fn(&ExecutionContext) -> Option<bool> + Sync + Send>);
 
 impl<'s> CompiledExpr<'s> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext) -> bool + Sync + Send) -> Self {
+    pub(crate) fn new(closure: impl 's + Fn(&ExecutionContext) -> Option<bool> + Sync + Send) -> Self {
         CompiledExpr(Box::new(closure))
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext) -> bool {
+    pub fn execute(&self, ctx: &ExecutionContext) -> Option<bool> {
         self.0(ctx)
     }
 }
@@ -54,7 +54,7 @@ impl<'s> Filter<'s> {
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> Result<bool, SchemeMismatchError> {
+    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> Result<Option<bool>, SchemeMismatchError> {
         if self.scheme == ctx.scheme() {
             Ok(self.root_expr.execute(ctx))
         } else {
@@ -67,6 +67,7 @@ impl<'s> Filter<'s> {
 mod tests {
     use super::{Filter, SchemeMismatchError};
     use crate::execution_context::ExecutionContext;
+    use crate::LhsValue;
 
     #[test]
     fn test_scheme_mismatch() {
@@ -76,6 +77,50 @@ mod tests {
         let ctx = ExecutionContext::new(&scheme2);
 
         assert_eq!(filter.execute(&ctx), Err(SchemeMismatchError));
+    }
+
+    #[test]
+    fn test_filter_against_present_value_1() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("bar", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(Some(true)));
+    }
+
+    #[test]
+    fn test_filter_against_missing_value_1() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("foo", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(None));
+    }
+    #[test]
+    fn test_filter_against_missing_value_2() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("foo == 41").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("bar", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(None));
+    }
+    #[test]
+    fn test_filter_against_ooo_value() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41 && foo == 52").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("foo", LhsValue::Int(52)).unwrap();
+        ctx.set_field_value("bar", LhsValue::Int(41)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(Some(true)));
+    }
+
+    #[test]
+    fn test_filter_against_or_value() {
+        let scheme = Scheme! { foo: Int, bar: Int };
+        let filter = scheme.parse("bar == 41 || foo == 52").unwrap().compile();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value("foo", LhsValue::Int(52)).unwrap();
+        assert_eq!(filter.execute(&ctx), Ok(Some(true)));
     }
 
     #[test]
