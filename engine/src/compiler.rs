@@ -1,6 +1,7 @@
 use crate::{
-    CompiledValueExpr, ExecutionContext, Field, FunctionCallArgExpr, FunctionCallExpr, IndexExpr,
-    LhsValue, List, ListMatcherWrapper, ValueExpr,
+    ComparisonExpr, CompiledExpr, CompiledValueExpr, ExecutionContext, Expr, Field,
+    FunctionCallArgExpr, FunctionCallExpr, IndexExpr, LhsValue, List, ListMatcherWrapper,
+    LogicalExpr, SimpleExpr, ValueExpr,
 };
 
 /// Trait used to represent a runtime context that will be used to execute a compiled [`Filter`].
@@ -15,6 +16,30 @@ pub trait ExecCtx {
 pub trait Compiler: Sized {
     /// ExecutionContext which will be used to execute a compiled [`Filter`].
     type ExecutionContext: ExecCtx;
+
+    /// Compiles a [`Expr`] node into a [`CompiledExpr`] (boxed closure).
+    #[inline]
+    fn compile_expr<'s>(&mut self, node: impl Expr<'s>) -> CompiledExpr<'s, Self> {
+        node.compile_with_compiler(self)
+    }
+
+    /// Compiles a [`SimpleExpr`] node into a [`CompiledExpr`] (boxed closure).
+    #[inline]
+    fn compile_simple_expr<'s>(&mut self, node: SimpleExpr<'s>) -> CompiledExpr<'s, Self> {
+        self.compile_expr(node)
+    }
+
+    /// Compiles a [`LogicalExpr`] node into a [`CompiledExpr`] (boxed closure).
+    #[inline]
+    fn compile_logical_expr<'s>(&mut self, node: LogicalExpr<'s>) -> CompiledExpr<'s, Self> {
+        self.compile_expr(node)
+    }
+
+    /// Compiles a [`ComparisonExpr`] node into a [`CompiledExpr`] (boxed closure).
+    #[inline]
+    fn compile_comparison_expr<'s>(&mut self, node: ComparisonExpr<'s>) -> CompiledExpr<'s, Self> {
+        self.compile_expr(node)
+    }
 
     /// Compiles a [`ValueExpr`] node into a [`CompiledValueExpr`] (boxed closure).
     #[inline]

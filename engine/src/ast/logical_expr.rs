@@ -160,14 +160,15 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
         match self {
-            LogicalExpr::Simple(op) => op.compile_with_compiler(compiler),
+            LogicalExpr::Simple(op) => compiler.compile_simple_expr(op),
             LogicalExpr::Combining { op, items } => {
-                let mut items = items.into_iter();
-                let first = items.next().unwrap().compile_with_compiler(compiler);
+                let items = items.into_iter();
+                let mut items = items.map(|item| compiler.compile_logical_expr(item));
+                let first = items.next().unwrap();
                 match first {
                     CompiledExpr::One(first) => {
                         let items = items
-                            .map(|item| match item.compile_with_compiler(compiler) {
+                            .map(|item| match item {
                                 CompiledExpr::One(one) => one,
                                 CompiledExpr::Vec(_) => unreachable!(),
                             })
@@ -189,7 +190,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
                     }
                     CompiledExpr::Vec(first) => {
                         let items = items
-                            .map(|item| match item.compile_with_compiler(compiler) {
+                            .map(|item| match item {
                                 CompiledExpr::One(_) => unreachable!(),
                                 CompiledExpr::Vec(vec) => vec,
                             })
