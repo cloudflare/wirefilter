@@ -40,16 +40,26 @@ lazy_static! {
     };
 }
 
-lex_enum!(#[repr(u8)] OrderingOp {
-    "eq" | "==" => Equal = EQUAL,
-    "ne" | "!=" => NotEqual = LESS | GREATER,
-    "ge" | ">=" => GreaterThanEqual = GREATER | EQUAL,
-    "le" | "<=" => LessThanEqual = LESS | EQUAL,
-    "gt" | ">" => GreaterThan = GREATER,
-    "lt" | "<" => LessThan = LESS,
-});
+lex_enum!(
+    /// OrderingOp is an operator for an ordering [`ComparisonOpExpr`].
+    #[repr(u8)] OrderingOp {
+        /// `eq` / `==` operator
+        "eq" | "==" => Equal = EQUAL,
+        /// `ne` / `!=` operator
+        "ne" | "!=" => NotEqual = LESS | GREATER,
+        /// `ge` / `>=` operator
+        "ge" | ">=" => GreaterThanEqual = GREATER | EQUAL,
+        /// `le` / `<=` operator
+        "le" | "<=" => LessThanEqual = LESS | EQUAL,
+        /// `gt` / `>` operator
+        "gt" | ">" => GreaterThan = GREATER,
+        /// `lt` / `<` operator
+        "lt" | "<" => LessThan = LESS,
+    }
+);
 
 impl OrderingOp {
+    /// Determines whether the operator matches a given ordering.
     pub fn matches(self, ordering: Ordering) -> bool {
         let mask = self as u8;
         let flag = match ordering {
@@ -60,6 +70,8 @@ impl OrderingOp {
         mask & flag != 0
     }
 
+    /// Same as `matches` but accepts an optional ordering for incomparable
+    /// types.
     pub fn matches_opt(self, ordering: Option<Ordering>) -> bool {
         match ordering {
             Some(ordering) => self.matches(ordering),
