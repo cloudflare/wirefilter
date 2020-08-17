@@ -263,6 +263,7 @@ macro_rules! declare_types {
         }
 
         impl RhsValues {
+            /// Appends a value to the back of the collection.
             pub fn push(&mut self, rhs: RhsValue) -> Result<(), TypeMismatchError> {
                 match self {
                     $(RhsValues::$name(vec) => match rhs {
@@ -275,6 +276,7 @@ macro_rules! declare_types {
                 }
             }
 
+            /// Extends the collection with the values of another collection.
             pub fn extend(&mut self, other: Self) -> Result<(), TypeMismatchError> {
                 match self {
                     $(RhsValues::$name(vec) => match other {
