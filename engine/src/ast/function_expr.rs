@@ -7,7 +7,6 @@ use crate::{
         field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
         index_expr::IndexExpr,
         simple_expr::{SimpleExpr, UnaryOp},
-        Expr,
     },
     compiler::Compiler,
     filter::{CompiledExpr, CompiledValueExpr},
@@ -69,7 +68,7 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
             // Here we execute the expression to get the actual argument
             // for the function and forward the result in a CompiledValueExpr.
             FunctionCallArgExpr::SimpleExpr(simple_expr) => {
-                let compiled_expr = simple_expr.compile_with_compiler(compiler);
+                let compiled_expr = compiler.compile_simple_expr(simple_expr);
                 match compiled_expr {
                     CompiledExpr::One(expr) => {
                         CompiledValueExpr::new(move |ctx| LhsValue::from(expr.execute(ctx)).into())

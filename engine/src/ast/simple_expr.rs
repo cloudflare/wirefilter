@@ -92,13 +92,13 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
 
     fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
         match self {
-            SimpleExpr::Comparison(op) => op.compile_with_compiler(compiler),
-            SimpleExpr::Parenthesized(op) => op.compile_with_compiler(compiler),
+            SimpleExpr::Comparison(op) => compiler.compile_comparison_expr(op),
+            SimpleExpr::Parenthesized(op) => compiler.compile_logical_expr(*op),
             SimpleExpr::Unary {
                 op: UnaryOp::Not,
                 arg,
             } => {
-                let arg = arg.compile_with_compiler(compiler);
+                let arg = compiler.compile_simple_expr(*arg);
                 match arg {
                     CompiledExpr::One(one) => {
                         CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))
