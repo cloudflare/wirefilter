@@ -276,6 +276,19 @@ macro_rules! declare_types {
                 }
             }
 
+            /// Moves all the values of `other` into `self`, leaving `other` empty.
+            pub fn append(&mut self, other: &mut Self) -> Result<(), TypeMismatchError> {
+                match self {
+                    $(RhsValues::$name(vec) => match other {
+                        RhsValues::$name(other) => Ok(vec.append(other)),
+                        _ => Err(TypeMismatchError {
+                            expected: self.get_type().into(),
+                            actual: other.get_type(),
+                        }),
+                    },)*
+                }
+            }
+
             /// Extends the collection with the values of another collection.
             pub fn extend(&mut self, other: Self) -> Result<(), TypeMismatchError> {
                 match self {
