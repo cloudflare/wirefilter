@@ -10,10 +10,13 @@ use std::{
     str,
 };
 
+/// Bytes literal represented either by a string or raw bytes.
 #[derive(PartialEq, Eq, Clone, Serialize)]
 #[serde(untagged)]
 pub enum Bytes {
+    /// String representation of bytes
     Str(Box<str>),
+    /// Raw representation of bytes.
     Raw(Box<[u8]>),
 }
 
@@ -59,6 +62,7 @@ impl From<Bytes> for Vec<u8> {
 }
 
 impl Bytes {
+    /// Converts into a `Box<[u8]>` without copying or allocating.
     pub fn into_boxed_bytes(self) -> Box<[u8]> {
         match self {
             Bytes::Str(s) => s.into_boxed_bytes(),
