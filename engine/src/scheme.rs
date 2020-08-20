@@ -558,7 +558,7 @@ impl<'s> Scheme {
     pub fn add_function(
         &mut self,
         name: String,
-        function: impl FunctionDefinition + 'static,
+        function: Box<dyn FunctionDefinition + 'static>,
     ) -> Result<(), IdentifierRedefinitionError> {
         match self.items.entry(name) {
             Entry::Occupied(entry) => match entry.get() {
@@ -570,7 +570,7 @@ impl<'s> Scheme {
                 )),
             },
             Entry::Vacant(entry) => {
-                entry.insert(SchemeItem::Function(Box::new(function)));
+                entry.insert(SchemeItem::Function(function));
                 Ok(())
             }
         }
@@ -579,7 +579,7 @@ impl<'s> Scheme {
     /// Registers a list of functions
     pub fn add_functions(
         &mut self,
-        functions: impl IntoIterator<Item = (String, impl FunctionDefinition + 'static)>,
+        functions: impl IntoIterator<Item = (String, Box<dyn FunctionDefinition + 'static>)>,
     ) -> Result<(), IdentifierRedefinitionError> {
         for (name, func) in functions {
             self.add_function(name, func)?;
