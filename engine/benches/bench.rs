@@ -85,7 +85,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                     scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                     for (name, function) in functions {
                         scheme
-                            .add_function((*name).into(), function.clone())
+                            .add_function((*name).into(), Box::new(function.clone()))
                             .unwrap();
                     }
                     move |b: &mut Bencher| {
@@ -101,7 +101,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                     scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                     for (name, function) in functions {
                         scheme
-                            .add_function((*name).into(), function.clone())
+                            .add_function((*name).into(), Box::new(function.clone()))
                             .unwrap();
                     }
                     move |b: &mut Bencher| {
@@ -121,7 +121,7 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                         scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                         for (name, function) in functions {
                             scheme
-                                .add_function((*name).into(), function.clone())
+                                .add_function((*name).into(), Box::new(function.clone()))
                                 .unwrap();
                         }
                         move |b: &mut Bencher, value: &T| {

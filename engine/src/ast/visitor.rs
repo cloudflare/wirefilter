@@ -251,7 +251,7 @@ mod tests {
             scheme
                 .add_function(
                     "echo".into(),
-                    SimpleFunctionDefinition {
+                    Box::new(SimpleFunctionDefinition {
                         params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -259,7 +259,7 @@ mod tests {
                         opt_params: vec![],
                         return_type: Type::Bytes,
                         implementation: SimpleFunctionImpl::new(|args| args.next()?.ok()),
-                    },
+                    }),
                 )
                 .unwrap();
             scheme
