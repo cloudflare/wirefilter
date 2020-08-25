@@ -259,7 +259,9 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_with<F: 's, C: Compiler + 's>(
+    /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
+    /// provided comparison function that returns a boolean.
+    pub fn compile_with<F: 's, C: Compiler + 's>(
         self,
         compiler: &mut C,
         default: bool,
