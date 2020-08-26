@@ -8,6 +8,7 @@ use std::{
     collections::HashSet,
     fmt::{self, Debug},
     iter::once,
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -217,18 +218,20 @@ impl<'a> FunctionParam<'a> {
 /// Context that can be created and used
 /// when parsing a function call
 pub struct FunctionDefinitionContext {
-    inner: Box<dyn Any + Send>,
-    clone_cb: fn(&(dyn Any + Send)) -> Box<dyn Any + Send>,
-    fmt_cb: fn(&(dyn Any + Send), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
+    inner: Arc<dyn Any + Send + Sync>,
+    clone_cb: fn(&(dyn Any + Send + Sync)) -> Arc<dyn Any + Send + Sync>,
+    fmt_cb: fn(&(dyn Any + Send + Sync), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
 }
 
 impl FunctionDefinitionContext {
-    fn clone_any<T: Any + Clone + Send>(t: &(dyn Any + Send)) -> Box<dyn Any + Send> {
-        Box::new(t.downcast_ref::<T>().unwrap().clone())
+    fn clone_any<T: Any + Clone + Send + Sync>(
+        t: &(dyn Any + Send + Sync),
+    ) -> Arc<dyn Any + Send + Sync> {
+        Arc::new(t.downcast_ref::<T>().unwrap().clone())
     }
 
-    fn fmt_any<T: Any + Debug + Send>(
-        t: &(dyn Any + Send),
+    fn fmt_any<T: Any + Debug + Send + Sync>(
+        t: &(dyn Any + Send + Sync),
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         t.downcast_ref::<T>().unwrap().fmt(f)
@@ -236,28 +239,28 @@ impl FunctionDefinitionContext {
 
     /// Creates a new FunctionDefinitionContext object containing user-defined
     /// object of type `T`
-    pub fn new<T: Any + Clone + Debug + Send>(t: T) -> Self {
+    pub fn new<T: Any + Clone + Debug + Send + Sync>(t: T) -> Self {
         Self {
-            inner: Box::new(t),
+            inner: Arc::new(t),
             clone_cb: Self::clone_any::<T>,
             fmt_cb: Self::fmt_any::<T>,
         }
     }
     /// Returns a reference to the underlying Any object
-    pub fn as_any_ref(&self) -> &(dyn Any + Send) {
+    pub fn as_any_ref(&self) -> &(dyn Any + Send + Sync) {
         &*self.inner
     }
     /// Returns a mutable reference to the underlying Any object
-    pub fn as_any_mut(&mut self) -> &mut (dyn Any + Send) {
-        &mut *self.inner
+    pub fn as_any_mut(&mut self) -> &mut (dyn Any + Send + Sync) {
+        Arc::get_mut(&mut self.inner).unwrap()
     }
     /// Converts current `FunctionDefinitionContext` to `Box<dyn Dy>`
-    pub fn into_any(self) -> Box<dyn Any + Send> {
+    pub fn into_any(self) -> Arc<dyn Any + Send + Sync> {
         let Self { inner, .. } = self;
         inner
     }
     /// Attempt to downcast the context to a concrete type.
-    pub fn downcast<T: Any>(self) -> Result<Box<T>, Self> {
+    pub fn downcast<T: Any + Send + Sync>(self) -> Result<Arc<T>, Self> {
         let Self {
             inner,
             clone_cb,
@@ -267,6 +270,14 @@ impl FunctionDefinitionContext {
             inner,
             clone_cb,
             fmt_cb,
+        })
+    }
+
+    /// Attempt to extract the concrete value stored in the context.
+    pub fn try_unwrap<T: Any + Send + Sync>(self) -> Result<T, Self> {
+        self.downcast::<T>().map(|val| match Arc::try_unwrap(val) {
+            Ok(val) => val,
+            Err(_) => unreachable!(),
         })
     }
 }
@@ -279,7 +290,10 @@ impl<T: Any> std::convert::AsRef<T> for FunctionDefinitionContext {
 
 impl<T: Any> std::convert::AsMut<T> for FunctionDefinitionContext {
     fn as_mut(&mut self) -> &mut T {
-        self.inner.downcast_mut::<T>().unwrap()
+        Arc::get_mut(&mut self.inner)
+            .unwrap()
+            .downcast_mut::<T>()
+            .unwrap()
     }
 }
 
@@ -303,7 +317,7 @@ impl std::fmt::Debug for FunctionDefinitionContext {
 }
 
 /// Trait to implement function
-pub trait FunctionDefinition: Debug + Sync + Send {
+pub trait FunctionDefinition: Debug + Send + Sync {
     /// Custom context to store information during parsing
     fn context(&self) -> Option<FunctionDefinitionContext> {
         None
@@ -476,13 +490,13 @@ mod tests {
 
         let value = ctx1.downcast::<Option<u8>>().unwrap();
 
-        assert_eq!(value, Box::new(Some(42u8)));
+        assert_eq!(value, Arc::new(Some(42u8)));
 
         assert_eq!(
             ctx2.as_any_ref().downcast_ref::<Option<u8>>().unwrap(),
             &*value
         );
 
-        assert_eq!(ctx2.downcast::<Option<u8>>().unwrap(), value);
+        assert_eq!(ctx2.try_unwrap::<Option<u8>>().unwrap(), Some(42u8));
     }
 }
