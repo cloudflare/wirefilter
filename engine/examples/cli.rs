@@ -26,7 +26,7 @@ fn main() {
     scheme
         .add_function(
             "panic".into(),
-            Box::new(SimpleFunctionDefinition {
+            SimpleFunctionDefinition {
                 params: vec![SimpleFunctionParam {
                     arg_kind: FunctionArgKind::Field,
                     val_type: Type::Bytes,
@@ -37,7 +37,7 @@ fn main() {
                 }],
                 return_type: Type::Bytes,
                 implementation: SimpleFunctionImpl::new(panic_function),
-            }),
+            },
         )
         .unwrap();
 

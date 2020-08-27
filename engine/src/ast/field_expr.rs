@@ -662,7 +662,7 @@ mod tests {
             scheme
                 .add_function(
                     "any".into(),
-                    Box::new(SimpleFunctionDefinition {
+                    SimpleFunctionDefinition {
                         params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Array(Box::new(Type::Bool)),
@@ -670,13 +670,13 @@ mod tests {
                         opt_params: vec![],
                         return_type: Type::Bool,
                         implementation: SimpleFunctionImpl::new(any_function),
-                    }),
+                    },
                 )
                 .unwrap();
             scheme
                 .add_function(
                     "echo".into(),
-                    Box::new(SimpleFunctionDefinition {
+                    SimpleFunctionDefinition {
                         params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -684,13 +684,13 @@ mod tests {
                         opt_params: vec![],
                         return_type: Type::Bytes,
                         implementation: SimpleFunctionImpl::new(echo_function),
-                    }),
+                    },
                 )
                 .unwrap();
             scheme
                 .add_function(
                     "lowercase".into(),
-                    Box::new(SimpleFunctionDefinition {
+                    SimpleFunctionDefinition {
                         params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -698,13 +698,13 @@ mod tests {
                         opt_params: vec![],
                         return_type: Type::Bytes,
                         implementation: SimpleFunctionImpl::new(lowercase_function),
-                    }),
+                    },
                 )
                 .unwrap();
             scheme
                 .add_function(
                     "concat".into(),
-                    Box::new(SimpleFunctionDefinition {
+                    SimpleFunctionDefinition {
                         params: vec![],
                         opt_params: vec![
                             SimpleFunctionOptParam {
@@ -718,16 +718,16 @@ mod tests {
                         ],
                         return_type: Type::Bytes,
                         implementation: SimpleFunctionImpl::new(concat_function),
-                    }),
+                    },
                 )
                 .unwrap();
             scheme
-                .add_function("filter".into(), Box::new(FilterFunction::new()))
+                .add_function("filter".into(), FilterFunction::new())
                 .unwrap();
             scheme
                 .add_function(
                     "len".into(),
-                    Box::new(SimpleFunctionDefinition {
+                    SimpleFunctionDefinition {
                         params: vec![SimpleFunctionParam {
                             arg_kind: FunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -735,7 +735,7 @@ mod tests {
                         opt_params: vec![],
                         return_type: Type::Int,
                         implementation: SimpleFunctionImpl::new(len_function),
-                    }),
+                    },
                 )
                 .unwrap();
             scheme
