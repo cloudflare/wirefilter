@@ -409,6 +409,11 @@ impl<'s> FunctionCallExpr<'s> {
 
         Ok((function_call, input))
     }
+
+    /// Returns the function being called.
+    pub fn function(&self) -> Function<'s> {
+        self.function
+    }
 }
 
 fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> LexError<'i> {
