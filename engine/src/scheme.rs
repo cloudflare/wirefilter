@@ -385,6 +385,12 @@ enum SchemeItem {
     Function(Box<dyn FunctionDefinition>),
 }
 
+impl<T: FunctionDefinition + 'static> From<T> for Box<dyn FunctionDefinition> {
+    fn from(func: T) -> Box<dyn FunctionDefinition> {
+        Box::new(func)
+    }
+}
+
 /// A structure to represent a list inside a [`scheme`](struct.Scheme.html).
 ///
 /// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
@@ -558,7 +564,7 @@ impl<'s> Scheme {
     pub fn add_function(
         &mut self,
         name: String,
-        function: Box<dyn FunctionDefinition + 'static>,
+        function: impl Into<Box<dyn FunctionDefinition + 'static>>,
     ) -> Result<(), IdentifierRedefinitionError> {
         match self.items.entry(name) {
             Entry::Occupied(entry) => match entry.get() {
@@ -570,7 +576,7 @@ impl<'s> Scheme {
                 )),
             },
             Entry::Vacant(entry) => {
-                entry.insert(SchemeItem::Function(function));
+                entry.insert(SchemeItem::Function(function.into()));
                 Ok(())
             }
         }
@@ -579,7 +585,7 @@ impl<'s> Scheme {
     /// Registers a list of functions
     pub fn add_functions(
         &mut self,
-        functions: impl IntoIterator<Item = (String, Box<dyn FunctionDefinition + 'static>)>,
+        functions: impl IntoIterator<Item = (String, impl Into<Box<dyn FunctionDefinition + 'static>>)>,
     ) -> Result<(), IdentifierRedefinitionError> {
         for (name, func) in functions {
             self.add_function(name, func)?;
