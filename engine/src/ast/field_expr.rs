@@ -21,7 +21,7 @@ use indexmap::IndexSet;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use lazy_static::lazy_static;
 use serde::{Serialize, Serializer};
-use sliceslice::memchr::MemchrSearcher;
+use sliceslice::MemchrSearcher;
 use std::{cmp::Ordering, net::IpAddr};
 
 const LESS: u8 = 0b001;
@@ -415,7 +415,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if *USE_AVX2 {
                     use rand::{thread_rng, Rng};
-                    use sliceslice::x86::avx2::*;
+                    use sliceslice::x86::*;
 
                     let position = thread_rng().gen_range(1, bytes.len());
                     return unsafe {
