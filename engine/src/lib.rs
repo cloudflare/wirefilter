@@ -70,6 +70,7 @@ mod range_set;
 mod rhs_types;
 mod strict_partial_ord;
 mod types;
+mod filterable;
 
 pub use self::{
     ast::FilterAst,
