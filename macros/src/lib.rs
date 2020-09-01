@@ -28,11 +28,7 @@ fn make_filterable(input: &DeriveInput) -> TokenStream {
         impl Filterable for #name {
             fn filter_context<'s>(&self, schema: &'s Scheme) -> Result<ExecutionContext<'s>, Error> {
                 let mut ctx = ExecutionContext::new(schema);
-                println!("HELLO from {}", stringify!(#name));
-                println!("Code {:?}", stringify!(#input));
                 #members
-                println!("BYE from {}", stringify!(#name));
-
                 Ok(ctx)
             }
         }
@@ -46,7 +42,6 @@ fn iter_members(data: &Data) -> TokenStream {
                 Fields::Named(ref fields) => {
                     let recurse = fields.named.iter().map(|f| {
                         let name = &f.ident;
-                        //let quoted_name = stringify!(#name);
                         let ty = &f.ty;
                         let check = quote_spanned! {f.span() =>
                             &self.#name.generate_context(&mut ctx, stringify!(#name));

@@ -8,11 +8,11 @@ pub trait Filterable {
 }
 
 
-pub trait GenContext<T> {
+pub trait GenContext {
     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error>;
 }
 
-impl GenContext<String> for String {
+impl GenContext for String {
     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error> {
         println!("gen_ctx String {} {}", field_name, self);
         let value: LhsValue = LhsValue::from(self.to_owned());
@@ -21,7 +21,7 @@ impl GenContext<String> for String {
     }
 }
 
-impl GenContext<usize> for usize {
+impl GenContext for usize {
     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error>{
         println!("gen_ctx usize {}", self);
         ctx.set_field_value(field_name, LhsValue::Int(*self as _)).map_err(Error::TypeMismatchError)?;
@@ -29,11 +29,19 @@ impl GenContext<usize> for usize {
     }
 }
 
-impl GenContext<IpAddr> for IpAddr {
+impl GenContext for IpAddr {
     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error> {
         println!("gen_ctx ipaddr {}", self.to_string());
         ctx.set_field_value(field_name, LhsValue::Ip(*self)).map_err(Error::TypeMismatchError)?;
         Ok(())
     }
 }
+
+// impl GenContext<Option<T>> for IpAddr {
+//     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error> {
+//         println!("gen_ctx ipaddr {}", self.to_string());
+//         ctx.set_field_value(field_name, LhsValue::Ip(*self)).map_err(Error::TypeMismatchError)?;
+//         Ok(())
+//     }
+// }
 
