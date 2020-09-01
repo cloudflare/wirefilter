@@ -37,11 +37,12 @@ impl GenContext for IpAddr {
     }
 }
 
-// impl GenContext<Option<T>> for IpAddr {
-//     fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error> {
-//         println!("gen_ctx ipaddr {}", self.to_string());
-//         ctx.set_field_value(field_name, LhsValue::Ip(*self)).map_err(Error::TypeMismatchError)?;
-//         Ok(())
-//     }
-// }
+impl<T: GenContext> GenContext for Option<T> {
+    fn generate_context<'s>(&self, ctx: &mut ExecutionContext<'s>, field_name: &str) -> Result<(), Error> {
+        if let Some(t) = self {
+            t.generate_context(ctx, field_name);
+        }
+        Ok(())
+    }
+}
 
