@@ -25,6 +25,7 @@ fn make_filterable(input: &DeriveInput) -> TokenStream {
         impl Filterable for #name {
             fn filter_context<'s>(&self, schema: &'s Scheme) -> Result<ExecutionContext<'s>, Error> {
                 let mut ctx = ExecutionContext::new(schema);
+                println!("HELLO from {}", stringify!(#name));
 
                 Ok(ctx)
             }

@@ -6,9 +6,6 @@ use wirefilter::*;
 #[derive(Debug, Filterable)]
 struct Empty;
 
-
-
-
 fn main() {
     let scheme = Scheme!(
         blah: Bytes
