@@ -5,3 +5,9 @@ use crate::errors::Error;
 pub trait Filterable {
     fn filter_context<'s>(&self, schema: &'s Scheme) -> Result<ExecutionContext<'s>, Error>;
 }
+
+impl Filterable for String {
+    fn filter_context<'s>(&self, schema: &'s Scheme) -> Result<ExecutionContext<'s>, Error> {
+        unimplemented!()
+    }
+}

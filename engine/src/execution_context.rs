@@ -2,6 +2,7 @@ use crate::{
     scheme::{Field, Scheme},
     types::{GetType, LhsValue, TypeMismatchError},
 };
+use std::ops::Add;
 
 /// An execution context stores an associated [`Scheme`](struct@Scheme) and a
 /// set of runtime values to execute [`Filter`](::Filter) against.
@@ -11,6 +12,29 @@ use crate::{
 pub struct ExecutionContext<'e> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
+}
+
+/// Combines two executionContexts. `rhs` overwrites `self` so it is not really associative, maybe Add is not the best to use
+impl<'s> Add for ExecutionContext<'s> {
+    type Output = ExecutionContext<'s>;
+
+    fn add(mut self, rhs: Self) -> Self::Output {
+        debug_assert!(self.scheme() == rhs.scheme);
+        let mut rhs = rhs;
+        let values = self.scheme.get_field_count();
+        let mut new = ExecutionContext::new(self.scheme);
+
+        for i in 0..values {
+            if let Some(v) = (&mut self.values[i]).take() {
+                new.values[i] = Some(v)
+            }
+
+            if let Some(v) = (&mut rhs.values[i]).take() {
+                new.values[i] = Some(v)
+            }
+        }
+        new
+    }
 }
 
 impl<'e> ExecutionContext<'e> {
