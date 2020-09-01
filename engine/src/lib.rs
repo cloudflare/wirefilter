@@ -70,9 +70,11 @@ mod range_set;
 mod rhs_types;
 mod strict_partial_ord;
 mod types;
-mod filterable;
+pub mod filterable;
+pub mod errors;
 
 pub use self::{
+    errors::Error,
     ast::FilterAst,
     execution_context::ExecutionContext,
     filter::{Filter, SchemeMismatchError},

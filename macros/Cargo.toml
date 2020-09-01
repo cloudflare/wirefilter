@@ -1,0 +1,15 @@
+[package]
+name = "wirefilter-macros"
+version = "0.1.0"
+authors = ["ben kornmeier <ben@protectwise.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1.0", features = ["derive"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+wirefilter-engine = { path = "../engine" }

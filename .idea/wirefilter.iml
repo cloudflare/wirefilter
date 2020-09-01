@@ -10,6 +10,8 @@
       <sourceFolder url="file://$MODULE_DIR$/engine/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/wasm/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/wirefilter-parser/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/macros-test/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

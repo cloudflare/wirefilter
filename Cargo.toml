@@ -3,7 +3,9 @@ members = [
 	"engine",
 	"ffi",
 	"wasm",
-	"wirefilter-parser"
+	"wirefilter-parser",
+	"macros",
+	"macros-test",
 ]
 
 [profile.release]
