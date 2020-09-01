@@ -58,12 +58,10 @@ fn iter_members(data: &Data) -> TokenStream {
                     // readme of the parent directory.
                     let recurse = fields.named.iter().map(|f| {
                         let name = &f.ident;
-                        let quoted_name = stringify!(#name);
+                        //let quoted_name = stringify!(#name);
                         let ty = &f.ty;
                         let check = quote_spanned! {f.span() =>
-                            //println!(stringify!(&self.#name.generate_context(schema, #quoted_name)));
-
-                            &self.#name.generate_context(schema, #quoted_name);
+                            &self.#name.generate_context(schema, stringify!(#name));
                             println!("Type is {}", stringify!(#ty));
 
 
