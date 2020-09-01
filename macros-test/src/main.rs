@@ -13,7 +13,9 @@ struct Empty{
 
 fn main() {
     let scheme = Scheme!(
-        blah: Bytes
+        a: Bytes,
+        b: Ip,
+        c: Int
     );
     let e = Empty{
         a: String::from("A"),

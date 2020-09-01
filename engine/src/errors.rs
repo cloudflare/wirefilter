@@ -1,5 +1,8 @@
 use super::filter::SchemeMismatchError;
+use crate::TypeMismatchError;
+
 #[derive(Debug)]
 pub enum Error {
-    SchemaMismatch(SchemeMismatchError)
+    SchemaMismatch(SchemeMismatchError),
+    TypeMismatchError(TypeMismatchError)
 }
