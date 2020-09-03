@@ -1,5 +1,4 @@
 use crate::{
-    compiler::ExecCtx,
     list_matcher::ListMatcherWrapper,
     scheme::{Field, List, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, Type, TypeMismatchError},
@@ -40,55 +39,28 @@ pub struct InvalidListMatcherError {
 /// It acts as a map in terms of public API, but provides a constant-time
 /// index-based access to values for a filter during execution.
 #[derive(Debug, PartialEq)]
-pub struct ExecutionContext<'e> {
+pub struct ExecutionContext<'e, U = ()> {
     scheme: &'e Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
     list_data: Box<[Option<ListMatcherWrapper>]>,
+    user_data: U,
 }
 
-// This is only used by Filter::execute to check if the current `Filter`
-// is backed by the same `Scheme` as `ExecutionContext`.
-// Its a bit dodgy but will do for now.
-impl<'e> PartialEq<Scheme> for ExecutionContext<'e> {
-    #[inline]
-    fn eq(&self, other: &Scheme) -> bool {
-        self.scheme == other
-    }
-}
-
-impl<'e> ExecCtx for ExecutionContext<'e> {
-    fn get_field_value_unchecked<'s>(&self, field: Field<'s>) -> &LhsValue<'_> {
-        // This is safe because this code is reachable only from Filter::execute
-        // which already performs the scheme compatibility check, but check that
-        // invariant holds in the future at least in the debug mode.
-        debug_assert!(self.scheme() == field.scheme());
-
-        // For now we panic in this, but later we are going to align behaviour
-        // with wireshark: resolve all subexpressions that don't have RHS value
-        // to `false`.
-        self.values[field.index()].as_ref().unwrap_or_else(|| {
-            panic!(
-                "Field {} was registered but not given a value",
-                field.name()
-            );
-        })
-    }
-
-    /// Get the `ListMatcher` for the specified type.
-    fn get_list_matcher_unchecked<'s>(&self, list: List<'s>) -> &ListMatcherWrapper {
-        debug_assert!(self.scheme() == list.scheme());
-
-        self.list_data[list.index()]
-            .as_ref()
-            .expect("no list matcher for the given type")
-    }
-}
-
-impl<'e> ExecutionContext<'e> {
+impl<'e, U> ExecutionContext<'e, U> {
     /// Creates an execution context associated with a given scheme.
     ///
     /// This scheme will be used for resolving any field names and indices.
-    pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self {
+    pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self
+    where
+        U: Default,
+    {
+        Self::new_with(scheme, Default::default)
+    }
+
+    /// Creates an execution context associated with a given scheme.
+    ///
+    /// This scheme will be used for resolving any field names and indices.
+    pub fn new_with<'s: 'e>(scheme: &'s Scheme, f: impl Fn() -> U) -> Self {
         let (values_len, lists_len) = scheme.len();
         ExecutionContext {
             scheme,
@@ -99,6 +71,7 @@ impl<'e> ExecutionContext<'e> {
                 vec
             }
             .into(),
+            user_data: f(),
         }
     }
 
@@ -147,6 +120,55 @@ impl<'e> ExecutionContext<'e> {
         self.list_data[list.index()] = Some(ListMatcherWrapper::new(matcher));
         Ok(())
     }
+
+    #[inline]
+    pub(crate) fn get_field_value_unchecked<'s>(&self, field: Field<'s>) -> &LhsValue<'_> {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        // For now we panic in this, but later we are going to align behaviour
+        // with wireshark: resolve all subexpressions that don't have RHS value
+        // to `false`.
+        self.values[field.index()].as_ref().unwrap_or_else(|| {
+            panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            );
+        })
+    }
+
+    /// Get the value of a field.
+    pub fn get_field_value<'s>(&self, field: Field<'s>) -> Option<&LhsValue<'_>> {
+        assert!(self.scheme() == field.scheme());
+
+        self.values[field.index()].as_ref()
+    }
+
+    /// Get the `ListMatcher` for the specified type.
+    #[inline]
+    pub(crate) fn get_list_matcher_unchecked<'s>(&self, list: List<'s>) -> &ListMatcherWrapper {
+        debug_assert!(self.scheme() == list.scheme());
+
+        self.list_data[list.index()]
+            .as_ref()
+            .expect("no list matcher for the given type")
+    }
+
+    /// Get immutable reference to user data stored in
+    /// this execution context with [`ExecutionContext::new_with`].
+    #[inline]
+    pub fn get_user_data(&self) -> &U {
+        &self.user_data
+    }
+
+    /// Get mutable reference to user data stored in
+    /// this execution context with [`ExecutionContext::new_with`].
+    #[inline]
+    pub fn get_user_data_mut(&mut self) -> &mut U {
+        &mut self.user_data
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -156,16 +178,16 @@ struct ListData<'b> {
     data: serde_json::Value,
 }
 
-impl<'de, 'a> DeserializeSeed<'de> for &'a mut ExecutionContext<'de> {
+impl<'de, 'a, U> DeserializeSeed<'de> for &'a mut ExecutionContext<'de, U> {
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct ExecutionContextVisitor<'de, 'a>(&'a mut ExecutionContext<'de>);
+        struct ExecutionContextVisitor<'de, 'a, U>(&'a mut ExecutionContext<'de, U>);
 
-        impl<'de, 'a> Visitor<'de> for ExecutionContextVisitor<'de, 'a> {
+        impl<'de, 'a, U> Visitor<'de> for ExecutionContextVisitor<'de, 'a, U> {
             type Value = ();
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -274,7 +296,7 @@ fn test_field_value_type_mismatch() {
 
     let scheme = Scheme! { foo: Int };
 
-    let mut ctx = ExecutionContext::new(&scheme);
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
 
     assert_eq!(
         ctx.set_field_value(scheme.get_field("foo").unwrap(), LhsValue::Bool(false)),
@@ -289,7 +311,7 @@ fn test_field_value_type_mismatch() {
 fn test_scheme_mismatch() {
     let scheme = Scheme! { foo: Bool };
 
-    let mut ctx = ExecutionContext::new(&scheme);
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
 
     let scheme2 = Scheme! { foo: Bool };
 

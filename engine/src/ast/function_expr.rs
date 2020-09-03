@@ -57,7 +57,10 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<'s, U> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => compiler.compile_index_expr(index_expr),
             FunctionCallArgExpr::Literal(literal) => {
@@ -247,7 +250,10 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
         visitor.visit_function(&self.function)
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<'s, U> {
         let ty = self.get_type();
         let Self {
             function,

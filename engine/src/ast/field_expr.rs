@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     ast::index_expr::IndexExpr,
-    compiler::{Compiler, ExecCtx},
+    compiler::Compiler,
     filter::{CompiledExpr, CompiledValueExpr},
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     list_matcher::ListMatcher,
@@ -204,14 +204,14 @@ pub(crate) enum LhsFieldExpr<'s> {
 }
 
 impl<'s> LhsFieldExpr<'s> {
-    pub fn compile_with_compiler<C: Compiler + 's>(
+    pub fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
         self,
         compiler: &mut C,
-    ) -> CompiledValueExpr<'s, C> {
+    ) -> CompiledValueExpr<'s, U> {
         match self {
-            LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx: &C::ExecutionContext| {
-                Ok(ctx.get_field_value_unchecked(f).as_ref())
-            }),
+            LhsFieldExpr::Field(f) => {
+                CompiledValueExpr::new(move |ctx| Ok(ctx.get_field_value_unchecked(f).as_ref()))
+            }
             LhsFieldExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
         }
     }
@@ -360,7 +360,10 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
         visitor.visit_index_expr(&mut self.lhs)
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledExpr<'s, U> {
         let lhs = self.lhs;
 
         macro_rules! cast_value {

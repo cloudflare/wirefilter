@@ -4,7 +4,8 @@ use super::{
     ValueExpr,
 };
 use crate::{
-    compiler::{Compiler, ExecCtx},
+    compiler::Compiler,
+    execution_context::ExecutionContext,
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{complete, expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     lhs_types::{Array, Map},
@@ -43,7 +44,7 @@ macro_rules! index_access_vec {
             $first,
             Vec::new().into_boxed_slice(),
             $ctx,
-            |val: &LhsValue<'_>, ctx: &C::ExecutionContext| {
+            |val: &LhsValue<'_>, ctx| {
                 let mut output = Vec::new();
                 for item in val.iter().unwrap() {
                     output.push($func(item, ctx));
@@ -71,7 +72,10 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<'s, U> {
         let ty = self.get_type();
         let map_each_count = self.map_each_count();
         let Self { lhs, indexes } = self;
@@ -87,17 +91,15 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         } else if let Some(last) = last {
             // Average path
             match lhs {
-                LhsFieldExpr::Field(f) => {
-                    CompiledValueExpr::new(move |ctx: &C::ExecutionContext| {
-                        indexes[..last]
-                            .iter()
-                            .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
-                                value.and_then(|val| val.get(index).unwrap())
-                            })
-                            .map(LhsValue::as_ref)
-                            .ok_or_else(|| ty.clone())
-                    })
-                }
+                LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                    indexes[..last]
+                        .iter()
+                        .fold(Some(ctx.get_field_value_unchecked(f)), |value, index| {
+                            value.and_then(|val| val.get(index).unwrap())
+                        })
+                        .map(LhsValue::as_ref)
+                        .ok_or_else(|| ty.clone())
+                }),
                 LhsFieldExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
                     CompiledValueExpr::new(move |ctx| {
@@ -114,15 +116,13 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         } else {
             // Slow path
             match lhs {
-                LhsFieldExpr::Field(f) => {
-                    CompiledValueExpr::new(move |ctx: &C::ExecutionContext| {
-                        let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                        iter.reset(ctx.get_field_value_unchecked(f).as_ref());
-                        let mut arr = Array::new(ty.clone());
-                        arr.extend(iter);
-                        Ok(LhsValue::Array(arr))
-                    })
-                }
+                LhsFieldExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
+                    iter.reset(ctx.get_field_value_unchecked(f).as_ref());
+                    let mut arr = Array::new(ty.clone());
+                    arr.extend(iter);
+                    Ok(LhsValue::Array(arr))
+                }),
                 LhsFieldExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
                     CompiledValueExpr::new(move |ctx| {
@@ -146,14 +146,14 @@ fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
 }
 
 impl<'s> IndexExpr<'s> {
-    fn compile_one_with<F: 's, C: Compiler + 's>(
+    fn compile_one_with<F: 's, U: 's, C: Compiler<'s, U> + 's>(
         self,
         compiler: &mut C,
         default: bool,
         func: F,
-    ) -> CompiledOneExpr<'s, C>
+    ) -> CompiledOneExpr<'s, U>
     where
-        F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
         let indexes = simplify_indexes(indexes);
@@ -178,11 +178,9 @@ impl<'s> IndexExpr<'s> {
             }
             LhsFieldExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx: &C::ExecutionContext| {
-                        func(ctx.get_field_value_unchecked(f), ctx)
-                    })
+                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
                 } else {
-                    CompiledOneExpr::new(move |ctx: &C::ExecutionContext| {
+                    CompiledOneExpr::new(move |ctx| {
                         index_access_one!(
                             indexes,
                             Some(ctx.get_field_value_unchecked(f)),
@@ -196,13 +194,13 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_vec_with<F: 's, C: Compiler + 's>(
+    pub(crate) fn compile_vec_with<F: 's, U: 's, C: Compiler<'s, U> + 's>(
         self,
         compiler: &mut C,
         func: F,
-    ) -> CompiledVecExpr<'s, C>
+    ) -> CompiledVecExpr<'s, U>
     where
-        F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
         let indexes = simplify_indexes(indexes);
@@ -213,23 +211,23 @@ impl<'s> IndexExpr<'s> {
                     index_access_vec!(indexes, (&call.execute(ctx)).as_ref().ok(), ctx, func)
                 })
             }
-            LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx: &C::ExecutionContext| {
+            LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 index_access_vec!(indexes, Some(ctx.get_field_value_unchecked(f)), ctx, func)
             }),
         }
     }
 
-    pub(crate) fn compile_iter_with<F: 's, C: Compiler + 's>(
+    pub(crate) fn compile_iter_with<F: 's, U: 's, C: Compiler<'s, U> + 's>(
         self,
         compiler: &mut C,
         func: F,
-    ) -> CompiledVecExpr<'s, C>
+    ) -> CompiledVecExpr<'s, U>
     where
-        F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
     {
         let Self { lhs, indexes } = self;
         match lhs {
-            LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx: &C::ExecutionContext| {
+            LhsFieldExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
                 iter.reset(ctx.get_field_value_unchecked(f).as_ref());
 
@@ -261,14 +259,14 @@ impl<'s> IndexExpr<'s> {
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
     /// provided comparison function that returns a boolean.
-    pub fn compile_with<F: 's, C: Compiler + 's>(
+    pub fn compile_with<F: 's, U: 's, C: Compiler<'s, U> + 's>(
         self,
         compiler: &mut C,
         default: bool,
         func: F,
-    ) -> CompiledExpr<'s, C>
+    ) -> CompiledExpr<'s, U>
     where
-        F: Fn(&LhsValue<'_>, &C::ExecutionContext) -> bool + Sync + Send,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
     {
         match self.map_each_count() {
             0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),

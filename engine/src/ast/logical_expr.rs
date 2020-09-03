@@ -158,7 +158,10 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledExpr<'s, U> {
         match self {
             LogicalExpr::Simple(op) => compiler.compile_simple_expr(op),
             LogicalExpr::Combining { op, items } => {
