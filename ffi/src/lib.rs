@@ -17,8 +17,8 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AlwaysList, Array, DefaultCompiler, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue,
-    ListDefinition, Map, NeverList, ParseError, Scheme, Type,
+    AlwaysList, Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, ListDefinition,
+    Map, NeverList, ParseError, Scheme, Type,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -123,7 +123,7 @@ impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
 
 type UsingResult = CResult<bool>;
 
-type CompilingResult<'s, 'e> = CResult<RustBox<Filter<'s, DefaultCompiler<'e>>>>;
+type CompilingResult<'s, 'e> = CResult<RustBox<Filter<'s>>>;
 
 type MatchingResult = CResult<bool>;
 
@@ -618,7 +618,7 @@ pub extern "C" fn wirefilter_free_compiling_result(r: CompilingResult<'_, '_>) {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_match<'e, 's: 'e>(
-    filter: &Filter<'s, DefaultCompiler<'e>>,
+    filter: &Filter<'s>,
     exec_context: &ExecutionContext<'e>,
 ) -> MatchingResult {
     catch_panic(std::panic::AssertUnwindSafe(|| {
@@ -635,9 +635,7 @@ pub extern "C" fn wirefilter_free_matching_result(r: MatchingResult) {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiled_filter(
-    filter: RustBox<Filter<'_, DefaultCompiler<'_>>>,
-) {
+pub extern "C" fn wirefilter_free_compiled_filter(filter: RustBox<Filter<'_>>) {
     drop(filter);
 }
 

@@ -85,7 +85,7 @@ pub use self::{
         visitor::{Visitor, VisitorMut},
         Expr, FilterAst, ValueExpr,
     },
-    compiler::{Compiler, DefaultCompiler, ExecCtx},
+    compiler::{Compiler, DefaultCompiler},
     execution_context::{ExecutionContext, InvalidListMatcherError},
     filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, Filter},
     functions::{

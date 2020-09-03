@@ -24,9 +24,12 @@ pub trait Expr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + Seria
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C>;
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledExpr<'s, U>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
-    fn compile(self) -> CompiledExpr<'s, DefaultCompiler<'s>> {
+    fn compile(self) -> CompiledExpr<'s> {
         let mut compiler = DefaultCompiler::new();
         self.compile_with_compiler(&mut compiler)
     }
@@ -39,9 +42,12 @@ pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + 
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<V: VisitorMut<'s>>(&mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledValueExpr<'s, C>;
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<'s, U>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
-    fn compile(self) -> CompiledValueExpr<'s, DefaultCompiler<'s>> {
+    fn compile(self) -> CompiledValueExpr<'s> {
         let mut compiler = DefaultCompiler::new();
         self.compile_with_compiler(&mut compiler)
     }
@@ -128,7 +134,10 @@ impl<'s> FilterAst<'s> {
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].
-    pub fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> Filter<'s, C> {
+    pub fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> Filter<'s, U> {
         match self.op.compile_with_compiler(compiler) {
             CompiledExpr::One(one) => Filter::new(one, self.scheme),
             CompiledExpr::Vec(_) => unreachable!(),
@@ -136,7 +145,7 @@ impl<'s> FilterAst<'s> {
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using [`DefaultCompiler`].
-    pub fn compile(self) -> Filter<'s, DefaultCompiler<'s>> {
+    pub fn compile(self) -> Filter<'s> {
         let mut compiler = DefaultCompiler::new();
         self.compile_with_compiler(&mut compiler)
     }

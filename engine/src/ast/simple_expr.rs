@@ -90,7 +90,10 @@ impl<'s> Expr<'s> for SimpleExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler + 's>(self, compiler: &mut C) -> CompiledExpr<'s, C> {
+    fn compile_with_compiler<U: 's, C: Compiler<'s, U> + 's>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledExpr<'s, U> {
         match self {
             SimpleExpr::Comparison(op) => compiler.compile_comparison_expr(op),
             SimpleExpr::Parenthesized(op) => compiler.compile_logical_expr(*op),
