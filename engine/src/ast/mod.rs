@@ -52,7 +52,7 @@ pub trait ValueExpr<'s>: Sized + Eq + Debug + for<'i> LexWith<'i, &'s Scheme> + 
 /// It's attached to its corresponding [`Scheme`](struct@Scheme) because all
 /// parsed fields are represented as indices and are valid only when
 /// [`ExecutionContext`](::ExecutionContext) is created from the same scheme.
-#[derive(PartialEq, Eq, Serialize, Clone)]
+#[derive(PartialEq, Eq, Serialize, Clone, Hash)]
 #[serde(transparent)]
 pub struct FilterAst<'s> {
     #[serde(skip)]
