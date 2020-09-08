@@ -95,6 +95,12 @@ impl Deref for Bytes {
     }
 }
 
+impl AsRef<[u8]> for Bytes {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
 fn fixed_byte(input: &str, digits: usize, radix: u32) -> LexResult<'_, u8> {
     let (digits, rest) = take(input, digits)?;
     match u8::from_str_radix(digits, radix) {

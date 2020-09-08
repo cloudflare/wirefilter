@@ -141,6 +141,10 @@ pub enum ComparisonOpExpr<'s> {
     #[serde(serialize_with = "serialize_one_of")]
     OneOf(RhsValues),
 
+    /// "contains {...}" comparison
+    #[serde(serialize_with = "serialize_contains_one_of")]
+    ContainsOneOf(Vec<Bytes>),
+
     /// "in $..." comparison
     #[serde(serialize_with = "serialize_list")]
     InList {
@@ -151,11 +155,11 @@ pub enum ComparisonOpExpr<'s> {
     },
 }
 
-fn serialize_op_rhs<T: Serialize, S: Serializer>(
-    op: &'static str,
-    rhs: &T,
-    ser: S,
-) -> Result<S::Ok, S::Error> {
+fn serialize_op_rhs<T, S>(op: &'static str, rhs: &T, ser: S) -> Result<S::Ok, S::Error>
+where
+    T: Serialize + ?Sized,
+    S: Serializer,
+{
     use serde::ser::SerializeStruct;
 
     let mut out = ser.serialize_struct("ComparisonOpExpr", 2)?;
@@ -182,6 +186,10 @@ fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Err
 
 fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("OneOf", rhs, ser)
+}
+
+fn serialize_contains_one_of<S: Serializer>(rhs: &[Bytes], ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("ContainsOneOf", rhs, ser)
 }
 
 fn serialize_list<S: Serializer>(_: &List<'_>, name: &ListName, ser: S) -> Result<S::Ok, S::Error> {
@@ -481,6 +489,9 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 RhsValues::Map(_) => unreachable!(),
                 RhsValues::Array(_) => unreachable!(),
             },
+            ComparisonOpExpr::ContainsOneOf(_values) => {
+                unreachable!("Node should not be constructed as there is no syntax to do so")
+            }
             ComparisonOpExpr::InList { name, list } => {
                 lhs.compile_with(compiler, false, move |val, ctx| {
                     ctx.get_list_matcher_unchecked(list)
