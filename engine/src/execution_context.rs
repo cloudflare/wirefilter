@@ -169,6 +169,17 @@ impl<'e, U> ExecutionContext<'e, U> {
     pub fn get_user_data_mut(&mut self) -> &mut U {
         &mut self.user_data
     }
+
+    /// Extract all values and list data into a new [`ExecutionContext`].
+    #[inline]
+    pub fn take_with<T>(&mut self, default: impl Fn(&mut U) -> T) -> ExecutionContext<'e, T> {
+        ExecutionContext {
+            scheme: self.scheme,
+            values: std::mem::take(&mut self.values),
+            list_data: std::mem::take(&mut self.list_data),
+            user_data: default(&mut self.user_data),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
