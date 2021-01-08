@@ -18,7 +18,7 @@ use std::{
 };
 use wirefilter::{
     AlwaysList, Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, ListDefinition,
-    Map, NeverList, ParseError, Scheme, Type,
+    Map, NeverList, OrderedFloat, ParseError, Scheme, Type,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -29,6 +29,7 @@ pub enum CTypeTag {
     Ip,
     Bytes,
     Int,
+    Float,
     Bool,
     Array,
     Map,
@@ -47,6 +48,7 @@ impl From<CType> for Type {
             CTypeTag::Ip => Type::Ip,
             CTypeTag::Bytes => Type::Bytes,
             CTypeTag::Int => Type::Int,
+            CTypeTag::Float => Type::Float,
             CTypeTag::Bool => Type::Bool,
             CTypeTag::Array => Type::Array(ty.data.unwrap()),
             CTypeTag::Map => Type::Map(ty.data.unwrap()),
@@ -67,6 +69,10 @@ impl From<Type> for CType {
             },
             Type::Int => CType {
                 tag: CTypeTag::Int.into(),
+                data: None,
+            },
+            Type::Float => CType {
+                tag: CTypeTag::Float.into(),
                 data: None,
             },
             Type::Bool => CType {
@@ -342,6 +348,21 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_float_value_to_execution_context(
+    exec_context: &mut ExecutionContext<'_>,
+    name: ExternallyAllocatedStr<'_>,
+    value: f64,
+) -> bool {
+    let field = match exec_context.scheme().get_field(name.into_ref()) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    exec_context
+        .set_field_value(field, OrderedFloat(value))
+        .is_ok()
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name: ExternallyAllocatedStr<'_>,
@@ -455,6 +476,16 @@ pub extern "C" fn wirefilter_add_int_value_to_map(
 }
 
 #[no_mangle]
+pub extern "C" fn wirefilter_add_float_value_to_map(
+    map: &mut LhsValue<'_>,
+    name: ExternallyAllocatedByteArr<'_>,
+    value: f64,
+) -> bool {
+    let value = OrderedFloat(value);
+    map_insert!(map, name, value)
+}
+
+#[no_mangle]
 pub extern "C" fn wirefilter_add_bytes_value_to_map<'a>(
     map: &mut LhsValue<'a>,
     name: ExternallyAllocatedByteArr<'_>,
@@ -531,6 +562,17 @@ pub extern "C" fn wirefilter_add_int_value_to_array(
     value: i32,
 ) -> bool {
     array.set(FieldIndex::ArrayIndex(index), value).is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_float_value_to_array(
+    array: &mut LhsValue<'_>,
+    index: u32,
+    value: f64,
+) -> bool {
+    array
+        .set(FieldIndex::ArrayIndex(index), OrderedFloat(value))
+        .is_ok()
 }
 
 #[no_mangle]
@@ -717,6 +759,16 @@ mod ffi_test {
         );
         wirefilter_add_type_field_to_scheme(
             &mut scheme,
+            ExternallyAllocatedStr::from("float1"),
+            Type::Float.into(),
+        );
+        wirefilter_add_type_field_to_scheme(
+            &mut scheme,
+            ExternallyAllocatedStr::from("float2"),
+            Type::Float.into(),
+        );
+        wirefilter_add_type_field_to_scheme(
+            &mut scheme,
             ExternallyAllocatedStr::from("map1"),
             wirefilter_create_map_type(Type::Int.into()),
         );
@@ -775,6 +827,18 @@ mod ffi_test {
             &mut exec_context,
             ExternallyAllocatedStr::from("num2"),
             1337,
+        );
+
+        wirefilter_add_float_value_to_execution_context(
+            &mut exec_context,
+            ExternallyAllocatedStr::from("float1"),
+            4.2,
+        );
+
+        wirefilter_add_float_value_to_execution_context(
+            &mut exec_context,
+            ExternallyAllocatedStr::from("float2"),
+            13.37,
         );
 
         let mut map1 = wirefilter_create_map(Type::Int.into());
@@ -918,7 +982,7 @@ mod ffi_test {
             let exec_context = create_execution_context(&scheme);
 
             assert!(match_filter(
-                r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map2["key"] == "value""#,
+                r#"num1 > 41 && num2 == 1337 && float1 == 4.1 && float2 == 13.37 ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map2["key"] == "value""#,
                 &scheme,
                 &exec_context
             ));
@@ -948,13 +1012,13 @@ mod ffi_test {
         {
             let filter1 = parse_filter(
                 &scheme,
-                r#"num1 > 41 && num2 == 1337 && ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map1["key"] == 42"#,
+                r#"num1 > 41 && num2 == 1337 && float1 > 4 && float2 == 13.37 && ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map1["key"] == 42"#,
             )
             .unwrap();
 
             let filter2 = parse_filter(
                 &scheme,
-                r#"num1 >     41 && num2 == 1337 &&    ip1 != 192.168.0.1 and str2 ~ "yo\d+"    && map1["key"] == 42   "#,
+                r#"num1 >     41 && num2 == 1337    && float1 > 4 &&  float2 == 13.37    && ip1 != 192.168.0.1 and str2 ~ "yo\d+"    && map1["key"] == 42   "#,
             )
             .unwrap();
 

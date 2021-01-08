@@ -316,9 +316,26 @@ impl<'s> ComparisonExpr<'s> {
                         (ComparisonOpExpr::OneOf(rhs), input)
                     }
                 }
+                (Type::Float, ComparisonOp::In) => {
+                    if expect(input, "$").is_ok() {
+                        let (name, input) = ListName::lex(input)?;
+                        let list = scheme.get_list(&lhs_type).ok_or((
+                            LexErrorKind::UnsupportedOp { lhs_type },
+                            span(initial_input, input),
+                        ))?;
+                        (ComparisonOpExpr::InList { name, list }, input)
+                    } else {
+                        let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
+                        (ComparisonOpExpr::OneOf(rhs), input)
+                    }
+                }
                 (Type::Ip, ComparisonOp::Ordering(op))
                 | (Type::Bytes, ComparisonOp::Ordering(op))
                 | (Type::Int, ComparisonOp::Ordering(op)) => {
+                    let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
+                    (ComparisonOpExpr::Ordering { op, rhs }, input)
+                }
+                (Type::Float, ComparisonOp::Ordering(op)) => {
                     let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
                     (ComparisonOpExpr::Ordering { op, rhs }, input)
                 }
@@ -478,6 +495,13 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
 
                     lhs.compile_with(compiler, false, move |x, _ctx| {
                         values.contains(cast_value!(x, Int))
+                    })
+                }
+                RhsValues::Float(values) => {
+                    let values: RangeSet<_> = values.into_iter().map(Into::into).collect();
+
+                    lhs.compile_with(compiler, false, move |x, _ctx| {
+                        values.contains(cast_value!(x, Float))
                     })
                 }
                 RhsValues::Bytes(values) => {
