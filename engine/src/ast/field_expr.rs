@@ -445,7 +445,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     use rand::{thread_rng, Rng};
                     use sliceslice::x86::*;
 
-                    let position = thread_rng().gen_range(1, bytes.len());
+                    let position = thread_rng().gen_range(1..bytes.len());
                     return unsafe {
                         match bytes.len() {
                             2 => search!(Avx2Searcher2::with_position(bytes, position)),

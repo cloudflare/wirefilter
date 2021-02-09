@@ -890,8 +890,9 @@ mod ffi_test {
         exec_context: &ExecutionContext<'_>,
     ) -> bool {
         let filter = parse_filter(scheme, input).unwrap();
+        println!("{:#?}", *filter);
+        println!("{:#?}", scheme);
         let filter = wirefilter_compile_filter(filter).unwrap();
-
         let result = wirefilter_match(&filter, exec_context);
 
         wirefilter_free_compiled_filter(filter);
@@ -982,7 +983,7 @@ mod ffi_test {
             let exec_context = create_execution_context(&scheme);
 
             assert!(match_filter(
-                r#"num1 > 41 && num2 == 1337 && float1 == 4.1 && float2 == 13.37 ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map2["key"] == "value""#,
+                r#"num1 > 41 && num2 == 1337 && float1 > 4 && float2 == 13.37 && ip1 != 192.168.0.1 && str2 ~ "yo\d+" && map2["key"] == "value""#,
                 &scheme,
                 &exec_context
             ));
