@@ -171,7 +171,7 @@ impl<'a> Array<'a> {
         }
     }
 
-    pub(crate) fn as_slice(&self) -> &[LhsValue<'a>] {
+    pub fn as_slice(&self) -> &[LhsValue<'a>] {
         &self.data
     }
 }
