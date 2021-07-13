@@ -87,6 +87,8 @@ lex_enum!(IntOp {
 
 lex_enum!(BytesOp {
     "contains" => Contains,
+    "starts_with" => StartsWith,
+    "ends_with" => EndsWith,
     "~" | "matches" => Matches,
 });
 
@@ -133,6 +135,14 @@ pub enum ComparisonOpExpr<'s> {
     #[serde(serialize_with = "serialize_contains")]
     Contains(Bytes),
 
+    /// "starts_with" comparison
+    #[serde(serialize_with = "serialize_starts_with")]
+    StartsWith(Bytes),
+
+    /// "ends_with" comparison
+    #[serde(serialize_with = "serialize_ends_with")]
+    EndsWith(Bytes),
+
     /// "matches / ~" comparison
     #[serde(serialize_with = "serialize_matches")]
     Matches(Regex),
@@ -178,6 +188,14 @@ fn serialize_is_true<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
 
 fn serialize_contains<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
+}
+
+fn serialize_starts_with<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("StartsWith", rhs, ser)
+}
+
+fn serialize_ends_with<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
+    serialize_op_rhs("EndsWith", rhs, ser)
 }
 
 fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Error> {
@@ -331,6 +349,14 @@ impl<'s> ComparisonExpr<'s> {
                         let (bytes, input) = Bytes::lex(input)?;
                         (ComparisonOpExpr::Contains(bytes), input)
                     }
+                    BytesOp::StartsWith => {
+                        let (bytes, input) = Bytes::lex(input)?;
+                        (ComparisonOpExpr::StartsWith(bytes), input)
+                    }
+                    BytesOp::EndsWith => {
+                        let (bytes, input) = Bytes::lex(input)?;
+                        (ComparisonOpExpr::EndsWith(bytes), input)
+                    }
                     BytesOp::Matches => {
                         let (regex, input) = Regex::lex(input)?;
                         (ComparisonOpExpr::Matches(regex), input)
@@ -449,6 +475,30 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 }
 
                 search!(TwoWaySearcher::new(bytes))
+            }
+            ComparisonOpExpr::StartsWith(bytes) => {
+                let bytes = bytes.into_boxed_bytes();
+
+                lhs.compile_with(compiler, false, move |x, _ctx| {
+                    let x: &[u8] = cast_value!(x, Bytes);
+                    if bytes.is_empty() || x.is_empty() {
+                        return false;
+                    }
+
+                    x.starts_with(&bytes)
+                })
+            }
+            ComparisonOpExpr::EndsWith(bytes) => {
+                let bytes = bytes.into_boxed_bytes();
+
+                lhs.compile_with(compiler, false, move |x, _ctx| {
+                    let x: &[u8] = cast_value!(x, Bytes);
+                    if bytes.is_empty() || x.is_empty() {
+                        return false;
+                    }
+
+                    x.ends_with(&bytes)
+                })
             }
             ComparisonOpExpr::Matches(regex) => {
                 lhs.compile_with(compiler, false, move |x, _ctx| {
@@ -1315,6 +1365,73 @@ mod tests {
         });
 
         ctx.set_field_value(field("http.headers"), headers).unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_starts_with_str() {
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"http.host starts_with "abc""#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
+                op: ComparisonOpExpr::StartsWith("abc".to_owned().into())
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "http.host",
+                "op": "StartsWith",
+                "rhs": "abc",
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value(field("http.host"), "www.abc.com")
+            .unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
+
+        ctx.set_field_value(field("http.host"), "abc.com").unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_ends_with_str() {
+        let expr = assert_ok!(
+            ComparisonExpr::lex_with(r#"http.host ends_with "com""#, &SCHEME),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    lhs: LhsFieldExpr::Field(field("http.host")),
+                    indexes: vec![],
+                },
+                op: ComparisonOpExpr::EndsWith("com".to_owned().into())
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "http.host",
+                "op": "EndsWith",
+                "rhs": "com",
+            }
+        );
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
+
+        ctx.set_field_value(field("http.host"), "example.com")
+            .unwrap();
         assert_eq!(expr.execute_one(ctx), true);
     }
 
