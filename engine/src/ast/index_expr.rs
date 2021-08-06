@@ -178,16 +178,16 @@ impl<'s> IndexExpr<'s> {
             }
             LhsFieldExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
+                    CompiledOneExpr::new(move |ctx| {
+                        if let Some(value) = ctx.get_field_value(f) {
+                            func(value, ctx)
+                        } else {
+                            false
+                        }
+                    })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one!(
-                            indexes,
-                            Some(ctx.get_field_value_unchecked(f)),
-                            default,
-                            ctx,
-                            func
-                        )
+                        index_access_one!(indexes, ctx.get_field_value(f), default, ctx, func)
                     })
                 }
             }
