@@ -25,7 +25,7 @@ lex_enum!(UnaryOp {
 pub enum SimpleExpr<'s> {
     /// A comparison expression.
     Comparison(ComparisonExpr<'s>),
-    /// A parenthisized expression.
+    /// A parenthesized expression.
     Parenthesized(Box<LogicalExpr<'s>>),
     /// A unary expression.
     Unary {

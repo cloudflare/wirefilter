@@ -4,7 +4,7 @@ use crate::{
     scheme::{IndexAccessError, UnknownFieldError, UnknownFunctionError},
     types::{Type, TypeMismatchError},
 };
-use cidr::NetworkParseError;
+use cidr::errors::NetworkParseError;
 use std::num::ParseIntError;
 use thiserror::Error;
 

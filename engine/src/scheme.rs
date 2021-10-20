@@ -837,7 +837,7 @@ fn test_parse_error() {
 
 #[test]
 fn test_parse_error_in_op() {
-    use cidr::NetworkParseError;
+    use cidr::errors::NetworkParseError;
     use indoc::indoc;
     use std::{net::IpAddr, str::FromStr};
 
