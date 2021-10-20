@@ -1,5 +1,5 @@
 //! Each AST expression node gets compiled into a CompiledExpr or a CompiledValueExpr.
-//! Therefore, Filter essentialy is a public API facade for a tree of Compiled(Value)Exprs.
+//! Therefore, Filter essentially is a public API facade for a tree of Compiled(Value)Exprs.
 //! When filter gets executed it calls `execute` method on its root expression which then
 //! under the hood propagates field values to its leafs by recursively calling
 //! their `execute` methods and aggregating results into a single boolean value

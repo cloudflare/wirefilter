@@ -41,11 +41,11 @@ pub enum ExpectedType {
     /// Fully identified expected type
     Type(Type),
     /// Loosely identified array type
-    /// Usefull when expecting an array without
+    /// Useful when expecting an array without
     /// knowing of which specific value type
     Array,
     /// Loosely identified map type
-    /// Usefull when expecting a map without
+    /// Useful when expecting a map without
     /// knowing of which specific value type
     Map,
 }
@@ -510,7 +510,7 @@ impl<'a> LhsValue<'a> {
     /// Set an element in an LhsValue given a path item and a specified value.
     /// Returns a TypeMismatchError error if current type does not support
     /// nested element or if value type is invalid.
-    /// Only LhsValyue::Map supports nested elements for now.
+    /// Only LhsValue::Map supports nested elements for now.
     pub fn set<V: Into<LhsValue<'a>>>(
         &mut self,
         item: FieldIndex,

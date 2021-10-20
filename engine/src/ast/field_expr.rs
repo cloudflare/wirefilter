@@ -426,25 +426,11 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if *USE_AVX2 {
                     use rand::{thread_rng, Rng};
-                    use sliceslice::x86::*;
+                    use sliceslice::x86::DynamicAvx2Searcher;
 
-                    let position = thread_rng().gen_range(1, bytes.len());
+                    let position = thread_rng().gen_range(1..bytes.len());
                     return unsafe {
-                        match bytes.len() {
-                            2 => search!(Avx2Searcher2::with_position(bytes, position)),
-                            3 => search!(Avx2Searcher3::with_position(bytes, position)),
-                            4 => search!(Avx2Searcher4::with_position(bytes, position)),
-                            5 => search!(Avx2Searcher5::with_position(bytes, position)),
-                            6 => search!(Avx2Searcher6::with_position(bytes, position)),
-                            7 => search!(Avx2Searcher7::with_position(bytes, position)),
-                            8 => search!(Avx2Searcher8::with_position(bytes, position)),
-                            9 => search!(Avx2Searcher9::with_position(bytes, position)),
-                            10 => search!(Avx2Searcher10::with_position(bytes, position)),
-                            11 => search!(Avx2Searcher11::with_position(bytes, position)),
-                            12 => search!(Avx2Searcher12::with_position(bytes, position)),
-                            13 => search!(Avx2Searcher13::with_position(bytes, position)),
-                            _ => search!(Avx2Searcher::with_position(bytes, position)),
-                        }
+                        search!(DynamicAvx2Searcher::with_position(bytes, position))
                     };
                 }
 
@@ -523,7 +509,7 @@ mod tests {
         scheme::{FieldIndex, IndexAccessError},
         types::ExpectedType,
     };
-    use cidr::{Cidr, IpCidr};
+    use cidr::IpCidr;
     use lazy_static::lazy_static;
     use std::{any::Any, convert::TryFrom, iter::once, net::IpAddr};
 

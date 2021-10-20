@@ -1,4 +1,4 @@
-use std::alloc::System;
+use std::{alloc::System, fmt::Display};
 
 // Most of our usage will be via FFI as a dynamic library, so we're interested
 // in performance with system allocator and not jemalloc.
@@ -6,7 +6,7 @@ use std::alloc::System;
 static A: System = System;
 
 use criterion::{
-    criterion_group, criterion_main, Bencher, Benchmark, Criterion, ParameterizedBenchmark,
+    criterion_group, criterion_main, Bencher, BenchmarkId, Criterion,
 };
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
@@ -55,7 +55,7 @@ struct FieldBench<'a, T: 'static> {
     values: &'a [T],
 }
 
-impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> {
+impl<'a, T: 'static + Copy + Debug + Display + Into<LhsValue<'static>>> FieldBench<'a, T> {
     fn run(self, c: &mut Criterion) {
         let FieldBench {
             filters,
@@ -78,25 +78,41 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                 filter
             };
 
-            c.bench(
-                "parsing",
-                Benchmark::new(name, {
-                    let mut scheme = Scheme::default();
-                    scheme.add_field(field.to_owned(), ty.clone()).unwrap();
-                    for (name, function) in functions {
-                        scheme
-                            .add_function((*name).into(), function.clone())
-                            .unwrap();
-                    }
-                    move |b: &mut Bencher| {
-                        b.iter(|| scheme.parse(filter).unwrap());
-                    }
-                }),
-            );
+            let mut group = c.benchmark_group("parsing");
+            group.bench_function(name, {
+                let mut scheme = Scheme::default();
+                scheme.add_field(field.to_owned(), ty.clone()).unwrap();
+                for (name, function) in functions {
+                    scheme
+                        .add_function((*name).into(), function.clone())
+                        .unwrap();
+                }
+                move |b: &mut Bencher| {
+                    b.iter(|| scheme.parse(filter).unwrap());
+                }
+            });
+            group.finish();
 
-            c.bench(
-                "compilation",
-                Benchmark::new(name, {
+            let mut group = c.benchmark_group("compilation");
+            group.bench_function(name, {
+                let mut scheme = Scheme::default();
+                scheme.add_field(field.to_owned(), ty.clone()).unwrap();
+                for (name, function) in functions {
+                    scheme
+                        .add_function((*name).into(), function.clone())
+                        .unwrap();
+                }
+                move |b: &mut Bencher| {
+                    let filter = scheme.parse(filter).unwrap();
+
+                    b.iter_with_setup(move || filter.clone(), FilterAst::compile);
+                }
+            });
+            group.finish();
+
+            let mut group = c.benchmark_group("execution");
+            for value in values.iter().cloned() {
+                group.bench_with_input(BenchmarkId::new(name, value), &value, {
                     let mut scheme = Scheme::default();
                     scheme.add_field(field.to_owned(), ty.clone()).unwrap();
                     for (name, function) in functions {
@@ -104,42 +120,21 @@ impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> 
                             .add_function((*name).into(), function.clone())
                             .unwrap();
                     }
-                    move |b: &mut Bencher| {
+                    move |b: &mut Bencher, value: &T| {
                         let filter = scheme.parse(filter).unwrap();
 
-                        b.iter_with_setup(move || filter.clone(), FilterAst::compile);
+                        let filter = filter.compile();
+
+                        let mut exec_ctx = ExecutionContext::new(&scheme);
+                        exec_ctx
+                            .set_field_value(scheme.get_field(field).unwrap(), *value)
+                            .unwrap();
+
+                        b.iter(|| filter.execute(&exec_ctx));
                     }
-                }),
-            );
-
-            c.bench(
-                "execution",
-                ParameterizedBenchmark::new(
-                    name,
-                    {
-                        let mut scheme = Scheme::default();
-                        scheme.add_field(field.to_owned(), ty.clone()).unwrap();
-                        for (name, function) in functions {
-                            scheme
-                                .add_function((*name).into(), function.clone())
-                                .unwrap();
-                        }
-                        move |b: &mut Bencher, value: &T| {
-                            let filter = scheme.parse(filter).unwrap();
-
-                            let filter = filter.compile();
-
-                            let mut exec_ctx = ExecutionContext::new(&scheme);
-                            exec_ctx
-                                .set_field_value(scheme.get_field(field).unwrap(), *value)
-                                .unwrap();
-
-                            b.iter(|| filter.execute(&exec_ctx));
-                        }
-                    },
-                    values.iter().cloned(),
-                ),
-            );
+                });
+            }
+            group.finish();
         }
     }
 }

@@ -128,8 +128,8 @@ impl<'e, U> ExecutionContext<'e, U> {
         // invariant holds in the future at least in the debug mode.
         debug_assert!(self.scheme() == field.scheme());
 
-        // For now we panic in this, but later we are going to align behaviour
-        // with wireshark: resolve all subexpressions that don't have RHS value
+        // For now we panic in this, but later we are going to align behavior
+        // with wireshark: resolve all sub expressions that don't have RHS value
         // to `false`.
         self.values[field.index()].as_ref().unwrap_or_else(|| {
             panic!(

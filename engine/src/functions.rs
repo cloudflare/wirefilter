@@ -105,7 +105,7 @@ pub struct FunctionArgInvalidConstantError {
 /// An error that occurs for a bad function parameter
 #[derive(Debug, PartialEq, Error)]
 pub enum FunctionParamError {
-    /// Function paramater value type has a different type than expected
+    /// Function parameter value type has a different type than expected
     #[error("expected {0}")]
     TypeMismatch(#[source] TypeMismatchError),
     /// Function parameter argument kind has a different kind than expected
@@ -119,7 +119,7 @@ pub enum FunctionParamError {
 /// Function parameter
 #[derive(Clone, Debug)]
 pub enum FunctionParam<'a> {
-    /// Contant function parameter (literal value)
+    /// Constant function parameter (literal value)
     Constant(LhsValue<'a>),
     /// Variable function parameter (field, or complex expressions)
     Variable(Type),
@@ -144,7 +144,7 @@ impl<'a> GetType for FunctionParam<'a> {
 }
 
 impl<'a> FunctionParam<'a> {
-    /// Check if the arg_kind of current paramater matches the expected_arg_kind
+    /// Check if the arg_kind of current parameter matches the expected_arg_kind
     pub fn expect_arg_kind(
         &self,
         expected_arg_kind: FunctionArgKind,
