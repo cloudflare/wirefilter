@@ -174,7 +174,7 @@ impl ListDefinition for NeverList {
     }
 
     fn is_valid_matcher(&self, matcher: &dyn Any) -> bool {
-        matcher.is::<AlwaysListMatcher>()
+        matcher.is::<NeverListMatcher>()
     }
 }
 
