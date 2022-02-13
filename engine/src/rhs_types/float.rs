@@ -23,9 +23,16 @@ fn lex_floats(input: &str) -> LexResult<'_, &str> {
 }
 
 fn parse_float<'i>(input: &'i str) -> Result<OrderedFloat<f64>, LexError<'_>> {
-    match f64::from_str(input) {
-        Ok(res) => Ok(OrderedFloat(res)),
-        Err(err) => Err((LexErrorKind::ParseFloat { err }, input)),
+    if input.contains(".") {
+        match f64::from_str(input) {
+            Ok(res) => Ok(OrderedFloat(res)),
+            Err(err) => Err((LexErrorKind::ParseFloat { err }, input)),
+        }
+    } else {
+        match f64::from_str("") {
+            Ok(res) => Ok(OrderedFloat(res)),
+            Err(err) => Err((LexErrorKind::ParseFloat { err }, input)),
+        }
     }
 }
 

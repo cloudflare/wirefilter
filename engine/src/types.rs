@@ -93,8 +93,12 @@ pub enum SetValueError {
 }
 
 macro_rules! replace_underscore {
-    ($name:ident ($val_ty:ty)) => {Type::$name(_)};
-    ($name:ident) => {Type::$name};
+    ($name:ident ($val_ty:ty)) => {
+        Type::$name(_)
+    };
+    ($name:ident) => {
+        Type::$name
+    };
 }
 
 macro_rules! specialized_get_type {
@@ -665,7 +669,7 @@ declare_types!(
     /// A 32-bit integer number.
     Int(i32 | i32 | IntRange),
 
-    /// A -bit floating point number.
+    /// A 64-bit floating point number.
     Float(OrderedFloat<f64> | OrderedFloat<f64> | FloatRange),
 
     /// An IPv4 or IPv6 address.

@@ -186,6 +186,10 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionCallArgExpr<'s> {
         RhsValue::lex_with(input, Type::Ip)
             .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             .or_else(|_| {
+                RhsValue::lex_with(input, Type::Float)
+                    .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
+            })
+            .or_else(|_| {
                 RhsValue::lex_with(input, Type::Int)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
