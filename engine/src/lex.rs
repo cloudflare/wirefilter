@@ -5,7 +5,7 @@ use crate::{
     types::{Type, TypeMismatchError},
 };
 use cidr::NetworkParseError;
-use std::num::ParseIntError;
+use std::num::{ParseFloatError, ParseIntError};
 use thiserror::Error;
 
 #[derive(Debug, PartialEq, Error)]
@@ -27,6 +27,14 @@ pub enum LexErrorKind {
         err: ParseIntError,
         /// The base of the number
         radix: u32,
+    },
+
+    /// Expected the next token to be a float
+    #[error("{err} while parsing")]
+    ParseFloat {
+        /// The error that occurred parsing the token as a float
+        #[source]
+        err: ParseFloatError,
     },
 
     /// Expected the next token to be a network address such a CIDR, IPv4 or
