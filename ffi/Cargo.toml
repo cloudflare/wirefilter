@@ -24,6 +24,6 @@ serde_json = "1.0.27"
 path = "../engine"
 
 [dev-dependencies]
-regex = "1.1.5"
+regex = "1.5.5"
 indoc = "0.3.0"
 wirefilter-ffi-ctests = {path = "tests/ctests"}
