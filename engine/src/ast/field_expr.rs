@@ -248,7 +248,10 @@ impl<'s> IdentifierExpr<'s> {
     ) -> CompiledValueExpr<'s, C::U> {
         match self {
             IdentifierExpr::Field(f) => {
-                CompiledValueExpr::new(move |ctx| Ok(ctx.get_field_value_unchecked(f).as_ref()))
+                CompiledValueExpr::new(move |ctx| match ctx.get_field_value(f) {
+                    Some(value) => Ok(value.as_ref()),
+                    None => Err(f.get_type()),
+                })
             }
             IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
         }
