@@ -16,10 +16,7 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{
-    AlwaysList, Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, ListDefinition,
-    Map, NeverList, ParseError, Scheme, Type,
-};
+use wirefilter::{AlwaysList, Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, ListDefinition, Map, NeverList, ParseError, Scheme, Type, DefaultCompiler, FunctionArgs, SimpleFunctionDefinition, SimpleFunctionParam, FunctionArgKind, SimpleFunctionImpl, List, AlwaysListMatcher, NeverListMatcher};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -130,6 +127,180 @@ type MatchingResult = CResult<bool>;
 type SerializingResult = CResult<RustAllocatedString>;
 
 type HashingResult = CResult<u64>;
+
+use wirefilter::types::GetType;
+use crate::transfer_types::raw_ptr_repr::ExternPtrRepr;
+
+fn len_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    match args.next()? {
+        Ok(LhsValue::Bytes(bytes)) => Some(LhsValue::Int(i32::try_from(bytes.len()).unwrap())),
+        Err(Type::Bytes) => None,
+        _ => unreachable!(),
+    }
+}
+
+fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    match args.next()? {
+        Ok(v) => Some(LhsValue::Bool(
+            Array::try_from(v)
+                .unwrap()
+                .into_iter()
+                .any(|lhs| bool::try_from(lhs).unwrap()),
+        )),
+        Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
+        _ => unreachable!(),
+    }
+}
+
+fn all_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    match args.next()? {
+        Ok(v) => Some(LhsValue::Bool(
+            Array::try_from(v)
+                .unwrap()
+                .into_iter()
+                .all(|lhs| bool::try_from(lhs).unwrap()),
+        )),
+        Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
+        _ => unreachable!(),
+    }
+}
+
+fn lower_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
+    match input {
+        LhsValue::Bytes(bytes) => Some(LhsValue::Bytes(bytes.to_ascii_lowercase().into())),
+        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+    }
+}
+
+fn upper_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
+    match input {
+        LhsValue::Bytes(bytes) => Some(LhsValue::Bytes(bytes.to_ascii_uppercase().into())),
+        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+    }
+}
+
+use percent_encoding::percent_decode;
+
+fn url_decode<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    let input = args.next()?.ok()?;
+    let res = match input {
+        LhsValue::Bytes(bytes) => Some(LhsValue::Bytes(percent_decode(&bytes).collect())),
+        _ => panic!("Invalid type: expected Bytes, got {:?}", input),
+    };
+    return res;
+}
+
+#[no_mangle]
+pub extern "C" fn add_standard_functions(
+    scheme: &mut Scheme,
+) {
+    scheme
+        .add_function(
+            "any".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Array(Box::new(Type::Bool)),
+                }],
+                opt_params: vec![],
+                return_type: Type::Bool,
+                implementation: SimpleFunctionImpl::new(any_function),
+            },
+        )
+        .unwrap();
+    scheme
+        .add_function(
+            "all".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Array(Box::new(Type::Bool)),
+                }],
+                opt_params: vec![],
+                return_type: Type::Bool,
+                implementation: SimpleFunctionImpl::new(all_function),
+            },
+        )
+        .unwrap();
+    scheme
+        .add_function(
+            "lower".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Bytes,
+                }],
+                opt_params: vec![],
+                return_type: Type::Bytes,
+                implementation: SimpleFunctionImpl::new(lower_function),
+            },
+        )
+        .unwrap();
+    scheme
+        .add_function(
+            "upper".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Bytes,
+                }],
+                opt_params: vec![],
+                return_type: Type::Bytes,
+                implementation: SimpleFunctionImpl::new(upper_function),
+            },
+        )
+        .unwrap();
+    scheme
+        .add_function(
+            "len".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Bytes,
+                }],
+                opt_params: vec![],
+                return_type: Type::Int,
+                implementation: SimpleFunctionImpl::new(len_function),
+            },
+        )
+        .unwrap();
+    scheme
+        .add_function(
+            "url_decode".into(),
+            SimpleFunctionDefinition {
+                params: vec![SimpleFunctionParam {
+                    arg_kind: FunctionArgKind::Field,
+                    val_type: Type::Bytes,
+                }],
+                opt_params: vec![],
+                return_type: Type::Bytes,
+                implementation: SimpleFunctionImpl::new(url_decode),
+            },
+        )
+        .unwrap();
+
+    scheme
+        .add_list(Type::Int.into(),  Box::new(NeverList::default()))
+        .unwrap();
+    scheme
+        .add_list(Type::Bytes.into(),  Box::new(NeverList::default()))
+        .unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn set_all_lists_to_nevermatch(
+    exec_context: &mut ExecutionContext<'_>,
+) -> bool {
+    let list = exec_context.scheme().get_list(&Type::Ip).unwrap();
+    exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
+    let list = exec_context.scheme().get_list(&Type::Int).unwrap();
+    exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
+    let list = exec_context.scheme().get_list(&Type::Bytes).unwrap();
+    exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
+    return true;
+}
 
 #[no_mangle]
 pub extern "C" fn wirefilter_create_scheme() -> RustBox<Scheme> {

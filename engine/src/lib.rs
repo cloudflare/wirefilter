@@ -73,7 +73,7 @@ mod range_set;
 mod rhs_types;
 mod searcher;
 mod strict_partial_ord;
-mod types;
+pub mod types;
 
 pub use self::{
     ast::{
