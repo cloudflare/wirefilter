@@ -74,6 +74,7 @@ mod rhs_types;
 mod searcher;
 mod strict_partial_ord;
 pub mod types;
+mod matchers;
 
 pub use self::{
     ast::{
@@ -106,5 +107,6 @@ pub use self::{
         IdentifierRedefinitionError, List, ParseError, Scheme, SchemeMismatchError,
         UnknownFieldError,
     },
+    matchers::{ IntListStore, IpListStore },
     types::{ExpectedType, GetType, LhsValue, RhsValue, RhsValues, Type, TypeMismatchError},
 };

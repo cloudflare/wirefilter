@@ -10,7 +10,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     cmp::{max, min},
-    collections::HashMap,
+    collections::{hash_map::RandomState, HashMap},
     convert::TryFrom,
     error::Error,
     fmt::{self, Debug, Display, Formatter},
@@ -438,7 +438,7 @@ use crate::list_matcher::ListDefinition;
 #[derive(Default, Debug)]
 pub struct Scheme {
     items: IndexMap<String, SchemeItem, FnvBuildHasher>,
-    lists: IndexMap<Type, Box<dyn ListDefinition>>,
+    lists: IndexMap<Type, Box<dyn ListDefinition>, RandomState>,
 }
 
 impl PartialEq for Scheme {

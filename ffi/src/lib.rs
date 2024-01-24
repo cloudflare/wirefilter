@@ -16,7 +16,7 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{AlwaysList, Array, ExecutionContext, FieldIndex, Filter, FilterAst, LhsValue, ListDefinition, Map, NeverList, ParseError, Scheme, Type, DefaultCompiler, FunctionArgs, SimpleFunctionDefinition, SimpleFunctionParam, FunctionArgKind, SimpleFunctionImpl, List, AlwaysListMatcher, NeverListMatcher};
+use wirefilter::{AlwaysList, AlwaysListMatcher, Array, DefaultCompiler, ExecutionContext, FieldIndex, Filter, FilterAst, FunctionArgKind, FunctionArgs, IntListStore, IpListStore, LhsValue, List, ListDefinition, Map, NeverList, NeverListMatcher, ParseError, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -129,7 +129,6 @@ type SerializingResult = CResult<RustAllocatedString>;
 type HashingResult = CResult<u64>;
 
 use wirefilter::types::GetType;
-use crate::transfer_types::raw_ptr_repr::ExternPtrRepr;
 
 fn len_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     match args.next()? {
@@ -282,7 +281,10 @@ pub extern "C" fn add_standard_functions(
         .unwrap();
 
     scheme
-        .add_list(Type::Int.into(),  Box::new(NeverList::default()))
+        .add_list(Type::Int.into(),  Box::new(IntListStore::new()))
+        .unwrap();
+    scheme
+        .add_list(Type::Ip.into(),  Box::new(IpListStore::new()))
         .unwrap();
     scheme
         .add_list(Type::Bytes.into(),  Box::new(NeverList::default()))
@@ -293,14 +295,57 @@ pub extern "C" fn add_standard_functions(
 pub extern "C" fn set_all_lists_to_nevermatch(
     exec_context: &mut ExecutionContext<'_>,
 ) -> bool {
-    let list = exec_context.scheme().get_list(&Type::Ip).unwrap();
-    exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
-    let list = exec_context.scheme().get_list(&Type::Int).unwrap();
-    exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
     let list = exec_context.scheme().get_list(&Type::Bytes).unwrap();
     exec_context.set_list_matcher(list, NeverListMatcher {}).unwrap();
     return true;
 }
+
+
+#[no_mangle]
+pub extern "C" fn wirefilter_setup_int_lists(
+    exec_context: &mut ExecutionContext<'_>,
+    int_map: RustBox<LhsValue<'_>>
+) {
+    let list = exec_context.scheme().get_list(&Type::Int).unwrap();
+    let mut int_lists = IntListStore::new();
+    if let LhsValue::Map(map) = *int_map.into_real_box() {
+        for (key, maybe_int_arr) in map.into_iter() {
+            let list_name = std::str::from_utf8(&(*key)).unwrap();
+            if let LhsValue::Array(ints) = maybe_int_arr {
+                for value in ints {
+                    if let LhsValue::Int(i) = value {
+                        int_lists.add_value(&list_name, i)
+                    }
+                }
+            }
+        }
+    }
+    exec_context.set_list_matcher(list, int_lists).unwrap();
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_setup_ip_lists(
+    exec_context: &mut ExecutionContext<'_>,
+    ip_map: RustBox<LhsValue<'_>>
+) {
+    let list = exec_context.scheme().get_list(&Type::Ip).unwrap();
+    let mut ip_lists = IpListStore::new();
+    if let LhsValue::Map(map) = *ip_map.into_real_box() {
+        for (key, maybe_ip_arr) in map.into_iter() {
+            let list_name = std::str::from_utf8(&(*key)).unwrap();
+            if let LhsValue::Array(ints) = maybe_ip_arr {
+                for value in ints {
+                    if let LhsValue::Ip(addr) = value {
+                        ip_lists.add_ip_value(&list_name, addr)
+                    }
+                }
+            }
+        }
+    }
+    exec_context.set_list_matcher(list, ip_lists).unwrap();
+}
+
+
 
 #[no_mangle]
 pub extern "C" fn wirefilter_create_scheme() -> RustBox<Scheme> {
@@ -896,11 +941,18 @@ mod ffi_test {
             ExternallyAllocatedStr::from("map2"),
             wirefilter_create_map_type(Type::Bytes.into()),
         );
-
+        let int_list_def: Box<dyn ListDefinition> = Box::new(IntListStore::new());
         wirefilter_add_type_list_to_scheme(
             &mut scheme,
             Type::Int.into(),
-            wirefilter_create_always_list(),
+            Box::into_raw(int_list_def.into()),
+        );
+
+        let ip_list_def: Box<dyn ListDefinition> = Box::new(IpListStore::new());
+        wirefilter_add_type_list_to_scheme(
+            &mut scheme,
+            Type::Ip.into(),
+            Box::into_raw(ip_list_def.into()),
         );
 
         scheme
@@ -1109,6 +1161,42 @@ mod ffi_test {
             wirefilter_free_execution_context(exec_context);
         }
 
+        wirefilter_free_scheme(scheme);
+    }
+
+    #[test]
+    fn int_list_filter_matching() {
+        let scheme = create_scheme();
+        {
+            let mut ctx = create_execution_context(&scheme);
+            let mut int_map = wirefilter_create_map(Type::Array(Box::new(Type::Int)).into());
+            let mut test_list_arr = wirefilter_create_array(Type::Int.into());
+            wirefilter_add_int_value_to_array(&mut test_list_arr, 0, 42);
+            wirefilter_add_array_value_to_map(&mut int_map, ExternallyAllocatedByteArr::from("test_list"), test_list_arr);
+            wirefilter_setup_int_lists(&mut ctx, int_map);
+
+            assert!(match_filter(r#"num1 in $test_list"#, &scheme, &ctx));
+
+            wirefilter_free_execution_context(ctx);
+        }
+        wirefilter_free_scheme(scheme);
+    }
+
+    #[test]
+    fn ip_list_filter_matching() {
+        let scheme = create_scheme();
+        {
+            let mut ctx = create_execution_context(&scheme);
+            let mut ip_map = wirefilter_create_map(Type::Array(Box::new(Type::Ip)).into());
+            let mut test_list_arr = wirefilter_create_array(Type::Ip.into());
+            wirefilter_add_ipv4_value_to_array(&mut test_list_arr, 0, &[127, 0, 0, 1]);
+            wirefilter_add_array_value_to_map(&mut ip_map, ExternallyAllocatedByteArr::from("test_list"), test_list_arr);
+            wirefilter_setup_ip_lists(&mut ctx, ip_map);
+
+            assert!(match_filter(r#"ip1 in $test_list"#, &scheme, &ctx));
+
+            wirefilter_free_execution_context(ctx);
+        }
         wirefilter_free_scheme(scheme);
     }
 
