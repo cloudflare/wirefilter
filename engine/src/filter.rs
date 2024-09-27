@@ -54,7 +54,7 @@ impl<'s> Filter<'s> {
     }
 
     /// Executes a filter against a provided context with values.
-    pub fn execute(&self, ctx: &ExecutionContext<'s>) -> Result<bool, SchemeMismatchError> {
+    pub fn execute(&self, ctx: &ExecutionContext) -> Result<bool, SchemeMismatchError> {
         if self.scheme == ctx.scheme() {
             Ok(self.root_expr.execute(ctx))
         } else {
