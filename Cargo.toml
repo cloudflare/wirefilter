@@ -9,6 +9,11 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+authors = [ "Ingvar Stepanyan <me@rreverser.com>" ]
+version = "0.7.0"
+edition = "2021"
+
 [workspace.dependencies]
 backtrace = "0.3"
 cfg-if = "1"
