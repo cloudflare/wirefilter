@@ -18,10 +18,10 @@ use serde::{ser::SerializeSeq, Serialize, Serializer};
 
 /// IndexExpr is an expr that destructures an index into an IdentifierExpr.
 ///
-/// For example, given a scheme which declares a field, http.request.headers,
+/// For example, given a scheme which declares a field `http.request.headers`,
 /// as a map of string to list of strings, then the expression
-/// http.request.headers["Cookie"][0] would have an IdentifierExpr
-/// http.request.headers and indexes ["Cookie", 0].
+/// `http.request.headers["Cookie"][0]` would have an IdentifierExpr
+/// of `http.request.headers` and indexes `["Cookie", 0]`.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct IndexExpr<'s> {
     /// The accessed identifier.

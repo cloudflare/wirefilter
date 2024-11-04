@@ -11,7 +11,7 @@ use std::fmt;
 use std::fmt::Debug;
 use thiserror::Error;
 
-/// An error that occurs when setting the field value in the [`ExecutionContext`](struct@ExecutionContext)
+/// An error that occurs when setting the field value in the [`crate::ExecutionContext`].
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum SetFieldValueError {
     /// An error that occurs when trying to assign a value of the wrong type to a field.
@@ -31,8 +31,8 @@ pub struct InvalidListMatcherError {
     list: String,
 }
 
-/// An execution context stores an associated [`Scheme`](struct@Scheme) and a
-/// set of runtime values to execute [`Filter`](::Filter) against.
+/// An execution context stores an associated [`struct@crate::Scheme`] and a
+/// set of runtime values to execute [`crate::Filter`] against.
 ///
 /// It acts as a map in terms of public API, but provides a constant-time
 /// index-based access to values for a filter during execution.

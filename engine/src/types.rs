@@ -201,9 +201,8 @@ macro_rules! declare_types {
         declare_types! {
             /// An LHS value provided for filter execution.
             ///
-            /// These are passed to the [execution context](::ExecutionContext)
-            /// and are used by [filters](::Filter)
-            /// for execution and comparisons.
+            /// These are passed to the [`crate::ExecutionContext`]
+            /// and are used by [`crate::Filter`] for execution and comparisons.
             #[derive(PartialEq, Eq, Clone, Deserialize, Hash)]
             #[serde(untagged)]
             enum LhsValue<'a> {
