@@ -24,18 +24,17 @@ use serde::Serialize;
 use std::hash::{Hash, Hasher};
 use std::iter::once;
 
-/// FunctionCallArgExpr is a function argument. It can be a sub-expression with
-/// [`LogicalExpr`], a field with [`IndexExpr`] or a literal with [`Literal`].
+/// Represents a function argument in a function call.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub enum FunctionCallArgExpr<'s> {
-    /// IndexExpr is a field that supports the indexing operator.
+    /// A sub-expression which evaluates to a value.
     IndexExpr(IndexExpr<'s>),
-    /// A Literal.
+    /// A literal value.
     Literal(RhsValue),
-    /// LogicalExpr is a sub-expression which can evaluate to either true/false
-    /// or a list of true/false. It compiles to a CompiledExpr and is coerced
-    /// into a CompiledValueExpr.
+    /// A sub-expression which evaluates to either `true`/`false`
+    /// or a list of `true`/`false`. It compiles to a [`CompiledExpr`]
+    /// and is coerced into a [`CompiledValueExpr`]`.
     // Renaming is necessary for backward compability.
     #[serde(rename = "SimpleExpr")]
     Logical(LogicalExpr<'s>),

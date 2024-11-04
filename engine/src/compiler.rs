@@ -3,9 +3,9 @@ use crate::{
     IndexExpr, LogicalExpr, ValueExpr,
 };
 
-/// Trait used to drive the compilation of a [`FilterAst`] into a [`Filter`].
+/// Trait used to drive the compilation of a [`crate::FilterAst`] into a [`crate::Filter`].
 pub trait Compiler<'s>: Sized + 's {
-    /// The user data type passed in the  [`ExecutionContext`].
+    /// The user data type passed in the  [`crate::ExecutionContext`].
     type U;
 
     /// Compiles a [`Expr`] node into a [`CompiledExpr`] (boxed closure).

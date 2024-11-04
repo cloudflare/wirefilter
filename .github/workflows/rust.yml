@@ -32,6 +32,26 @@ jobs:
     - name: Check code formatting
       run: cargo fmt --verbose --all -- --check
 
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+    - name: Print versions
+      run: |
+        cargo --version
+        rustc --version
+        rustdoc --version
+    - name: Doc
+      run: cargo doc --verbose
+    - name: Doc with all features
+      run: cargo doc --verbose --all-features
+
   miri-test:
     name: Test with miri
     runs-on: ubuntu-latest

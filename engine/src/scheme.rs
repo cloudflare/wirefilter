@@ -367,7 +367,7 @@ type IdentifierName = Arc<str>;
 /// The main registry for fields and their associated types.
 ///
 /// This is necessary to provide typechecking for runtime values provided
-/// to the [execution context](::ExecutionContext) and also to aid parser
+/// to the [`crate::ExecutionContext`] and also to aid parser
 /// in ambiguous contexts.
 #[derive(Default, Debug)]
 pub struct Scheme {
@@ -428,7 +428,7 @@ impl<'s> Scheme {
         Default::default()
     }
 
-    /// Returns the [`identifier`](struct@Identifier) with name [`name`]
+    /// Returns the [`identifier`](enum@Identifier) with the specified `name`.
     pub fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
         self.items.get(name).map(move |item| match *item {
             SchemeItem::Field(index) => Identifier::Field(Field {
@@ -466,7 +466,7 @@ impl<'s> Scheme {
         }
     }
 
-    /// Returns the [`field`](struct@Field) with name [`name`]
+    /// Returns the [`field`](struct@Field) with the specified `name`.
     pub fn get_field(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
         match self.get(name) {
             Some(Identifier::Field(f)) => Ok(f),
@@ -474,7 +474,7 @@ impl<'s> Scheme {
         }
     }
 
-    /// Iterates over fields registered in the [`scheme`](struct@Scheme)
+    /// Iterates over fields registered in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn fields(&'s self) -> impl ExactSizeIterator<Item = Field<'s>> + 's {
         (0..self.fields.len()).map(|index| Field {
@@ -483,13 +483,13 @@ impl<'s> Scheme {
         })
     }
 
-    /// Returns the number of fields in the [`scheme`](struct@Scheme)
+    /// Returns the number of fields in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn field_count(&self) -> usize {
         self.fields.len()
     }
 
-    /// Returns the number of functions in the [`scheme`](struct@Scheme)
+    /// Returns the number of functions in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn function_count(&self) -> usize {
         self.functions.len()
@@ -519,7 +519,7 @@ impl<'s> Scheme {
         }
     }
 
-    /// Returns the [`function`](struct@Function) with name [`name`]
+    /// Returns the [`function`](struct@Function) with the specified `name`.
     pub fn get_function(&'s self, name: &str) -> Result<Function<'s>, UnknownFunctionError> {
         match self.get(name) {
             Some(Identifier::Function(f)) => Ok(f),
@@ -527,7 +527,7 @@ impl<'s> Scheme {
         }
     }
 
-    /// Iterates over functions registered in the [`scheme`](struct@Scheme)
+    /// Iterates over functions registered in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn functions(&'s self) -> impl ExactSizeIterator<Item = Function<'s>> + 's {
         (0..self.functions.len()).map(|index| Function {

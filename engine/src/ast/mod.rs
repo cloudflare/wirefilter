@@ -39,7 +39,7 @@ pub trait Expr<'s>:
     }
 }
 
-/// Trait used to represent node that evaluates to an [`LhsValue`].
+/// Trait used to represent node that evaluates to an [`crate::LhsValue`].
 pub trait ValueExpr<'s>:
     Sized + Eq + Debug + for<'i, 'p> LexWith<'i, &'p FilterParser<'s>> + Serialize
 {
@@ -63,7 +63,7 @@ pub trait ValueExpr<'s>:
 ///
 /// It's attached to its corresponding [`Scheme`](struct@Scheme) because all
 /// parsed fields are represented as indices and are valid only when
-/// [`ExecutionContext`](::ExecutionContext) is created from the same scheme.
+/// [`crate::ExecutionContext`] is created from the same scheme.
 #[derive(PartialEq, Eq, Serialize, Clone, Hash)]
 #[serde(transparent)]
 pub struct FilterAst<'s> {
@@ -176,7 +176,7 @@ impl<'s> FilterAst<'s> {
 ///
 /// It's attached to its corresponding [`Scheme`](struct@Scheme) because all
 /// parsed fields are represented as indices and are valid only when
-/// [`ExecutionContext`](::ExecutionContext) is created from the same scheme.
+/// [`crate::ExecutionContext`] is created from the same scheme.
 #[derive(PartialEq, Eq, Serialize, Clone, Hash)]
 #[serde(transparent)]
 pub struct FilterValueAst<'s> {

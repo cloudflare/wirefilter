@@ -10,7 +10,7 @@ pub use self::{
 /// with corresponding conversions.
 ///
 /// Later this trait can be used by higher-level wrappers like
-/// [`::transfer_types::RustBox`] and [`::transfer_types::Ref`] to add required
+/// [`crate::transfer_types::RustBox`] and [`crate::transfer_types::Ref`] to add required
 /// ownership semantics while preserving FFI compatibility.
 pub trait ExternPtrRepr {
     type Repr: Copy + From<*const Self>;

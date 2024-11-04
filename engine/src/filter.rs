@@ -16,7 +16,7 @@ use std::fmt;
 type BoxedClosureToOneBool<'s, U> =
     Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 's>;
 
-/// Boxed closure for [`Expr`] AST node that evaluates to a simple [`bool`].
+/// Boxed closure for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
 pub struct CompiledOneExpr<'s, U = ()>(BoxedClosureToOneBool<'s, U>);
 
 impl<'s, U> fmt::Debug for CompiledOneExpr<'s, U> {
@@ -51,7 +51,7 @@ pub(crate) type CompiledVecExprResult = TypedArray<'static, bool>;
 type BoxedClosureToVecBool<'s, U> =
     Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult + Sync + Send + 's>;
 
-/// Boxed closure for [`Expr`] AST node that evaluates to a list of [`bool`].
+/// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
 pub struct CompiledVecExpr<'s, U = ()>(BoxedClosureToVecBool<'s, U>);
 
 impl<'s, U> fmt::Debug for CompiledVecExpr<'s, U> {
@@ -84,12 +84,12 @@ impl<'s, U> CompiledVecExpr<'s, U> {
     }
 }
 
-/// Enum of boxed closure for [`Expr`] AST nodes.
+/// Enum of boxed closure for [`crate::Expr`] AST nodes.
 #[derive(Debug)]
 pub enum CompiledExpr<'s, U = ()> {
-    /// Variant for [`Expr`] AST node that evaluates to a simple [`bool`].
+    /// Variant for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
     One(CompiledOneExpr<'s, U>),
-    /// Variant for [`Expr`] AST node that evaluates to a list of [`bool`].
+    /// Variant for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
     Vec(CompiledVecExpr<'s, U>),
 }
 
@@ -131,7 +131,7 @@ impl<'a> From<Type> for CompiledValueResult<'a> {
 type BoxedClosureToValue<'s, U> =
     Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e> + Sync + Send + 's>;
 
-/// Boxed closure for [`ValueExpr`] AST node that evaluates to an [`LhsValue`].
+/// Boxed closure for [`crate::ValueExpr`] AST node that evaluates to an [`LhsValue`].
 pub struct CompiledValueExpr<'s, U = ()>(BoxedClosureToValue<'s, U>);
 
 impl<'s, U> fmt::Debug for CompiledValueExpr<'s, U> {
