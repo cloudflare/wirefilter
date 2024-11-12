@@ -581,15 +581,8 @@ impl<'a, V: IntoValue<'a>> FromIterator<V> for TypedArray<'a, V> {
     }
 }
 
-const fn compound_from_type(ty: Type) -> CompoundType {
-    match CompoundType::from_type(ty) {
-        Some(ty) => ty,
-        None => panic!("Could not convert type to compound type"),
-    }
-}
-
 impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedArray<'a, V> {
-    const TYPE: Type = Type::Array(compound_from_type(V::TYPE));
+    const TYPE: Type = Type::Array(CompoundType::from_type(V::TYPE));
 
     #[inline]
     fn into_value(self) -> LhsValue<'a> {

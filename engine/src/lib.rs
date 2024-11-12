@@ -120,7 +120,7 @@ pub use self::{
         UnknownFieldError,
     },
     types::{
-        ExpectedType, ExpectedTypeList, GetType, LhsValue, LhsValueMut, RhsValue, RhsValues, Type,
-        TypeMismatchError,
+        CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LhsValueMut, RhsValue,
+        RhsValues, Type, TypeMismatchError,
     },
 };
