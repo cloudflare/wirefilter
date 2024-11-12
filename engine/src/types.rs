@@ -41,11 +41,11 @@ pub enum ExpectedType {
     /// Fully identified expected type
     Type(Type),
     /// Loosely identified array type
-    /// Usefull when expecting an array without
+    /// Useful when expecting an array without
     /// knowing of which specific value type
     Array,
     /// Loosely identified map type
-    /// Usefull when expecting a map without
+    /// Useful when expecting a map without
     /// knowing of which specific value type
     Map,
 }
@@ -986,6 +986,8 @@ enum Layer {
     Map,
 }
 
+/// A type for field values that stores a recursive type in a flattened form. It
+/// is particularly useful for creating nested types such as arrays or maps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CompoundType {
     layers: u32,
@@ -1023,15 +1025,19 @@ impl CompoundType {
         }
     }
 
+    /// Converts a [`Type`] into a [`CompoundType`].
     #[inline]
-    pub(crate) const fn from_type(ty: Type) -> Option<Self> {
-        match ty {
+    pub const fn from_type(ty: Type) -> Self {
+        match match ty {
             Type::Bool => Some(Self::new(PrimitiveType::Bool)),
             Type::Bytes => Some(Self::new(PrimitiveType::Bytes)),
             Type::Int => Some(Self::new(PrimitiveType::Int)),
             Type::Ip => Some(Self::new(PrimitiveType::Ip)),
             Type::Array(ty) => ty.push(Layer::Array),
             Type::Map(ty) => ty.push(Layer::Map),
+        } {
+            Some(ty) => ty,
+            None => panic!("Could not convert type to compound type"),
         }
     }
 
@@ -1078,7 +1084,7 @@ impl From<PrimitiveType> for CompoundType {
 impl From<Type> for CompoundType {
     #[inline]
     fn from(ty: Type) -> Self {
-        Self::from_type(ty).unwrap()
+        Self::from_type(ty)
     }
 }
 
