@@ -1041,6 +1041,22 @@ impl CompoundType {
         }
     }
 
+    /// Converts a [`CompoundType`] into a [`Type`].
+    #[inline]
+    pub const fn into_type(self) -> Type {
+        let (ty, layer) = self.pop();
+        match layer {
+            Some(Layer::Array) => Type::Array(ty),
+            Some(Layer::Map) => Type::Map(ty),
+            None => match ty.primitive {
+                PrimitiveType::Bool => Type::Bool,
+                PrimitiveType::Bytes => Type::Bytes,
+                PrimitiveType::Int => Type::Int,
+                PrimitiveType::Ip => Type::Ip,
+            },
+        }
+    }
+
     #[inline]
     const fn pop(mut self) -> (Self, Option<Layer>) {
         if self.len > 0 {
@@ -1091,17 +1107,7 @@ impl From<Type> for CompoundType {
 impl From<CompoundType> for Type {
     #[inline]
     fn from(ty: CompoundType) -> Self {
-        let (ty, layer) = ty.pop();
-        match layer {
-            Some(Layer::Array) => Type::Array(ty),
-            Some(Layer::Map) => Type::Map(ty),
-            None => match ty.primitive {
-                PrimitiveType::Bool => Type::Bool,
-                PrimitiveType::Bytes => Type::Bytes,
-                PrimitiveType::Int => Type::Int,
-                PrimitiveType::Ip => Type::Ip,
-            },
-        }
+        ty.into_type()
     }
 }
 

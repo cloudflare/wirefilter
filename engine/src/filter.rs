@@ -184,6 +184,15 @@ pub struct Filter<'s, U = ()> {
     scheme: &'s Scheme,
 }
 
+impl<U> std::fmt::Debug for Filter<'_, U> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Filter")
+            .field("root", &self.root_expr)
+            .field("scheme", &(self.scheme as *const _))
+            .finish()
+    }
+}
+
 impl<'s, U> Filter<'s, U> {
     /// Creates a compiled expression IR from a generic closure.
     pub(crate) fn new(root_expr: CompiledOneExpr<'s, U>, scheme: &'s Scheme) -> Self {
