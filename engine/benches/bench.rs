@@ -53,7 +53,7 @@ struct FieldBench<'a, T: 'static> {
     values: &'a [T],
 }
 
-impl<'a, T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'a, T> {
+impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
     fn run(self, c: &mut Criterion) {
         let FieldBench {
             filters,

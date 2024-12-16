@@ -385,7 +385,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr<'s> {
     }
 }
 
-impl<'s> GetType for IndexExpr<'s> {
+impl GetType for IndexExpr<'_> {
     fn get_type(&self) -> Type {
         let mut ty = self.identifier.get_type();
         for index in &self.indexes {
@@ -401,7 +401,7 @@ impl<'s> GetType for IndexExpr<'s> {
     }
 }
 
-impl<'s> Serialize for IndexExpr<'s> {
+impl Serialize for IndexExpr<'_> {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         if self.indexes.is_empty() {
             self.identifier.serialize(ser)
@@ -453,7 +453,7 @@ impl<'a, 'b> FieldIndexIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for FieldIndexIterator<'a, 'b> {
+impl<'a> Iterator for FieldIndexIterator<'a, '_> {
     type Item = LhsValue<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -486,7 +486,7 @@ impl<'a, 'b> MapEachIterator<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for MapEachIterator<'a, 'b> {
+impl<'a> Iterator for MapEachIterator<'a, '_> {
     type Item = LhsValue<'a>;
 
     fn next(&mut self) -> Option<LhsValue<'a>> {

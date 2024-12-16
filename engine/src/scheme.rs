@@ -106,13 +106,13 @@ pub struct Field<'s> {
     index: usize,
 }
 
-impl<'s> Serialize for Field<'s> {
+impl Serialize for Field<'_> {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.name().serialize(ser)
     }
 }
 
-impl<'s> Debug for Field<'s> {
+impl Debug for Field<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
@@ -154,7 +154,7 @@ impl<'s> Field<'s> {
     }
 }
 
-impl<'s> GetType for Field<'s> {
+impl GetType for Field<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         self.scheme.fields[self.index].1
@@ -168,13 +168,13 @@ pub struct Function<'s> {
     index: usize,
 }
 
-impl<'s> Serialize for Function<'s> {
+impl Serialize for Function<'_> {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.name().serialize(ser)
     }
 }
 
-impl<'s> Debug for Function<'s> {
+impl Debug for Function<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
@@ -344,13 +344,13 @@ impl<'s> List<'s> {
     }
 }
 
-impl<'s> Debug for List<'s> {
+impl Debug for List<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.scheme.lists[self.index])
     }
 }
 
-impl<'s> GetType for List<'s> {
+impl GetType for List<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         self.scheme.lists[self.index].0

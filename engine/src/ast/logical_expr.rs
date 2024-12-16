@@ -66,7 +66,7 @@ pub enum LogicalExpr<'s> {
     },
 }
 
-impl<'s> GetType for LogicalExpr<'s> {
+impl GetType for LogicalExpr<'_> {
     fn get_type(&self) -> Type {
         match &self {
             LogicalExpr::Combining { ref items, .. } => items[0].get_type(),

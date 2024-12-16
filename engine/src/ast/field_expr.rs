@@ -268,7 +268,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr<'s> {
     }
 }
 
-impl<'s> GetType for IdentifierExpr<'s> {
+impl GetType for IdentifierExpr<'_> {
     fn get_type(&self) -> Type {
         match self {
             IdentifierExpr::Field(field) => field.get_type(),
@@ -288,7 +288,7 @@ pub struct ComparisonExpr<'s> {
     pub op: ComparisonOpExpr<'s>,
 }
 
-impl<'s> GetType for ComparisonExpr<'s> {
+impl GetType for ComparisonExpr<'_> {
     fn get_type(&self) -> Type {
         if self.lhs.map_each_count() > 0 {
             Type::Array(Type::Bool.into())

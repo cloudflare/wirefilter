@@ -17,7 +17,7 @@ fn parse_number<'i>((input, rest): (&'i str, &'i str), radix: u32) -> LexResult<
     }
 }
 
-impl<'i> Lex<'i> for i64 {
+impl Lex<'_> for i64 {
     fn lex(input: &str) -> LexResult<'_, Self> {
         if let Ok(input) = expect(input, "0x") {
             parse_number(lex_digits(input)?, 16)
@@ -54,7 +54,7 @@ impl From<RangeInclusive<i64>> for IntRange {
     }
 }
 
-impl<'i> Lex<'i> for IntRange {
+impl Lex<'_> for IntRange {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let initial_input = input;
         let (first, input) = i64::lex(input)?;

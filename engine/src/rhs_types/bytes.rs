@@ -185,7 +185,7 @@ enum ByteSeparator {
     Dot,
 }
 
-impl<'i> Lex<'i> for ByteSeparator {
+impl Lex<'_> for ByteSeparator {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let (sep, rest) = take(input, 1)?;
         match sep {
@@ -329,7 +329,7 @@ pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, Bytes> {
     }
 }
 
-impl<'i> Lex<'i> for Bytes {
+impl Lex<'_> for Bytes {
     #[inline]
     fn lex(input: &str) -> LexResult<'_, Self> {
         match input.as_bytes().first() {

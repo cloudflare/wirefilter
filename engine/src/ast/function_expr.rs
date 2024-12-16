@@ -88,7 +88,7 @@ impl<'s> ValueExpr<'s> for FunctionCallArgExpr<'s> {
     }
 }
 
-impl<'s> FunctionCallArgExpr<'s> {
+impl FunctionCallArgExpr<'_> {
     pub(crate) fn map_each_count(&self) -> usize {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_count(),
@@ -194,7 +194,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr<'s> {
     }
 }
 
-impl<'s> GetType for FunctionCallArgExpr<'s> {
+impl GetType for FunctionCallArgExpr<'_> {
     fn get_type(&self) -> Type {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.get_type(),
@@ -224,16 +224,16 @@ pub struct FunctionCallExpr<'s> {
     pub(crate) context: Option<FunctionDefinitionContext>,
 }
 
-impl<'s> PartialEq for FunctionCallExpr<'s> {
+impl PartialEq for FunctionCallExpr<'_> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.function == other.function && self.args == other.args
     }
 }
 
-impl<'s> Eq for FunctionCallExpr<'s> {}
+impl Eq for FunctionCallExpr<'_> {}
 
-impl<'s> Hash for FunctionCallExpr<'s> {
+impl Hash for FunctionCallExpr<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.function.hash(state);
@@ -497,7 +497,7 @@ fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> 
     )
 }
 
-impl<'s> GetType for FunctionCallExpr<'s> {
+impl GetType for FunctionCallExpr<'_> {
     fn get_type(&self) -> Type {
         if !self.args.is_empty() && self.args[0].map_each_count() > 0 {
             Type::Array(self.return_type().into())

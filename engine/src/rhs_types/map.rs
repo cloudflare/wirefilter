@@ -18,21 +18,21 @@ impl<'a> Borrow<Map<'a>> for UninhabitedMap {
     }
 }
 
-impl<'a> PartialEq<UninhabitedMap> for Map<'a> {
+impl PartialEq<UninhabitedMap> for Map<'_> {
     fn eq(&self, other: &UninhabitedMap) -> bool {
         match *other {}
     }
 }
 
-impl<'a> PartialOrd<UninhabitedMap> for Map<'a> {
+impl PartialOrd<UninhabitedMap> for Map<'_> {
     fn partial_cmp(&self, other: &UninhabitedMap) -> Option<Ordering> {
         match *other {}
     }
 }
 
-impl<'a> StrictPartialOrd<UninhabitedMap> for Map<'a> {}
+impl StrictPartialOrd<UninhabitedMap> for Map<'_> {}
 
-impl<'i> Lex<'i> for UninhabitedMap {
+impl Lex<'_> for UninhabitedMap {
     fn lex(_input: &str) -> LexResult<'_, Self> {
         unreachable!()
     }

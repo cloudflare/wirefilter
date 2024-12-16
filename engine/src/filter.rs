@@ -19,7 +19,7 @@ type BoxedClosureToOneBool<'s, U> =
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
 pub struct CompiledOneExpr<'s, U = ()>(BoxedClosureToOneBool<'s, U>);
 
-impl<'s, U> fmt::Debug for CompiledOneExpr<'s, U> {
+impl<U> fmt::Debug for CompiledOneExpr<'_, U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledOneExpr")
             .field(&((&*self.0) as *const _))
@@ -54,7 +54,7 @@ type BoxedClosureToVecBool<'s, U> =
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
 pub struct CompiledVecExpr<'s, U = ()>(BoxedClosureToVecBool<'s, U>);
 
-impl<'s, U> fmt::Debug for CompiledVecExpr<'s, U> {
+impl<U> fmt::Debug for CompiledVecExpr<'_, U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledVecExpr")
             .field(&((&*self.0) as *const _))
@@ -93,7 +93,7 @@ pub enum CompiledExpr<'s, U = ()> {
     Vec(CompiledVecExpr<'s, U>),
 }
 
-impl<'s, U> CompiledExpr<'s, U> {
+impl<U> CompiledExpr<'_, U> {
     #[cfg(test)]
     pub(crate) fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> bool {
         match self {
@@ -122,7 +122,7 @@ impl<'a> From<LhsValue<'a>> for CompiledValueResult<'a> {
     }
 }
 
-impl<'a> From<Type> for CompiledValueResult<'a> {
+impl From<Type> for CompiledValueResult<'_> {
     fn from(ty: Type) -> Self {
         Err(ty)
     }
@@ -134,7 +134,7 @@ type BoxedClosureToValue<'s, U> =
 /// Boxed closure for [`crate::ValueExpr`] AST node that evaluates to an [`LhsValue`].
 pub struct CompiledValueExpr<'s, U = ()>(BoxedClosureToValue<'s, U>);
 
-impl<'s, U> fmt::Debug for CompiledValueExpr<'s, U> {
+impl<U> fmt::Debug for CompiledValueExpr<'_, U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledValueExpr")
             .field(&((&*self.0) as *const _))

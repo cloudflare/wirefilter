@@ -423,9 +423,9 @@ impl GetType for CompoundType {
     }
 }
 
-impl<'a> StrictPartialOrd<RhsValue> for LhsValue<'a> {}
+impl StrictPartialOrd<RhsValue> for LhsValue<'_> {}
 
-impl<'a> PartialEq<RhsValue> for LhsValue<'a> {
+impl PartialEq<RhsValue> for LhsValue<'_> {
     fn eq(&self, other: &RhsValue) -> bool {
         self.strict_partial_cmp(other) == Some(Ordering::Equal)
     }
@@ -714,7 +714,7 @@ impl<'a> From<&'a RhsValue> for LhsValue<'a> {
     }
 }
 
-impl<'a> From<RhsValue> for LhsValue<'a> {
+impl From<RhsValue> for LhsValue<'_> {
     fn from(rhs_value: RhsValue) -> Self {
         match rhs_value {
             RhsValue::Ip(ip) => LhsValue::Ip(ip),
@@ -850,7 +850,7 @@ impl<'a> LhsValue<'a> {
     }
 }
 
-impl<'a> Serialize for LhsValue<'a> {
+impl Serialize for LhsValue<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -874,7 +874,7 @@ impl<'a> Serialize for LhsValue<'a> {
 
 pub(crate) struct LhsValueSeed<'a>(pub &'a Type);
 
-impl<'de, 'a> DeserializeSeed<'de> for LhsValueSeed<'a> {
+impl<'de> DeserializeSeed<'de> for LhsValueSeed<'_> {
     type Value = LhsValue<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -922,7 +922,7 @@ impl<'a> Iterator for IntoIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for IntoIter<'a> {
+impl ExactSizeIterator for IntoIter<'_> {
     fn len(&self) -> usize {
         match self {
             IntoIter::IntoArray(array) => array.len(),
@@ -963,7 +963,7 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for Iter<'a> {
+impl ExactSizeIterator for Iter<'_> {
     fn len(&self) -> usize {
         match self {
             Iter::IterArray(array) => array.len(),

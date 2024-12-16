@@ -212,7 +212,7 @@ impl<'a, 'e, U, T> ExecutionContextGuard<'a, 'e, U, T> {
     }
 }
 
-impl<'a, 'e, U, T> std::ops::Deref for ExecutionContextGuard<'a, 'e, U, T> {
+impl<'e, U, T> std::ops::Deref for ExecutionContextGuard<'_, 'e, U, T> {
     type Target = ExecutionContext<'e, T>;
 
     fn deref(&self) -> &Self::Target {
@@ -220,13 +220,13 @@ impl<'a, 'e, U, T> std::ops::Deref for ExecutionContextGuard<'a, 'e, U, T> {
     }
 }
 
-impl<'a, 'e, U, T> std::ops::DerefMut for ExecutionContextGuard<'a, 'e, U, T> {
+impl<U, T> std::ops::DerefMut for ExecutionContextGuard<'_, '_, U, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.new
     }
 }
 
-impl<'a, 'e, U, T> Drop for ExecutionContextGuard<'a, 'e, U, T> {
+impl<U, T> Drop for ExecutionContextGuard<'_, '_, U, T> {
     fn drop(&mut self) {
         self.old.values = std::mem::take(&mut self.new.values);
         self.old.list_matchers = std::mem::take(&mut self.new.list_matchers);
@@ -240,7 +240,7 @@ struct ListData {
     data: serde_json::Value,
 }
 
-impl<'de, 'a, U> DeserializeSeed<'de> for &'a mut ExecutionContext<'de, U> {
+impl<'de, U> DeserializeSeed<'de> for &mut ExecutionContext<'de, U> {
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -249,7 +249,7 @@ impl<'de, 'a, U> DeserializeSeed<'de> for &'a mut ExecutionContext<'de, U> {
     {
         struct ExecutionContextVisitor<'de, 'a, U>(&'a mut ExecutionContext<'de, U>);
 
-        impl<'de, 'a, U> Visitor<'de> for ExecutionContextVisitor<'de, 'a, U> {
+        impl<'de, U> Visitor<'de> for ExecutionContextVisitor<'de, '_, U> {
             type Value = ();
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -308,7 +308,7 @@ impl<'de, 'a, U> DeserializeSeed<'de> for &'a mut ExecutionContext<'de, U> {
     }
 }
 
-impl<'e> Serialize for ExecutionContext<'e> {
+impl Serialize for ExecutionContext<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -322,7 +322,7 @@ impl<'e> Serialize for ExecutionContext<'e> {
 
         struct ListMatcherSlice<'a>(&'a Scheme, &'a [Box<dyn ListMatcher>]);
 
-        impl<'a> Serialize for ListMatcherSlice<'a> {
+        impl Serialize for ListMatcherSlice<'_> {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where
                 S: Serializer,

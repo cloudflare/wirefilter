@@ -30,7 +30,7 @@ impl PartialOrd<UninhabitedBool> for bool {
 
 impl StrictPartialOrd<UninhabitedBool> for bool {}
 
-impl<'i> Lex<'i> for UninhabitedBool {
+impl Lex<'_> for UninhabitedBool {
     fn lex(_input: &str) -> LexResult<'_, Self> {
         unreachable!()
     }

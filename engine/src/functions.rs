@@ -169,7 +169,7 @@ impl From<&FunctionParam<'_>> for FunctionArgKind {
     }
 }
 
-impl<'a> GetType for FunctionParam<'a> {
+impl GetType for FunctionParam<'_> {
     fn get_type(&self) -> Type {
         match self {
             FunctionParam::Constant(value) => value.get_type(),
@@ -405,7 +405,7 @@ pub trait FunctionDefinition: Debug + Send + Sync {
     ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
-/// Simple function API
+/* Simple function APIs */
 
 type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
 
