@@ -80,20 +80,20 @@ pub fn panic_catcher_set_fallback_mode(
 #[inline(always)]
 pub fn catch_panic<F, T>(f: F) -> Result<T, String>
 where
-    F: FnOnce() -> Result<T, String> + UnwindSafe,
+    F: FnOnce() -> T + UnwindSafe,
 {
     if panic_catcher_start_catching() {
         let result = std::panic::catch_unwind(f);
         panic_catcher_stop_catching();
         match result {
-            Ok(res) => res,
+            Ok(res) => Ok(res),
             Err(_) => Err(panic_catcher_get_backtrace().unwrap_or_else(|| {
                 "thread '<unknown>' panicked at '<unknown>' in file '<unknown>' at line 0"
                     .to_string()
             })),
         }
     } else {
-        f()
+        Ok(f())
     }
 }
 

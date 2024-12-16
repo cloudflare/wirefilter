@@ -27,5 +27,8 @@ wirefilter.workspace = true
 indoc.workspace = true
 regex.workspace = true
 
+[build-dependencies]
+cbindgen = "0.27"
+
 [target.'cfg(unix)'.dev-dependencies]
 wirefilter-ffi-ctests = { path = "tests/ctests" }
