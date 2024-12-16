@@ -304,15 +304,15 @@ impl<'a> PartialEq for Array<'a> {
     }
 }
 
-impl<'a> Eq for Array<'a> {}
+impl Eq for Array<'_> {}
 
-impl<'a> GetType for Array<'a> {
+impl GetType for Array<'_> {
     fn get_type(&self) -> Type {
         Type::Array(self.val_type)
     }
 }
 
-impl<'a> Hash for Array<'a> {
+impl Hash for Array<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get_type().hash(state);
         self.data.deref().hash(state);
@@ -352,7 +352,7 @@ impl<'a> Iterator for ArrayIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for ArrayIterator<'a> {
+impl ExactSizeIterator for ArrayIterator<'_> {
     fn len(&self) -> usize {
         match self {
             ArrayIterator::Owned(vec_iter) => vec_iter.len(),
@@ -380,7 +380,7 @@ impl<'a, 'b> IntoIterator for &'b Array<'a> {
     }
 }
 
-impl<'a> Serialize for Array<'a> {
+impl Serialize for Array<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -393,7 +393,7 @@ impl<'a> Serialize for Array<'a> {
     }
 }
 
-impl<'de, 'a> DeserializeSeed<'de> for &'a mut Array<'de> {
+impl<'de> DeserializeSeed<'de> for &mut Array<'de> {
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -402,7 +402,7 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut Array<'de> {
     {
         struct ArrayVisitor<'de, 'a>(&'a mut Array<'de>);
 
-        impl<'de, 'a> Visitor<'de> for ArrayVisitor<'de, 'a> {
+        impl<'de> Visitor<'de> for ArrayVisitor<'de, '_> {
             type Value = ();
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -461,7 +461,7 @@ impl<'a, 'b> ArrayMut<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Deref for ArrayMut<'a, 'b> {
+impl<'b> Deref for ArrayMut<'_, 'b> {
     type Target = Array<'b>;
 
     #[inline]

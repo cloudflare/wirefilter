@@ -206,16 +206,16 @@ impl<'a> PartialEq for Map<'a> {
     }
 }
 
-impl<'a> Eq for Map<'a> {}
+impl Eq for Map<'_> {}
 
-impl<'a> GetType for Map<'a> {
+impl GetType for Map<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         Type::Map(self.val_type)
     }
 }
 
-impl<'a> Hash for Map<'a> {
+impl Hash for Map<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get_type().hash(state);
         self.data.deref().hash(state);
@@ -239,7 +239,7 @@ impl<'a, 'b> Iterator for MapIter<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ExactSizeIterator for MapIter<'a, 'b> {
+impl ExactSizeIterator for MapIter<'_, '_> {
     #[inline]
     fn len(&self) -> usize {
         self.0.len()
@@ -268,7 +268,7 @@ impl<'a> Iterator for MapValuesIntoIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for MapValuesIntoIter<'a> {
+impl ExactSizeIterator for MapValuesIntoIter<'_> {
     fn len(&self) -> usize {
         match self {
             MapValuesIntoIter::Owned(iter) => iter.len(),
@@ -298,7 +298,7 @@ impl<'a, 'b> IntoIterator for &'b Map<'a> {
     }
 }
 
-impl<'a> Serialize for Map<'a> {
+impl Serialize for Map<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -332,7 +332,7 @@ impl<'a> Serialize for Map<'a> {
 
 struct MapEntrySeed<'a>(&'a Type);
 
-impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
+impl<'de> DeserializeSeed<'de> for MapEntrySeed<'_> {
     type Value = (Cow<'de, [u8]>, LhsValue<'de>);
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -341,7 +341,7 @@ impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
     {
         struct MapEntryVisitor<'a>(&'a Type);
 
-        impl<'de, 'a> Visitor<'de> for MapEntryVisitor<'a> {
+        impl<'de> Visitor<'de> for MapEntryVisitor<'_> {
             type Value = (Cow<'de, [u8]>, LhsValue<'de>);
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -366,7 +366,7 @@ impl<'de, 'a> DeserializeSeed<'de> for MapEntrySeed<'a> {
     }
 }
 
-impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
+impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
     type Value = ();
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -375,7 +375,7 @@ impl<'de, 'a> DeserializeSeed<'de> for &'a mut Map<'de> {
     {
         struct MapVisitor<'de, 'a>(&'a mut Map<'de>);
 
-        impl<'de, 'a> Visitor<'de> for MapVisitor<'de, 'a> {
+        impl<'de> Visitor<'de> for MapVisitor<'de, '_> {
             type Value = ();
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -455,7 +455,7 @@ impl<'a, 'b> MapMut<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Deref for MapMut<'a, 'b> {
+impl<'b> Deref for MapMut<'_, 'b> {
     type Target = Map<'b>;
 
     #[inline]

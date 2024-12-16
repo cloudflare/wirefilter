@@ -28,7 +28,7 @@ pub struct ParseError<'i> {
     pub(crate) span_len: usize,
 }
 
-impl<'i> Error for ParseError<'i> {}
+impl Error for ParseError<'_> {}
 
 impl<'i> ParseError<'i> {
     /// Create a new ParseError for the input, LexErrorKind and span in the
@@ -71,7 +71,7 @@ impl<'i> ParseError<'i> {
     }
 }
 
-impl<'i> Display for ParseError<'i> {
+impl Display for ParseError<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(
             f,

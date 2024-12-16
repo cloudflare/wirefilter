@@ -73,7 +73,7 @@ pub struct FilterAst<'s> {
     op: LogicalExpr<'s>,
 }
 
-impl<'s> Debug for FilterAst<'s> {
+impl Debug for FilterAst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.op.fmt(f)
     }
@@ -186,7 +186,7 @@ pub struct FilterValueAst<'s> {
     op: IndexExpr<'s>,
 }
 
-impl<'s> Debug for FilterValueAst<'s> {
+impl Debug for FilterValueAst<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.op.fmt(f)
     }
@@ -275,7 +275,7 @@ impl<'s> FilterValueAst<'s> {
     }
 }
 
-impl<'s> GetType for FilterValueAst<'s> {
+impl GetType for FilterValueAst<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         self.op.get_type()

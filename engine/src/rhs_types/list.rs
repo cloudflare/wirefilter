@@ -11,7 +11,7 @@ impl From<String> for ListName {
     }
 }
 
-impl<'i> Lex<'i> for ListName {
+impl Lex<'_> for ListName {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let mut res = String::new();
         let mut rest;

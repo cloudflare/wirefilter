@@ -149,7 +149,7 @@ impl<'s> From<FilterAst<'s>> for ParsingResult<'s> {
     }
 }
 
-impl<'s, 'a> From<ParseError<'a>> for ParsingResult<'s> {
+impl<'a> From<ParseError<'a>> for ParsingResult<'_> {
     fn from(err: ParseError<'a>) -> Self {
         ParsingResult::Err(RustAllocatedString::from(err.to_string()))
     }
@@ -530,7 +530,6 @@ pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
     name: ExternallyAllocatedByteArr<'_>,
     value: Box<LhsValue<'a>>,
 ) -> bool {
-    let value = value;
     map_insert!(map, name, *value)
 }
 
@@ -540,7 +539,6 @@ pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
     name: ExternallyAllocatedByteArr<'_>,
     value: Box<LhsValue<'a>>,
 ) -> bool {
-    let value = value;
     map_insert!(map, name, *value)
 }
 

@@ -18,21 +18,21 @@ impl<'a> Borrow<Array<'a>> for UninhabitedArray {
     }
 }
 
-impl<'a> PartialEq<UninhabitedArray> for Array<'a> {
+impl PartialEq<UninhabitedArray> for Array<'_> {
     fn eq(&self, other: &UninhabitedArray) -> bool {
         match *other {}
     }
 }
 
-impl<'a> PartialOrd<UninhabitedArray> for Array<'a> {
+impl PartialOrd<UninhabitedArray> for Array<'_> {
     fn partial_cmp(&self, other: &UninhabitedArray) -> Option<Ordering> {
         match *other {}
     }
 }
 
-impl<'a> StrictPartialOrd<UninhabitedArray> for Array<'a> {}
+impl StrictPartialOrd<UninhabitedArray> for Array<'_> {}
 
-impl<'i> Lex<'i> for UninhabitedArray {
+impl Lex<'_> for UninhabitedArray {
     fn lex(_input: &str) -> LexResult<'_, Self> {
         unreachable!()
     }

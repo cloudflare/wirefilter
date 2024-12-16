@@ -30,7 +30,7 @@ fn parse_addr(input: &str) -> Result<IpAddr, LexError<'_>> {
     })
 }
 
-impl<'i> Lex<'i> for IpAddr {
+impl Lex<'_> for IpAddr {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let (input, rest) = match_addr_or_cidr(input)?;
         parse_addr(input).map(|res| (res, rest))
@@ -66,7 +66,7 @@ impl From<IpAddr> for IpRange {
     }
 }
 
-impl<'i> Lex<'i> for IpRange {
+impl Lex<'_> for IpRange {
     fn lex(input: &str) -> LexResult<'_, Self> {
         let (chunk, rest) = match_addr_or_cidr(input)?;
 
