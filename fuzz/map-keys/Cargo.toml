@@ -5,9 +5,7 @@ edition = "2021"
 
 [dependencies]
 afl = "0.15"
-
-[dependencies.wirefilter-engine]
-path = "../../engine"
+wirefilter.workspace = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

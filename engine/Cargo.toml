@@ -8,6 +8,7 @@ license = "MIT"
 repository = "https://github.com/cloudflare/wirefilter"
 keywords = [ "wireshark", "filter", "engine", "parser", "runtime" ]
 categories = [ "config", "parser-implementations" ]
+publish.workspace = true
 edition.workspace = true
 
 [lib]
