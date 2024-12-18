@@ -17,7 +17,7 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{catch_panic, AlwaysList, ListDefinition, NeverList, Type};
+use wirefilter::{catch_panic, AlwaysList, LhsValue, ListDefinition, NeverList, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -132,56 +132,69 @@ impl From<Type> for CType {
     }
 }
 
-#[repr(Rust)]
-pub struct Scheme(wirefilter::Scheme);
+macro_rules! wrap_type {
+    ($rust:ident $(<$rust_lt:lifetime>)? => $ffi:ident $(<$ffi_lt:lifetime>)?) => {
+        impl$(<$ffi_lt>)? Deref for $ffi$(<$ffi_lt>)? {
+            type Target = wirefilter::$rust$(<$rust_lt>)?;
 
-impl Deref for Scheme {
-    type Target = wirefilter::Scheme;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+        impl$(<$ffi_lt>)? DerefMut for $ffi$(<$ffi_lt>)? {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+
+        impl$(<$ffi_lt>)? AsRef<wirefilter::$rust$(<$rust_lt>)?> for $ffi$(<$ffi_lt>)? {
+            fn as_ref(&self) -> &wirefilter::$rust$(<$rust_lt>)? {
+                &self.0
+            }
+        }
+
+        impl$(<$ffi_lt>)? From<wirefilter::$rust$(<$rust_lt>)?> for $ffi$(<$ffi_lt>)? {
+            fn from(value: wirefilter::$rust$(<$rust_lt>)?) -> Self {
+                Self(value)
+            }
+        }
+
+        impl$(<$rust_lt>)? From<$ffi$(<$ffi_lt>)?> for wirefilter::$rust$(<$rust_lt>)? {
+            fn from(value: $ffi$(<$ffi_lt>)?) -> Self {
+                value.0
+            }
+        }
+    };
+
+    ($rust:ident $(<$rust_lt:lifetime>)?) => {
+        wrap_type!($rust $(<$rust_lt>)? => $rust $(<$rust_lt>)?);
+    };
 }
 
-impl DerefMut for Scheme {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+/* Wrapper types needed by cbindgen to forard declare opaque structs */
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
-pub struct ExecutionContext<'s>(wirefilter::ExecutionContext<'s, ()>);
+pub struct Scheme(wirefilter::Scheme);
 
-impl<'s> Deref for ExecutionContext<'s> {
-    type Target = wirefilter::ExecutionContext<'s, ()>;
+wrap_type!(Scheme);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+#[derive(Debug, PartialEq)]
+#[repr(Rust)]
+pub struct ExecutionContext<'s>(wirefilter::ExecutionContext<'s>);
 
-impl DerefMut for ExecutionContext<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
+wrap_type!(ExecutionContext<'s>);
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
 pub struct Array<'s>(wirefilter::Array<'s>);
 
-impl<'s> Deref for Array<'s> {
-    type Target = wirefilter::Array<'s>;
+wrap_type!(Array<'s>);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Array<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl<'s> From<Array<'s>> for LhsValue<'s> {
+    fn from(array: Array<'s>) -> Self {
+        Self::Array(array.into())
     }
 }
 
@@ -189,17 +202,11 @@ impl DerefMut for Array<'_> {
 #[repr(Rust)]
 pub struct Map<'s>(wirefilter::Map<'s>);
 
-impl<'s> Deref for Map<'s> {
-    type Target = wirefilter::Map<'s>;
+wrap_type!(Map<'s>);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Map<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl<'s> From<Map<'s>> for LhsValue<'s> {
+    fn from(map: Map<'s>) -> Self {
+        Self::Map(map.into())
     }
 }
 
@@ -207,37 +214,19 @@ impl DerefMut for Map<'_> {
 #[repr(Rust)]
 pub struct Value<'s>(wirefilter::LhsValue<'s>);
 
-impl<'s> Deref for Value<'s> {
-    type Target = wirefilter::LhsValue<'s>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+wrap_type!(LhsValue<'s> => Value<'s>);
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
 pub struct FilterAst<'s>(wirefilter::FilterAst<'s>);
 
-impl<'s> Deref for FilterAst<'s> {
-    type Target = wirefilter::FilterAst<'s>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+wrap_type!(FilterAst<'s>);
 
 #[derive(Debug)]
 #[repr(Rust)]
 pub struct Filter<'s>(wirefilter::Filter<'s, ()>);
 
-impl<'s> Deref for Filter<'s> {
-    type Target = wirefilter::Filter<'s>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+wrap_type!(Filter<'s>);
 
 /// Represents the status of an operation.
 #[derive(Debug, PartialEq)]
@@ -545,7 +534,7 @@ pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
 pub extern "C" fn wirefilter_serialize_execution_context_to_json(
     exec_context: &mut ExecutionContext<'_>,
 ) -> SerializingResult {
-    serde_json::to_string(&exec_context.0).into()
+    serde_json::to_string(exec_context.as_ref()).into()
 }
 
 #[no_mangle]
@@ -665,7 +654,7 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
         Ok(f) => f,
         Err(_) => return false,
     };
-    exec_context.set_field_value(field, value.0).is_ok()
+    exec_context.set_field_value(field, *value).is_ok()
 }
 
 #[no_mangle]
@@ -680,7 +669,7 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
         Ok(f) => f,
         Err(_) => return false,
     };
-    exec_context.set_field_value(field, value.0).is_ok()
+    exec_context.set_field_value(field, *value).is_ok()
 }
 
 #[no_mangle]
@@ -762,7 +751,7 @@ pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
 ) -> bool {
     assert!(!name_ptr.is_null());
     let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, value.0).is_ok()
+    map.insert(name, *value).is_ok()
 }
 
 #[no_mangle]
@@ -774,7 +763,7 @@ pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
 ) -> bool {
     assert!(!name_ptr.is_null());
     let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, value.0).is_ok()
+    map.insert(name, *value).is_ok()
 }
 
 #[no_mangle]
@@ -843,7 +832,7 @@ pub extern "C" fn wirefilter_add_map_value_to_array<'a>(
     index: u32,
     value: Box<Map<'a>>,
 ) -> bool {
-    array.insert(index.try_into().unwrap(), value.0).is_ok()
+    array.insert(index.try_into().unwrap(), *value).is_ok()
 }
 
 #[no_mangle]
@@ -852,7 +841,7 @@ pub extern "C" fn wirefilter_add_array_value_to_array<'a>(
     index: u32,
     value: Box<Array<'a>>,
 ) -> bool {
-    array.insert(index.try_into().unwrap(), value.0).is_ok()
+    array.insert(index.try_into().unwrap(), *value).is_ok()
 }
 
 #[no_mangle]
@@ -869,7 +858,9 @@ pub struct CompilingResult<'a> {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_compile_filter(filter_ast: Box<FilterAst<'_>>) -> CompilingResult<'_> {
-    match catch_panic(std::panic::AssertUnwindSafe(|| filter_ast.0.compile())) {
+    match catch_panic(std::panic::AssertUnwindSafe(|| {
+        wirefilter::FilterAst::from(*filter_ast).compile()
+    })) {
         Ok(filter) => CompilingResult {
             status: Status::Success,
             filter: Some(Box::new(Filter(filter))),
@@ -1525,12 +1516,12 @@ mod ffi_test {
     #[test]
     fn execution_context_deserialize() {
         let scheme = create_scheme();
-        let exec_context = create_execution_context(&scheme);
+        let exec_context = *create_execution_context(&scheme);
 
-        let expected: String = serde_json::to_string(&exec_context.0).unwrap();
+        let expected: String = serde_json::to_string(exec_context.as_ref()).unwrap();
         assert!(expected.len() > 3);
 
-        let mut exec_context_c = wirefilter_create_execution_context(&scheme);
+        let mut exec_context_c = *wirefilter_create_execution_context(&scheme);
         let res = wirefilter_deserialize_json_to_execution_context(
             &mut exec_context_c,
             expected.as_ptr(),
@@ -1538,7 +1529,7 @@ mod ffi_test {
         );
         assert_eq!(res, true);
 
-        let expected_c: String = serde_json::to_string(&exec_context_c.0).unwrap();
+        let expected_c: String = serde_json::to_string(exec_context_c.as_ref()).unwrap();
         assert_eq!(expected, expected_c);
     }
 
