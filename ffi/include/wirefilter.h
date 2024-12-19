@@ -61,8 +61,6 @@ struct wirefilter_map;
 
 struct wirefilter_scheme;
 
-struct wirefilter_value;
-
 struct wirefilter_type {
   uint32_t layers;
   uint8_t len;
@@ -249,7 +247,7 @@ bool wirefilter_add_array_value_to_map(struct wirefilter_map *map,
                                        size_t name_len,
                                        struct wirefilter_array *value);
 
-void wirefilter_free_map(struct wirefilter_value *map);
+void wirefilter_free_map(struct wirefilter_map *map);
 
 struct wirefilter_array *wirefilter_create_array(struct wirefilter_type ty);
 
