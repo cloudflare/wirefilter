@@ -212,12 +212,6 @@ impl<'s> From<Map<'s>> for LhsValue<'s> {
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
-pub struct Value<'s>(wirefilter::LhsValue<'s>);
-
-wrap_type!(LhsValue<'s> => Value<'s>);
-
-#[derive(Debug, PartialEq)]
-#[repr(Rust)]
 pub struct FilterAst<'s>(wirefilter::FilterAst<'s>);
 
 wrap_type!(FilterAst<'s>);
@@ -767,7 +761,7 @@ pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_map(map: Box<Value<'_>>) {
+pub extern "C" fn wirefilter_free_map(map: Box<Map<'_>>) {
     drop(map)
 }
 
