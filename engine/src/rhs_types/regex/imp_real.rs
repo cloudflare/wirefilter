@@ -1,12 +1,39 @@
 use crate::{FilterParser, RegexFormat};
+use std::borrow::Borrow;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub use regex::Error;
 
 /// Wrapper around [`regex::bytes::Regex`]
 #[derive(Clone)]
 pub struct Regex {
-    compiled_regex: regex::bytes::Regex,
+    compiled_regex: Arc<regex::bytes::Regex>,
     format: RegexFormat,
+}
+
+fn get_regex_pool() -> &'static Mutex<HashSet<Regex>> {
+    static REGEX_POOL: OnceLock<Mutex<HashSet<Regex>>> = OnceLock::new();
+    REGEX_POOL.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+impl Drop for Regex {
+    fn drop(&mut self) {
+        // check whether this is the last strong reference to the regex, and
+        // avoid deadlock by making sure to drop the last cached regex only
+        // after we've dropped the lock on the pool.
+        let cached_regex = if Arc::strong_count(&self.compiled_regex) == 2
+            && Arc::weak_count(&self.compiled_regex) == 0
+        {
+            let mut pool = get_regex_pool().lock().unwrap();
+            pool.take(self.as_str())
+        } else {
+            None
+        };
+
+        // now we can safely drop the regex, as there's no deadlock
+        drop(cached_regex);
+    }
 }
 
 impl Regex {
@@ -16,15 +43,24 @@ impl Regex {
         format: RegexFormat,
         parser: &FilterParser<'_>,
     ) -> Result<Self, Error> {
-        ::regex::bytes::RegexBuilder::new(pattern)
+        let mut pool = get_regex_pool().lock().unwrap();
+        if let Some(regex) = pool.get(pattern) {
+            return Ok(regex.clone());
+        }
+
+        let compiled_regex = ::regex::bytes::RegexBuilder::new(pattern)
             .unicode(false)
             .size_limit(parser.regex_compiled_size_limit)
             .dfa_size_limit(parser.regex_dfa_size_limit)
-            .build()
-            .map(|r| Regex {
-                compiled_regex: r,
-                format,
-            })
+            .build()?;
+
+        let regex = Self {
+            compiled_regex: Arc::from(compiled_regex),
+            format,
+        };
+
+        pool.insert(regex.clone());
+        Ok(regex)
     }
 
     /// Returns true if and only if the regex matches the string given.
@@ -43,9 +79,9 @@ impl Regex {
     }
 }
 
-impl From<Regex> for regex::bytes::Regex {
-    fn from(regex: Regex) -> Self {
-        regex.compiled_regex
+impl Borrow<str> for Regex {
+    fn borrow(&self) -> &str {
+        self.compiled_regex.as_str()
     }
 }
 
