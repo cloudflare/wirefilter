@@ -5,7 +5,7 @@ use crate::types::LhsValue;
 
 pub use self::{
     array::{Array, ArrayIterator, ArrayMut, TypedArray},
-    map::{Map, MapIter, MapMut, MapValuesIntoIter},
+    map::{Map, MapIter, MapMut, MapValuesIntoIter, TypedMap},
 };
 
 pub struct AsRefIterator<'a, T: Iterator<Item = &'a LhsValue<'a>>>(T);

@@ -1,7 +1,7 @@
 use crate::{
     lhs_types::AsRefIterator,
     types::{
-        BytesOrString, CompoundType, GetType, LhsValue, LhsValueMut, LhsValueSeed, Type,
+        BytesOrString, CompoundType, GetType, IntoValue, LhsValue, LhsValueMut, LhsValueSeed, Type,
         TypeMismatchError,
     },
 };
@@ -46,8 +46,8 @@ impl<'a> InnerMap<'a> {
     }
 
     #[inline]
-    fn insert(&mut self, key: &[u8], value: LhsValue<'a>) {
-        self.as_map().insert(key.to_vec().into_boxed_slice(), value);
+    fn insert(&mut self, key: Box<[u8]>, value: LhsValue<'a>) {
+        self.as_map().insert(key, value);
     }
 
     #[inline]
@@ -65,6 +65,12 @@ impl<'a> Deref for InnerMap<'a> {
             InnerMap::Owned(map) => map,
             InnerMap::Borrowed(ref_map) => ref_map,
         }
+    }
+}
+
+impl Default for InnerMap<'_> {
+    fn default() -> Self {
+        Self::Owned(BTreeMap::new())
     }
 }
 
@@ -108,7 +114,7 @@ impl<'a> Map<'a> {
                 actual: value_type,
             });
         }
-        self.data.insert(key, value);
+        self.data.insert(key.into(), value);
         Ok(())
     }
 
@@ -468,6 +474,87 @@ impl<'a, 'b> From<&'a mut Map<'b>> for MapMut<'a, 'b> {
     #[inline]
     fn from(map: &'a mut Map<'b>) -> Self {
         Self(map)
+    }
+}
+
+/// Typed wrapper over a `Map` which provides
+/// infaillible operations.
+#[derive(Debug)]
+pub struct TypedMap<'a, V>
+where
+    V: IntoValue<'a>,
+{
+    map: InnerMap<'a>,
+    _marker: std::marker::PhantomData<BTreeMap<Box<[u8]>, V>>,
+}
+
+impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
+    /// Push an element to the back of the map
+    #[inline]
+    pub fn insert(&mut self, key: Box<[u8]>, value: V) {
+        self.map.insert(key, value.into_value())
+    }
+
+    /// Returns the number of elements in the array
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Returns true if the array contains no elements.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
+
+impl<'a, V: IntoValue<'a>> From<TypedMap<'a, V>> for Map<'a> {
+    #[inline]
+    fn from(value: TypedMap<'a, V>) -> Self {
+        Self {
+            val_type: V::TYPE.into(),
+            data: value.map,
+        }
+    }
+}
+
+impl<'a, V: IntoValue<'a>> Default for TypedMap<'a, V> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            map: InnerMap::default(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, V: IntoValue<'a>> Extend<(Box<[u8]>, V)> for TypedMap<'a, V> {
+    #[inline]
+    fn extend<T: IntoIterator<Item = (Box<[u8]>, V)>>(&mut self, iter: T) {
+        self.map
+            .as_map()
+            .extend(iter.into_iter().map(|(k, v)| (k, v.into_value())))
+    }
+}
+
+impl<'a, V: IntoValue<'a>> FromIterator<(Box<[u8]>, V)> for TypedMap<'a, V> {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = (Box<[u8]>, V)>,
+    {
+        Self {
+            map: InnerMap::Owned(iter.into_iter().map(|(k, v)| (k, v.into_value())).collect()),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedMap<'a, V> {
+    const TYPE: Type = Type::Map(CompoundType::from_type(V::TYPE));
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Map(self.into())
     }
 }
 
