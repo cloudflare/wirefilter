@@ -17,11 +17,13 @@ use std::{
     ops::Deref,
 };
 
+use super::{map::InnerMap, TypedMap};
+
 // Ideally, we would want to use Cow<'a, LhsValue<'a>> here
 // but it doesnt work for unknown reasons
 // See https://github.com/rust-lang/rust/issues/23707#issuecomment-557312736
 #[derive(Debug, Clone)]
-enum InnerArray<'a> {
+pub(crate) enum InnerArray<'a> {
     Owned(Vec<LhsValue<'a>>),
     Borrowed(&'a [LhsValue<'a>]),
 }
@@ -89,7 +91,7 @@ impl Default for InnerArray<'_> {
 #[derive(Debug, Clone)]
 pub struct Array<'a> {
     val_type: CompoundType,
-    data: InnerArray<'a>,
+    pub(crate) data: InnerArray<'a>,
 }
 
 impl<'a> Array<'a> {
@@ -485,7 +487,7 @@ impl<'a, 'b> From<&'a mut Array<'b>> for ArrayMut<'a, 'b> {
 
 /// Typed wrapper over an `Array` which provides
 /// infaillible operations.
-#[derive(Debug)]
+#[repr(transparent)]
 pub struct TypedArray<'a, V>
 where
     V: IntoValue<'a>,
@@ -518,6 +520,14 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     pub fn truncate(&mut self, len: usize) {
         self.array.truncate(len);
     }
+
+    /// Converts the strongly typed array into a borrowed loosely typed array.
+    pub fn as_array(&'a self) -> Array<'a> {
+        Array {
+            val_type: V::TYPE.into(),
+            data: InnerArray::Borrowed(self.array.deref()),
+        }
+    }
 }
 
 impl TypedArray<'static, bool> {
@@ -538,9 +548,26 @@ impl TypedArray<'static, bool> {
     }
 }
 
-impl<T: AsRef<[bool]>> PartialEq<T> for TypedArray<'static, bool> {
-    fn eq(&self, other: &T) -> bool {
-        self.iter().eq(other.as_ref())
+impl<'a, V: IntoValue<'a>> fmt::Debug for TypedArray<'a, V> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_list().entries(self.array.iter()).finish()
+    }
+}
+
+impl<'a, V: IntoValue<'a>> PartialEq for TypedArray<'a, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.array.deref() == other.array.deref()
+    }
+}
+
+impl<'a, V: Copy + IntoValue<'a>, S: AsRef<[V]>> PartialEq<S> for TypedArray<'a, V> {
+    fn eq(&self, other: &S) -> bool {
+        other
+            .as_ref()
+            .iter()
+            .copied()
+            .map(IntoValue::into_value)
+            .eq(self.array.iter())
     }
 }
 
@@ -594,26 +621,131 @@ impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedArray<'a, V> {
     }
 }
 
-#[test]
-fn test_size_of_array() {
-    assert_eq!(std::mem::size_of::<Array<'_>>(), 32);
+impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedArray<'a, V>> {
+    /// Returns a reference to an element or None if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<&TypedArray<'a, V>> {
+        self.array.get(index).map(|val| match val {
+            LhsValue::Array(array) => {
+                // Safety: this is safe because `TypedArray` is a repr(transparent)
+                // newtype over `InnerArray`.
+                unsafe { std::mem::transmute::<&InnerArray<'a>, &TypedArray<'a, V>>(&array.data) }
+            }
+            _ => unreachable!(),
+        })
+    }
+
+    /// Returns a mutable reference to an element or None if the index is out of bounds.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut TypedArray<'a, V>> {
+        self.array.get_mut(index).map(|val| match val {
+            LhsValue::Array(array) => {
+                // Safety: this is safe because `TypedArray` is a repr(transparent)
+                // newtype over `InnerArray`.
+                unsafe {
+                    std::mem::transmute::<&mut InnerArray<'a>, &mut TypedArray<'a, V>>(
+                        &mut array.data,
+                    )
+                }
+            }
+            _ => unreachable!(),
+        })
+    }
 }
 
-#[test]
-fn test_borrowed_eq_owned() {
-    let mut owned = Array::new(Type::Bytes);
+impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedMap<'a, V>> {
+    /// Returns a reference to an element or None if the index is out of bounds.
+    pub fn get(&self, index: usize) -> Option<&TypedMap<'a, V>> {
+        self.array.get(index).map(|val| match val {
+            LhsValue::Map(map) => {
+                // Safety: this is safe because `TypedMap` is a repr(transparent)
+                // newtype over `InnerMap`.
+                unsafe { std::mem::transmute::<&InnerMap<'a>, &TypedMap<'a, V>>(&map.data) }
+            }
+            _ => unreachable!(),
+        })
+    }
 
-    owned
-        .push(LhsValue::Bytes("borrowed".as_bytes().into()))
-        .unwrap();
+    /// Returns a mutable reference to an element or None if the index is out of bounds.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut TypedMap<'a, V>> {
+        self.array.get_mut(index).map(|val| match val {
+            LhsValue::Map(map) => {
+                // Safety: this is safe because `TypedMap` is a repr(transparent)
+                // newtype over `InnerMap`.
+                unsafe {
+                    std::mem::transmute::<&mut InnerMap<'a>, &mut TypedMap<'a, V>>(&mut map.data)
+                }
+            }
+            _ => unreachable!(),
+        })
+    }
+}
 
-    let borrowed = owned.as_ref();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert!(matches!(owned.data, InnerArray::Owned(_)));
+    #[test]
+    fn test_size_of_array() {
+        assert_eq!(std::mem::size_of::<Array<'_>>(), 32);
+    }
 
-    assert!(matches!(borrowed.data, InnerArray::Borrowed(_)));
+    #[test]
+    fn test_borrowed_eq_owned() {
+        let mut owned = Array::new(Type::Bytes);
 
-    assert_eq!(owned, borrowed);
+        owned
+            .push(LhsValue::Bytes("borrowed".as_bytes().into()))
+            .unwrap();
 
-    assert_eq!(borrowed, borrowed.to_owned());
+        let borrowed = owned.as_ref();
+
+        assert!(matches!(owned.data, InnerArray::Owned(_)));
+
+        assert!(matches!(borrowed.data, InnerArray::Borrowed(_)));
+
+        assert_eq!(owned, borrowed);
+
+        assert_eq!(borrowed, borrowed.to_owned());
+    }
+
+    #[test]
+    fn test_typed_array_get_typed_array() {
+        let mut array = TypedArray::from_iter([
+            TypedArray::from_iter(["a", "b", "c"]),
+            TypedArray::from_iter(["d", "e"]),
+        ]);
+
+        assert_eq!(*array.get(0).unwrap(), ["a", "b", "c"],);
+
+        assert_eq!(*array.get(1).unwrap(), ["d", "e"]);
+
+        array.get_mut(1).unwrap().push("f");
+
+        assert_eq!(*array.get(1).unwrap(), ["d", "e", "f"]);
+    }
+
+    fn key(s: &str) -> Box<[u8]> {
+        s.as_bytes().to_vec().into_boxed_slice()
+    }
+
+    #[test]
+    fn test_typed_array_get_typed_map() {
+        let mut array = TypedArray::from_iter([
+            TypedMap::from_iter([(key("a"), 42), (key("b"), 1337), (key("c"), 0)]),
+            TypedMap::from_iter([(key("d"), 7), (key("e"), 3)]),
+        ]);
+
+        assert_eq!(
+            array.get(0).unwrap(),
+            &[(b"a" as &[u8], 42), (b"b", 1337), (b"c", 0)]
+        );
+
+        assert_eq!(array.get(1).unwrap(), &[(b"d" as &[u8], 7), (b"e", 3)]);
+
+        array.get_mut(1).unwrap().insert(key("f"), 99);
+
+        assert_eq!(
+            array.get(1).unwrap(),
+            &[(b"d" as &[u8], 7), (b"e", 3), (b"f", 99)]
+        );
+    }
 }
