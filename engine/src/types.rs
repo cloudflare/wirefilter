@@ -453,6 +453,7 @@ impl<'a> BytesOrString<'a> {
 
 mod private {
     use super::IntoValue;
+    use crate::lhs_types::TypedMap;
     use crate::TypedArray;
     use std::borrow::Cow;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -483,6 +484,7 @@ mod private {
     impl SealedIntoValue for Ipv6Addr {}
 
     impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedArray<'a, V> {}
+    impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedMap<'a, V> {}
 }
 
 /// Converts a value into an `LhsValue`.
