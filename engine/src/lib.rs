@@ -102,7 +102,7 @@ pub use self::{
         SimpleFunctionParam,
     },
     lex::LexErrorKind,
-    lhs_types::{Array, ArrayMut, Map, MapIter, MapMut, TypedArray},
+    lhs_types::{Array, ArrayMut, Map, MapIter, MapMut, TypedArray, TypedMap},
     list_matcher::{
         AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
     },

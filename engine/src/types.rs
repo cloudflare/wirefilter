@@ -423,6 +423,12 @@ impl GetType for CompoundType {
     }
 }
 
+impl PartialEq<&LhsValue<'_>> for LhsValue<'_> {
+    fn eq(&self, other: &&LhsValue<'_>) -> bool {
+        self.eq(*other)
+    }
+}
+
 impl StrictPartialOrd<RhsValue> for LhsValue<'_> {}
 
 impl PartialEq<RhsValue> for LhsValue<'_> {
@@ -453,8 +459,7 @@ impl<'a> BytesOrString<'a> {
 
 mod private {
     use super::IntoValue;
-    use crate::lhs_types::TypedMap;
-    use crate::TypedArray;
+    use crate::{TypedArray, TypedMap};
     use std::borrow::Cow;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
