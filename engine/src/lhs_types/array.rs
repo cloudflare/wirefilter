@@ -79,6 +79,12 @@ impl<'a> Deref for InnerArray<'a> {
     }
 }
 
+impl Default for InnerArray<'_> {
+    fn default() -> Self {
+        Self::Owned(Vec::new())
+    }
+}
+
 /// An array of [`Type`].
 #[derive(Debug, Clone)]
 pub struct Array<'a> {
@@ -484,7 +490,7 @@ pub struct TypedArray<'a, V>
 where
     V: IntoValue<'a>,
 {
-    array: Array<'a>,
+    array: InnerArray<'a>,
     _marker: std::marker::PhantomData<[V]>,
 }
 
@@ -492,7 +498,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     /// Push an element to the back of the array
     #[inline]
     pub fn push(&mut self, value: V) {
-        self.array.data.push(value.into_value())
+        self.array.push(value.into_value())
     }
 
     /// Returns the number of elements in the array
@@ -510,14 +516,14 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     /// Shortens the array, keeping the first `len` elements and dropping the rest.
     #[inline]
     pub fn truncate(&mut self, len: usize) {
-        self.array.data.truncate(len);
+        self.array.truncate(len);
     }
 }
 
 impl TypedArray<'static, bool> {
     #[inline]
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = &bool> + '_ {
-        self.array.data.iter().map(|value| match value {
+        self.array.iter().map(|value| match value {
             LhsValue::Bool(b) => b,
             _ => unsafe { unreachable_unchecked() },
         })
@@ -525,14 +531,10 @@ impl TypedArray<'static, bool> {
 
     #[inline]
     pub(crate) fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut bool> + '_ {
-        self.array
-            .data
-            .as_vec()
-            .iter_mut()
-            .map(|value| match value {
-                LhsValue::Bool(b) => b,
-                _ => unsafe { unreachable_unchecked() },
-            })
+        self.array.as_vec().iter_mut().map(|value| match value {
+            LhsValue::Bool(b) => b,
+            _ => unsafe { unreachable_unchecked() },
+        })
     }
 }
 
@@ -545,7 +547,10 @@ impl<T: AsRef<[bool]>> PartialEq<T> for TypedArray<'static, bool> {
 impl<'a, V: IntoValue<'a>> From<TypedArray<'a, V>> for Array<'a> {
     #[inline]
     fn from(value: TypedArray<'a, V>) -> Self {
-        value.array
+        Array {
+            val_type: V::TYPE.into(),
+            data: value.array,
+        }
     }
 }
 
@@ -553,7 +558,7 @@ impl<'a, V: IntoValue<'a>> Default for TypedArray<'a, V> {
     #[inline]
     fn default() -> Self {
         Self {
-            array: Array::new(V::TYPE),
+            array: InnerArray::default(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -563,7 +568,6 @@ impl<'a, V: IntoValue<'a>> Extend<V> for TypedArray<'a, V> {
     #[inline]
     fn extend<T: IntoIterator<Item = V>>(&mut self, iter: T) {
         self.array
-            .data
             .as_vec()
             .extend(iter.into_iter().map(IntoValue::into_value))
     }
@@ -575,7 +579,7 @@ impl<'a, V: IntoValue<'a>> FromIterator<V> for TypedArray<'a, V> {
         T: IntoIterator<Item = V>,
     {
         Self {
-            array: Array::from_iter(iter),
+            array: InnerArray::Owned(iter.into_iter().map(|elem| elem.into_value()).collect()),
             _marker: std::marker::PhantomData,
         }
     }
@@ -586,7 +590,7 @@ impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedArray<'a, V> {
 
     #[inline]
     fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Array(self.array)
+        LhsValue::Array(self.into())
     }
 }
 
