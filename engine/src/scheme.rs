@@ -621,6 +621,7 @@ fn test_parse_error() {
 
     let scheme = &Scheme! {
         num: Int,
+        str: Bytes,
         arr: Array(Bool),
     };
 
@@ -783,6 +784,78 @@ fn test_parse_error() {
                 Filter parsing error (1:2):
                  arr[*] 
                  ^^^^^^ expected value of type {Type(Bool)}, but got Array(Bool)
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse(indoc!(r"str in {")).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::EOF,
+                input: "str in {",
+                line_number: 0,
+                span_start: 8,
+                span_len: 0,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:9):
+                str in {
+                        ^ unrecognised input
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse(indoc!(r#"str in {"a""#)).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::EOF,
+                input: r#"str in {"a""#,
+                line_number: 0,
+                span_start: 11,
+                span_len: 0,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:12):
+                str in {"a"
+                           ^ unrecognised input
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse(indoc!(r"num in {")).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("digit"),
+                input: "num in {",
+                line_number: 0,
+                span_start: 8,
+                span_len: 0,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:9):
+                num in {
+                        ^ expected digit
                 "#
             )
         );
