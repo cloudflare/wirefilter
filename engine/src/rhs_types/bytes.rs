@@ -325,7 +325,7 @@ pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, Bytes> {
         Some(b'"') => lex_quoted_string(&input[1..]),
         Some(b'r') => lex_raw_string(&input[1..]),
         Some(_) => Err((LexErrorKind::ExpectedName("\" or r"), input)),
-        None => Err((LexErrorKind::EOF, "")),
+        None => Err((LexErrorKind::EOF, input)),
     }
 }
 
@@ -335,7 +335,7 @@ impl Lex<'_> for Bytes {
         match input.as_bytes().first() {
             Some(b'"' | b'r') => lex_quoted_or_raw_string(input),
             Some(_) => lex_byte_string(input),
-            None => Err((LexErrorKind::EOF, "")),
+            None => Err((LexErrorKind::EOF, input)),
         }
     }
 }
