@@ -29,6 +29,11 @@ pub(crate) enum InnerMap<'a> {
 
 impl<'a> InnerMap<'a> {
     #[inline]
+    const fn new() -> Self {
+        Self::Owned(BTreeMap::new())
+    }
+
+    #[inline]
     fn as_map(&mut self) -> &mut BTreeMap<Box<[u8]>, LhsValue<'a>> {
         match self {
             InnerMap::Owned(map) => map,
@@ -72,7 +77,7 @@ impl<'a> Deref for InnerMap<'a> {
 
 impl Default for InnerMap<'_> {
     fn default() -> Self {
-        Self::Owned(BTreeMap::new())
+        Self::new()
     }
 }
 
@@ -491,6 +496,17 @@ where
 }
 
 impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
+    /// Creates a new empty typed map.
+    #[inline]
+    pub const fn new() -> Self {
+        const {
+            Self {
+                map: InnerMap::new(),
+                _marker: std::marker::PhantomData,
+            }
+        }
+    }
+
     /// Push an element to the back of the map
     #[inline]
     pub fn insert(&mut self, key: Box<[u8]>, value: V) {
@@ -554,10 +570,7 @@ impl<'a, V: IntoValue<'a>> From<TypedMap<'a, V>> for Map<'a> {
 impl<'a, V: IntoValue<'a>> Default for TypedMap<'a, V> {
     #[inline]
     fn default() -> Self {
-        Self {
-            map: InnerMap::default(),
-            _marker: std::marker::PhantomData,
-        }
+        Self::new()
     }
 }
 
