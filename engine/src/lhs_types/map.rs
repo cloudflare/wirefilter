@@ -630,6 +630,24 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedMap<'a, V>> {
             _ => unreachable!(),
         })
     }
+
+    /// Returns a mutable reference to the value coressponding to the key or insert a new one.
+    pub fn get_or_insert(
+        &mut self,
+        key: Box<[u8]>,
+        value: TypedMap<'a, V>,
+    ) -> &mut TypedMap<'a, V> {
+        match self.map.get_or_insert(key, value.into_value()) {
+            LhsValue::Map(map) => {
+                // Safety: this is safe because `TypedMap` is a repr(transparent)
+                // newtype over `InnerMap`.
+                unsafe {
+                    std::mem::transmute::<&mut InnerMap<'a>, &mut TypedMap<'a, V>>(&mut map.data)
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedArray<'a, V>> {
@@ -659,6 +677,26 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedArray<'a, V>> {
             }
             _ => unreachable!(),
         })
+    }
+
+    /// Returns a mutable reference to the value coressponding to the key or insert a new one.
+    pub fn get_or_insert(
+        &mut self,
+        key: Box<[u8]>,
+        value: TypedArray<'a, V>,
+    ) -> &mut TypedArray<'a, V> {
+        match self.map.get_or_insert(key, value.into_value()) {
+            LhsValue::Array(array) => {
+                // Safety: this is safe because `TypedArray` is a repr(transparent)
+                // newtype over `InnerArray`.
+                unsafe {
+                    std::mem::transmute::<&mut InnerArray<'a>, &mut TypedArray<'a, V>>(
+                        &mut array.data,
+                    )
+                }
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
