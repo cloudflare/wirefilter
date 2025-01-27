@@ -30,6 +30,11 @@ pub(crate) enum InnerArray<'a> {
 
 impl<'a> InnerArray<'a> {
     #[inline]
+    const fn new() -> Self {
+        Self::Owned(Vec::new())
+    }
+
+    #[inline]
     fn as_vec(&mut self) -> &mut Vec<LhsValue<'a>> {
         match self {
             InnerArray::Owned(vec) => vec,
@@ -83,7 +88,7 @@ impl<'a> Deref for InnerArray<'a> {
 
 impl Default for InnerArray<'_> {
     fn default() -> Self {
-        Self::Owned(Vec::new())
+        Self::new()
     }
 }
 
@@ -497,6 +502,17 @@ where
 }
 
 impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
+    /// Creates a new empty typed array.
+    #[inline]
+    pub const fn new() -> Self {
+        const {
+            Self {
+                array: InnerArray::new(),
+                _marker: std::marker::PhantomData,
+            }
+        }
+    }
+
     /// Push an element to the back of the array
     #[inline]
     pub fn push(&mut self, value: V) {
@@ -584,10 +600,7 @@ impl<'a, V: IntoValue<'a>> From<TypedArray<'a, V>> for Array<'a> {
 impl<'a, V: IntoValue<'a>> Default for TypedArray<'a, V> {
     #[inline]
     fn default() -> Self {
-        Self {
-            array: InnerArray::default(),
-            _marker: std::marker::PhantomData,
-        }
+        Self::new()
     }
 }
 
