@@ -104,11 +104,10 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
             // Average path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                    let init_value = ctx.get_field_value(f).ok_or(ty)?;
                     indexes[..last]
                         .iter()
-                        .try_fold(ctx.get_field_value_unchecked(f), |value, index| {
-                            value.get(index).unwrap()
-                        })
+                        .try_fold(init_value, |value, index| value.get(index).unwrap())
                         .map(LhsValue::as_ref)
                         .ok_or(ty)
                 }),
@@ -130,7 +129,11 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    iter.reset(ctx.get_field_value_unchecked(f).as_ref());
+                    let value = match ctx.get_field_value(f) {
+                        Some(value) => value,
+                        None => return Err(f.get_type()),
+                    };
+                    iter.reset(value.as_ref());
                     Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
@@ -189,16 +192,13 @@ impl<'s> IndexExpr<'s> {
             }
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
+                    CompiledOneExpr::new(move |ctx| match ctx.get_field_value(f) {
+                        Some(value) => func(value, ctx),
+                        None => false,
+                    })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one!(
-                            indexes,
-                            Some(ctx.get_field_value_unchecked(f)),
-                            default,
-                            ctx,
-                            func
-                        )
+                        index_access_one!(indexes, ctx.get_field_value(f), default, ctx, func)
                     })
                 }
             }
@@ -226,7 +226,7 @@ impl<'s> IndexExpr<'s> {
                 })
             }
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                index_access_vec!(indexes, Some(ctx.get_field_value_unchecked(f)), ctx, func)
+                index_access_vec!(indexes, ctx.get_field_value(f), ctx, func)
             }),
         }
     }
@@ -246,7 +246,10 @@ impl<'s> IndexExpr<'s> {
         match identifier {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                iter.reset(ctx.get_field_value_unchecked(f).as_ref());
+                let Some(value) = ctx.get_field_value(f) else {
+                    return TypedArray::default();
+                };
+                iter.reset(value.as_ref());
                 TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
