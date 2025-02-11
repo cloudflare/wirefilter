@@ -7,10 +7,11 @@ use super::{
 use crate::{
     compiler::Compiler,
     execution_context::ExecutionContext,
-    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
+    filter::{
+        CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, CompiledVecExprResult,
+    },
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
-    lhs_types::TypedArray,
-    lhs_types::{Array, Map},
+    lhs_types::{Array, Map, TypedArray},
     scheme::{FieldIndex, IndexAccessError},
     types::{GetType, IntoIter, LhsValue, Type},
 };
@@ -30,33 +31,45 @@ pub struct IndexExpr<'s> {
     pub indexes: Vec<FieldIndex>,
 }
 
-macro_rules! index_access_one {
-    ($indexes:ident, $first:expr, $default:expr, $ctx:ident, $func:expr) => {
-        $indexes
-            .iter()
-            .fold($first, |value, idx| {
-                value.and_then(|val| val.get(idx).unwrap())
-            })
-            .map_or_else(
-                || $default,
-                #[allow(clippy::redundant_closure_call)]
-                |val| $func(val, $ctx),
-            )
-    };
+fn index_access_one<'s, 'e, U, F>(
+    indexes: &[FieldIndex],
+    first: Option<&'e LhsValue<'e>>,
+    default: bool,
+    ctx: &'e ExecutionContext<'e, U>,
+    func: F,
+) -> bool
+where
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+{
+    indexes
+        .iter()
+        .fold(first, |value, idx| {
+            value.and_then(|val| val.get(idx).unwrap())
+        })
+        .map_or_else(
+            || default,
+            #[inline]
+            |val| func(val, ctx),
+        )
 }
 
-macro_rules! index_access_vec {
-    ($indexes:ident, $first:expr, $ctx:ident, $func:ident) => {
-        index_access_one!(
-            $indexes,
-            $first,
-            TypedArray::default(),
-            $ctx,
-            |val: &LhsValue<'_>, ctx| {
-                TypedArray::from_iter(val.iter().unwrap().map(|item| $func(item, ctx)))
-            }
-        )
-    };
+fn index_access_vec<'s, 'e, U, F>(
+    indexes: &[FieldIndex],
+    first: Option<&'e LhsValue<'e>>,
+    ctx: &'e ExecutionContext<'e, U>,
+    func: F,
+) -> CompiledVecExprResult
+where
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+{
+    indexes
+        .iter()
+        .fold(first, |value, idx| {
+            value.and_then(|val| val.get(idx).unwrap())
+        })
+        .map_or(const { TypedArray::new() }, move |val: &LhsValue<'_>| {
+            TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
+        })
 }
 
 impl<'s> ValueExpr<'s> for IndexExpr<'s> {
@@ -177,12 +190,13 @@ impl<'s> IndexExpr<'s> {
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one!(
-                            indexes,
+                        index_access_one(
+                            &indexes,
                             call.execute(ctx).as_ref().ok(),
                             default,
                             ctx,
-                            func
+                            #[inline]
+                            |val, ctx| func(val, ctx),
                         )
                     })
                 }
@@ -192,12 +206,13 @@ impl<'s> IndexExpr<'s> {
                     CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one!(
-                            indexes,
+                        index_access_one(
+                            &indexes,
                             Some(ctx.get_field_value_unchecked(f)),
                             default,
                             ctx,
-                            func
+                            #[inline]
+                            |val, ctx| func(val, ctx),
                         )
                     })
                 }
@@ -222,11 +237,23 @@ impl<'s> IndexExpr<'s> {
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    index_access_vec!(indexes, call.execute(ctx).as_ref().ok(), ctx, func)
+                    index_access_vec(
+                        &indexes,
+                        call.execute(ctx).as_ref().ok(),
+                        ctx,
+                        #[inline]
+                        |val, ctx| func(val, ctx),
+                    )
                 })
             }
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                index_access_vec!(indexes, Some(ctx.get_field_value_unchecked(f)), ctx, func)
+                index_access_vec(
+                    &indexes,
+                    Some(ctx.get_field_value_unchecked(f)),
+                    ctx,
+                    #[inline]
+                    |val, ctx| func(val, ctx),
+                )
             }),
         }
     }
