@@ -1,11 +1,14 @@
 use memmem::Searcher;
+use sliceslice::MemchrSearcher;
 use std::mem::ManuallyDrop;
+
+use crate::{Compare, ExecutionContext, LhsValue};
 
 pub struct EmptySearcher;
 
-impl EmptySearcher {
+impl<U> Compare<U> for EmptySearcher {
     #[inline]
-    pub fn search_in(&self, _haystack: &[u8]) -> bool {
+    fn compare<'e>(&self, _: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
         true
     }
 }
@@ -41,10 +44,17 @@ impl TwoWaySearcher {
             searcher: ManuallyDrop::new(memmem::TwoWaySearcher::new(needle_static)),
         }
     }
+}
 
+impl<U> Compare<U> for TwoWaySearcher {
     #[inline]
-    pub fn search_in(&self, haystack: &[u8]) -> bool {
-        self.searcher.search_in(haystack).is_some()
+    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+        self.searcher
+            .search_in(match value {
+                LhsValue::Bytes(bytes) => bytes,
+                _ => unreachable!(),
+            })
+            .is_some()
     }
 }
 
@@ -55,5 +65,15 @@ impl Drop for TwoWaySearcher {
             ManuallyDrop::drop(&mut self.searcher);
             drop(Box::from_raw(self.needle));
         }
+    }
+}
+
+impl<U> Compare<U> for MemchrSearcher {
+    #[inline]
+    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+        self.search_in(match value {
+            LhsValue::Bytes(bytes) => bytes,
+            _ => unreachable!(),
+        })
     }
 }
