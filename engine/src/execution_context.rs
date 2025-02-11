@@ -6,9 +6,9 @@ use crate::{
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Debug;
+use std::{borrow::Cow, net::IpAddr};
 use thiserror::Error;
 
 /// An error that occurs when setting the field value in the [`crate::ExecutionContext`].
@@ -118,6 +118,74 @@ impl<'e, U> ExecutionContext<'e, U> {
                 );
             })
             .as_ref()
+    }
+
+    #[inline]
+    pub(crate) fn get_field_as_bool(&self, field: Field<'_>) -> bool {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        match self.values[field.index()] {
+            Some(LhsValue::Bool(b)) => b,
+            Some(_) => panic!("Field {} is not of type `{}`", field.name(), Type::Bool,),
+            None => panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            ),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_field_as_int(&self, field: Field<'_>) -> i64 {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        match self.values[field.index()] {
+            Some(LhsValue::Int(i)) => i,
+            Some(_) => panic!("Field {} is not of type `{}`", field.name(), Type::Int,),
+            None => panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            ),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_field_as_ip(&self, field: Field<'_>) -> IpAddr {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        match self.values[field.index()] {
+            Some(LhsValue::Ip(ip)) => ip,
+            Some(_) => panic!("Field {} is not of type `{}`", field.name(), Type::Ip,),
+            None => panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            ),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_field_as_bytes(&self, field: Field<'_>) -> &[u8] {
+        // This is safe because this code is reachable only from Filter::execute
+        // which already performs the scheme compatibility check, but check that
+        // invariant holds in the future at least in the debug mode.
+        debug_assert!(self.scheme() == field.scheme());
+
+        match self.values[field.index()] {
+            Some(LhsValue::Bytes(ref bytes)) => bytes,
+            Some(_) => panic!("Field {} is not of type `{}`", field.name(), Type::Bytes,),
+            None => panic!(
+                "Field {} was registered but not given a value",
+                field.name()
+            ),
+        }
     }
 
     /// Get the value of a field.

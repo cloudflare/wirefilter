@@ -14,7 +14,7 @@ use crate::{
     scheme::{Field, Identifier, List},
     searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
-    types::{GetType, LhsValue, RhsValue, RhsValues, Type},
+    types::{GetType, RhsValue, RhsValues, Type},
 };
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
@@ -424,24 +424,15 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
     ) -> CompiledExpr<'s, C::U> {
         let lhs = self.lhs;
 
-        macro_rules! cast_value {
-            ($value:expr, $ty:ident) => {
-                match $value {
-                    LhsValue::$ty(value) => value,
-                    _ => unreachable!(),
-                }
-            };
-        }
-
         match self.op {
             ComparisonOpExpr::IsTrue => {
                 if lhs.get_type() == Type::Bool {
-                    lhs.compile_with(compiler, false, move |x, _ctx| *cast_value!(x, Bool))
+                    lhs.compile_with(compiler, false, move |x, ctx| x.into_bool(ctx))
                 } else if lhs.get_type().next() == Some(Type::Bool) {
                     // MapEach is impossible in this case, thus call `compile_vec_with` directly
                     // to coerce LhsValue to Vec<bool>
                     CompiledExpr::Vec(
-                        lhs.compile_vec_with(compiler, move |x, _ctx| *cast_value!(x, Bool)),
+                        lhs.compile_vec_with(compiler, move |x, ctx| x.into_bool(ctx)),
                     )
                 } else {
                     unreachable!()
@@ -451,14 +442,14 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                 macro_rules! gen_ordering {
                     ($op:tt, $def:literal) => {
                         match rhs {
-                            RhsValue::Bytes(bytes) => lhs.compile_with(compiler, $def, move |x, _ctx| {
-                                cast_value!(x, Bytes).as_ref() $op bytes.as_ref()
+                            RhsValue::Bytes(bytes) => lhs.compile_with(compiler, $def, move |x, ctx| {
+                                x.into_bytes(ctx).as_ref() $op bytes.as_ref()
                             }),
                             RhsValue::Int(int) => {
-                                lhs.compile_with(compiler, $def, move |x, _ctx| *cast_value!(x, Int) $op int)
+                                lhs.compile_with(compiler, $def, move |x, ctx| x.into_int(ctx) $op int)
                             }
-                            RhsValue::Ip(ip) => lhs.compile_with(compiler, $def, move |x, _ctx| {
-                                op.matches_opt(cast_value!(x, Ip).strict_partial_cmp(&ip))
+                            RhsValue::Ip(ip) => lhs.compile_with(compiler, $def, move |x, ctx| {
+                                op.matches_opt(x.into_ip(ctx).strict_partial_cmp(&ip))
                             }),
                             RhsValue::Bool(_) | RhsValue::Array(_) | RhsValue::Map(_) => unreachable!(),
                         }
@@ -477,15 +468,13 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
             ComparisonOpExpr::Int {
                 op: IntOp::BitwiseAnd,
                 rhs,
-            } => lhs.compile_with(compiler, false, move |x, _ctx| {
-                cast_value!(x, Int) & rhs != 0
-            }),
+            } => lhs.compile_with(compiler, false, move |x, ctx| x.into_int(ctx) & rhs != 0),
             ComparisonOpExpr::Contains(bytes) => {
                 macro_rules! search {
                     ($searcher:expr) => {{
                         let searcher = $searcher;
-                        lhs.compile_with(compiler, false, move |x, _ctx| {
-                            searcher.search_in(cast_value!(x, Bytes).as_ref())
+                        lhs.compile_with(compiler, false, move |x, ctx| {
+                            searcher.search_in(x.into_bytes(ctx).as_ref())
                         })
                     }};
                 }
@@ -590,19 +579,17 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
 
                 search!(TwoWaySearcher::new(bytes))
             }
-            ComparisonOpExpr::Matches(regex) => {
-                lhs.compile_with(compiler, false, move |x, _ctx| {
-                    regex.is_match(cast_value!(x, Bytes))
-                })
-            }
+            ComparisonOpExpr::Matches(regex) => lhs.compile_with(compiler, false, move |x, ctx| {
+                regex.is_match(&x.into_bytes(ctx))
+            }),
             ComparisonOpExpr::Wildcard(wildcard) => {
-                lhs.compile_with(compiler, false, move |x, _ctx| {
-                    wildcard.is_match(cast_value!(x, Bytes))
+                lhs.compile_with(compiler, false, move |x, ctx| {
+                    wildcard.is_match(&x.into_bytes(ctx))
                 })
             }
             ComparisonOpExpr::StrictWildcard(wildcard) => {
-                lhs.compile_with(compiler, false, move |x, _ctx| {
-                    wildcard.is_match(cast_value!(x, Bytes))
+                lhs.compile_with(compiler, false, move |x, ctx| {
+                    wildcard.is_match(&x.into_bytes(ctx))
                 })
             }
             ComparisonOpExpr::OneOf(values) => match values {
@@ -618,23 +605,23 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     let v4 = RangeSet::from(v4);
                     let v6 = RangeSet::from(v6);
 
-                    lhs.compile_with(compiler, false, move |x, _ctx| match cast_value!(x, Ip) {
-                        IpAddr::V4(addr) => v4.contains(addr),
-                        IpAddr::V6(addr) => v6.contains(addr),
+                    lhs.compile_with(compiler, false, move |x, ctx| match x.into_ip(ctx) {
+                        IpAddr::V4(addr) => v4.contains(&addr),
+                        IpAddr::V6(addr) => v6.contains(&addr),
                     })
                 }
                 RhsValues::Int(values) => {
                     let values: RangeSet<_> = values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(compiler, false, move |x, _ctx| {
-                        values.contains(cast_value!(x, Int))
+                    lhs.compile_with(compiler, false, move |x, ctx| {
+                        values.contains(&x.into_int(ctx))
                     })
                 }
                 RhsValues::Bytes(values) => {
                     let values: BTreeSet<Box<[u8]>> = values.into_iter().map(Into::into).collect();
 
-                    lhs.compile_with(compiler, false, move |x, _ctx| {
-                        values.contains(cast_value!(x, Bytes) as &[u8])
+                    lhs.compile_with(compiler, false, move |x, ctx| {
+                        values.contains(x.into_bytes(ctx).as_ref())
                     })
                 }
                 RhsValues::Bool(_) => unreachable!(),
@@ -647,7 +634,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
             ComparisonOpExpr::InList { name, list } => {
                 lhs.compile_with(compiler, false, move |val, ctx| {
                     ctx.get_list_matcher_unchecked(list)
-                        .match_value(name.as_str(), val)
+                        .match_value(name.as_str(), &val.into_value(ctx))
                 })
             }
         }
@@ -672,7 +659,7 @@ mod tests {
         rhs_types::{IpRange, RegexFormat},
         scheme::{FieldIndex, IndexAccessError, Scheme},
         types::ExpectedType,
-        BytesFormat,
+        BytesFormat, LhsValue,
     };
     use cidr::IpCidr;
     use std::sync::LazyLock;
