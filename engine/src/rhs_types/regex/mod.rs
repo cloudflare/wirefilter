@@ -1,6 +1,6 @@
-use crate::FilterParser;
 use crate::lex::{LexErrorKind, LexResult, LexWith, span};
 use crate::rhs_types::bytes::lex_raw_string_as_str;
+use crate::{Compare, ExecutionContext, FilterParser, LhsValue};
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
@@ -144,6 +144,16 @@ pub enum Error {
     /// An uncategorized error.
     #[error("{0}")]
     Other(String),
+}
+
+impl<U> Compare<U> for Regex {
+    #[inline]
+    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+        self.is_match(match value {
+            LhsValue::Bytes(bytes) => bytes,
+            _ => unreachable!(),
+        })
+    }
 }
 
 #[cfg(test)]

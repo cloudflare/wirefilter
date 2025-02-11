@@ -130,16 +130,19 @@ fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
     indexes.into_boxed_slice()
 }
 
+/// Interface used to implement comparison against a value.
+pub trait Compare<U>: Send + Sync + 'static {
+    /// Returns true if the value matches the comparison.
+    fn compare<'e>(&self, value: &LhsValue<'e>, ctx: &'e ExecutionContext<'e, U>) -> bool;
+}
+
 impl IndexExpr {
-    fn compile_one_with<F, C: Compiler>(
+    fn compile_one_with<C: Compiler>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledOneExpr<C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
-    {
+        comp: impl Compare<C::U>,
+    ) -> CompiledOneExpr<C::U> {
         let Self {
             identifier,
             indexes,
@@ -150,7 +153,11 @@ impl IndexExpr {
                 let call = compiler.compile_function_call_expr(call);
                 if indexes.is_empty() {
                     CompiledOneExpr::new(move |ctx| {
-                        call.execute(ctx).map_or(default, |val| func(&val, ctx))
+                        call.execute(ctx).map_or(
+                            default,
+                            #[inline]
+                            |val| comp.compare(&val, ctx),
+                        )
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
@@ -159,14 +166,16 @@ impl IndexExpr {
                             .map_or(
                                 default,
                                 #[inline]
-                                |val| func(val, ctx),
+                                |val| comp.compare(val, ctx),
                             )
                     })
                 }
             }
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(&f), ctx))
+                    CompiledOneExpr::new(move |ctx| {
+                        comp.compare(ctx.get_field_value_unchecked(&f), ctx)
+                    })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         ctx.get_field_value_unchecked(&f)
@@ -174,7 +183,7 @@ impl IndexExpr {
                             .map_or(
                                 default,
                                 #[inline]
-                                |val| func(val, ctx),
+                                |val| comp.compare(val, ctx),
                             )
                     })
                 }
@@ -182,14 +191,11 @@ impl IndexExpr {
         }
     }
 
-    pub(crate) fn compile_vec_with<F, C: Compiler>(
+    pub(crate) fn compile_vec_with<C: Compiler>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
-    {
+        comp: impl Compare<C::U>,
+    ) -> CompiledVecExpr<C::U> {
         let Self {
             identifier,
             indexes,
@@ -199,33 +205,42 @@ impl IndexExpr {
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    let func = &func;
+                    let comp = &comp;
                     ok_ref(&call.execute(ctx))
                         .and_then(|val| val.get_nested(&indexes))
-                        .map_or(BOOL_ARRAY, move |val: &LhsValue<'_>| {
-                            TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
-                        })
+                        .map_or(
+                            BOOL_ARRAY,
+                            #[inline]
+                            |val: &LhsValue<'_>| {
+                                TypedArray::from_iter(
+                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                )
+                            },
+                        )
                 })
             }
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let func = &func;
+                let comp = &comp;
                 ctx.get_field_value_unchecked(&f)
                     .get_nested(&indexes)
-                    .map_or(BOOL_ARRAY, move |val: &LhsValue<'_>| {
-                        TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
-                    })
+                    .map_or(
+                        BOOL_ARRAY,
+                        #[inline]
+                        |val: &LhsValue<'_>| {
+                            TypedArray::from_iter(
+                                val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                            )
+                        },
+                    )
             }),
         }
     }
 
-    pub(crate) fn compile_iter_with<F, C: Compiler>(
+    pub(crate) fn compile_iter_with<C: Compiler>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
-    {
+        comp: impl Compare<C::U>,
+    ) -> CompiledVecExpr<C::U> {
         let Self {
             identifier,
             indexes,
@@ -234,7 +249,7 @@ impl IndexExpr {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
                 iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
-                TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
+                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
@@ -249,7 +264,7 @@ impl IndexExpr {
                         }
                     }
 
-                    TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
+                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
                 })
             }
         }
@@ -257,21 +272,18 @@ impl IndexExpr {
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
     /// provided comparison function that returns a boolean.
-    pub fn compile_with<F, C: Compiler>(
+    pub fn compile_with<C: Compiler>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledExpr<C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
-    {
+        comp: impl Compare<C::U>,
+    ) -> CompiledExpr<C::U> {
         match self.map_each_count() {
-            0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),
+            0 => CompiledExpr::One(self.compile_one_with(compiler, default, comp)),
             1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
-                CompiledExpr::Vec(self.compile_vec_with(compiler, func))
+                CompiledExpr::Vec(self.compile_vec_with(compiler, comp))
             }
-            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, func)),
+            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, comp)),
         }
     }
 
