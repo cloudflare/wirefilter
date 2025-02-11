@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use super::{
     field_expr::IdentifierExpr,
     parse::FilterParser,
@@ -14,6 +16,7 @@ use crate::{
     lhs_types::{Array, Map, TypedArray},
     scheme::{FieldIndex, IndexAccessError},
     types::{GetType, IntoIter, LhsValue, Type},
+    Field,
 };
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 
@@ -171,16 +174,103 @@ fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
     indexes.into_boxed_slice()
 }
 
+/// Interface to retrieve value.
+pub trait GetValue<'e> {
+    /// Retrieve a boolean value, panics if the underlying value is of the wrong type.
+    fn get_bool<U>(self, ctx: &ExecutionContext<'_, U>) -> bool;
+
+    /// Retrieve a bytes value, panics if the underlying value is of the wrong type.
+    fn get_bytes<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e [u8];
+
+    /// Retrieve an integer value, panics if the underlying value is of the wrong type.
+    fn get_int<U>(self, ctx: &ExecutionContext<'_, U>) -> i64;
+
+    /// Retrieve an IP address value, panics if the underlying value is of the wrong type.
+    fn get_ip<U>(self, ctx: &ExecutionContext<'_, U>) -> IpAddr;
+
+    /// Retrieve a wirefilter value.
+    fn get_value<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e LhsValue<'e>;
+}
+
+impl<'e> GetValue<'e> for Field<'_> {
+    #[inline]
+    fn get_bool<U>(self, ctx: &ExecutionContext<'_, U>) -> bool {
+        ctx.get_field_as_bool(self)
+    }
+
+    #[inline]
+    fn get_bytes<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e [u8] {
+        ctx.get_field_as_bytes(self)
+    }
+
+    #[inline]
+    fn get_int<U>(self, ctx: &ExecutionContext<'_, U>) -> i64 {
+        ctx.get_field_as_int(self)
+    }
+
+    #[inline]
+    fn get_ip<U>(self, ctx: &ExecutionContext<'_, U>) -> IpAddr {
+        ctx.get_field_as_ip(self)
+    }
+
+    #[inline]
+    fn get_value<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e LhsValue<'e> {
+        ctx.get_field_value_unchecked(self)
+    }
+}
+
+impl<'e> GetValue<'e> for &'e LhsValue<'e> {
+    #[inline]
+    fn get_bool<U>(self, _: &ExecutionContext<'_, U>) -> bool {
+        match self {
+            LhsValue::Bool(b) => *b,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_bytes<U>(self, _: &'e ExecutionContext<'e, U>) -> &'e [u8] {
+        match self {
+            LhsValue::Bytes(bytes) => bytes,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_int<U>(self, _: &ExecutionContext<'_, U>) -> i64 {
+        match self {
+            LhsValue::Int(i) => *i,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_ip<U>(self, _: &ExecutionContext<'_, U>) -> IpAddr {
+        match self {
+            LhsValue::Ip(ip) => *ip,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_value<U>(self, _: &'e ExecutionContext<'e, U>) -> &'e LhsValue<'e> {
+        self
+    }
+}
+
+/// Interface used to implement comparison against a value.
+pub trait Compare<'s, U>: Send + Sync + 's {
+    /// Returns true if the value matches the comparison.
+    fn compare<'e, T: GetValue<'e>>(&self, value: T, ctx: &'e ExecutionContext<'e, U>) -> bool;
+}
+
 impl<'s> IndexExpr<'s> {
-    fn compile_one_with<F, C: Compiler<'s> + 's>(
+    fn compile_one_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledOneExpr<'s, C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledOneExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -191,7 +281,8 @@ impl<'s> IndexExpr<'s> {
                 let call = compiler.compile_function_call_expr(call);
                 if indexes.is_empty() {
                     CompiledOneExpr::new(move |ctx| {
-                        call.execute(ctx).map_or(default, |val| func(&val, ctx))
+                        call.execute(ctx)
+                            .map_or(default, |val| comp.compare(&val, ctx))
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
@@ -201,14 +292,14 @@ impl<'s> IndexExpr<'s> {
                             default,
                             ctx,
                             #[inline]
-                            |val, ctx| func(val, ctx),
+                            |val, ctx| comp.compare(val, ctx),
                         )
                     })
                 }
             }
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
+                    CompiledOneExpr::new(move |ctx| comp.compare(f, ctx))
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         index_access_one(
@@ -217,7 +308,7 @@ impl<'s> IndexExpr<'s> {
                             default,
                             ctx,
                             #[inline]
-                            |val, ctx| func(val, ctx),
+                            |val, ctx| comp.compare(val, ctx),
                         )
                     })
                 }
@@ -225,14 +316,11 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_vec_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_vec_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<'s, C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledVecExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -247,7 +335,7 @@ impl<'s> IndexExpr<'s> {
                         call.execute(ctx).as_ref().ok(),
                         ctx,
                         #[inline]
-                        |val, ctx| func(val, ctx),
+                        |val, ctx| comp.compare(val, ctx),
                     )
                 })
             }
@@ -257,20 +345,17 @@ impl<'s> IndexExpr<'s> {
                     Some(ctx.get_field_value_unchecked(f)),
                     ctx,
                     #[inline]
-                    |val, ctx| func(val, ctx),
+                    |val, ctx| comp.compare(val, ctx),
                 )
             }),
         }
     }
 
-    pub(crate) fn compile_iter_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_iter_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<'s, C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledVecExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -279,7 +364,7 @@ impl<'s> IndexExpr<'s> {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
                 iter.reset(ctx.get_field_value_unchecked(f).as_ref());
-                TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
+                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
@@ -291,7 +376,7 @@ impl<'s> IndexExpr<'s> {
                         return TypedArray::default();
                     }
 
-                    TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
+                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
                 })
             }
         }
@@ -299,21 +384,18 @@ impl<'s> IndexExpr<'s> {
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
     /// provided comparison function that returns a boolean.
-    pub fn compile_with<F, C: Compiler<'s> + 's>(
+    pub fn compile_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledExpr<'s, C::U>
-    where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledExpr<'s, C::U> {
         match self.map_each_count() {
-            0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),
+            0 => CompiledExpr::One(self.compile_one_with(compiler, default, comp)),
             1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
-                CompiledExpr::Vec(self.compile_vec_with(compiler, func))
+                CompiledExpr::Vec(self.compile_vec_with(compiler, comp))
             }
-            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, func)),
+            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, comp)),
         }
     }
 
