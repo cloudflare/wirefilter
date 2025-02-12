@@ -1,6 +1,6 @@
 use crate::lex::{span, LexErrorKind, LexResult, LexWith};
 use crate::rhs_types::bytes::lex_raw_string_as_str;
-use crate::FilterParser;
+use crate::{Compare, FilterParser, GetValue};
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::{
@@ -117,6 +117,17 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
 impl Serialize for Regex {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.as_str().serialize(ser)
+    }
+}
+
+impl<U> Compare<'_, U> for Regex {
+    #[inline]
+    fn compare<'e, T: GetValue<'e>>(
+        &self,
+        value: T,
+        ctx: &'e crate::ExecutionContext<'e, U>,
+    ) -> bool {
+        self.is_match(value.get_bytes(ctx))
     }
 }
 

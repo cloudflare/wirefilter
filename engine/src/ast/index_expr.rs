@@ -1,4 +1,4 @@
-use std::{borrow::Cow, net::IpAddr};
+use std::net::IpAddr;
 
 use super::{
     field_expr::IdentifierExpr,
@@ -42,7 +42,7 @@ fn index_access_one<'s, 'e, U, F>(
     func: F,
 ) -> bool
 where
-    F: Fn(FieldValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
 {
     indexes
         .iter()
@@ -52,7 +52,7 @@ where
         .map_or_else(
             || default,
             #[inline]
-            |val| func(FieldValue::from(val), ctx),
+            |val| func(val, ctx),
         )
 }
 
@@ -63,7 +63,7 @@ fn index_access_vec<'s, 'e, U, F>(
     func: F,
 ) -> CompiledVecExprResult
 where
-    F: Fn(FieldValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
 {
     indexes
         .iter()
@@ -71,11 +71,7 @@ where
             value.and_then(|val| val.get(idx).unwrap())
         })
         .map_or(const { TypedArray::new() }, move |val: &LhsValue<'_>| {
-            TypedArray::from_iter(
-                val.iter()
-                    .unwrap()
-                    .map(|item| func(FieldValue::from(item), ctx)),
-            )
+            TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
         })
 }
 
@@ -172,111 +168,103 @@ fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
     indexes.into_boxed_slice()
 }
 
-#[derive(Debug)]
-enum InnerFieldValue<'e> {
-    Field(Field<'e>),
-    Bool(bool),
-    Int(i64),
-    Ip(IpAddr),
-    Bytes(Cow<'e, [u8]>),
+/// Interface to retrieve value.
+pub trait GetValue<'e> {
+    /// Retrieve a boolean value, panics if the underlying value is of the wrong type.
+    fn get_bool<U>(self, ctx: &ExecutionContext<'_, U>) -> bool;
+
+    /// Retrieve a bytes value, panics if the underlying value is of the wrong type.
+    fn get_bytes<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e [u8];
+
+    /// Retrieve an integer value, panics if the underlying value is of the wrong type.
+    fn get_int<U>(self, ctx: &ExecutionContext<'_, U>) -> i64;
+
+    /// Retrieve an IP address value, panics if the underlying value is of the wrong type.
+    fn get_ip<U>(self, ctx: &ExecutionContext<'_, U>) -> IpAddr;
+
+    /// Retrieve a wirefilter value.
+    fn get_value<U>(self, ctx: &'e ExecutionContext<'e, U>) -> LhsValue<'e>;
 }
 
-/// Internal field value used during execution
-/// to optimize specific parts.
-pub struct FieldValue<'e>(InnerFieldValue<'e>);
-
-impl<'e> FieldValue<'e> {
-    /// Converts to a boolean, panics if the value of the wrong type.
+impl<'e> GetValue<'e> for Field<'_> {
     #[inline]
-    pub fn into_bool<U>(self, ctx: &'e ExecutionContext<'e, U>) -> bool {
-        match self {
-            Self(InnerFieldValue::Field(f)) => ctx.get_field_as_bool(f),
-            Self(InnerFieldValue::Bool(b)) => b,
-            _ => panic!("Value `{:?}` not of type `{}`", self.0, Type::Bool,),
-        }
+    fn get_bool<U>(self, ctx: &ExecutionContext<'_, U>) -> bool {
+        ctx.get_field_as_bool(self)
     }
 
-    /// Converts to a integer, panics if the value of the wrong type.
     #[inline]
-    pub fn into_int<U>(self, ctx: &'e ExecutionContext<'e, U>) -> i64 {
-        match self {
-            Self(InnerFieldValue::Field(f)) => ctx.get_field_as_int(f),
-            Self(InnerFieldValue::Int(i)) => i,
-            _ => panic!("Value `{:?}` not of type `{}`", self.0, Type::Int,),
-        }
+    fn get_bytes<U>(self, ctx: &'e ExecutionContext<'e, U>) -> &'e [u8] {
+        ctx.get_field_as_bytes(self)
     }
 
-    /// Converts to a IP address, panics if the value of the wrong type.
     #[inline]
-    pub fn into_ip<U>(self, ctx: &'e ExecutionContext<'e, U>) -> IpAddr {
-        match self {
-            Self(InnerFieldValue::Field(f)) => ctx.get_field_as_ip(f),
-            Self(InnerFieldValue::Ip(ip)) => ip,
-            _ => panic!("Value `{:?}` not of type `{}`", self.0, Type::Ip,),
-        }
+    fn get_int<U>(self, ctx: &ExecutionContext<'_, U>) -> i64 {
+        ctx.get_field_as_int(self)
     }
 
-    /// Converts to bytes, panics if the value of the wrong type.
     #[inline]
-    pub fn into_bytes<U>(self, ctx: &'e ExecutionContext<'e, U>) -> Cow<'e, [u8]> {
-        match self {
-            Self(InnerFieldValue::Field(f)) => Cow::Borrowed(ctx.get_field_as_bytes(f)),
-            Self(InnerFieldValue::Bytes(bytes)) => bytes,
-            _ => panic!("Value `{:?}` not of type `{}`", self.0, Type::Bytes,),
-        }
+    fn get_ip<U>(self, ctx: &ExecutionContext<'_, U>) -> IpAddr {
+        ctx.get_field_as_ip(self)
     }
 
-    /// Converts to a wirefilter value.
     #[inline]
-    pub fn into_value<U>(self, ctx: &'e ExecutionContext<'e, U>) -> LhsValue<'e> {
-        match self {
-            Self(InnerFieldValue::Field(f)) => ctx.get_field_value_unchecked(f),
-            Self(InnerFieldValue::Bool(b)) => LhsValue::Bool(b),
-            Self(InnerFieldValue::Int(i)) => LhsValue::Int(i),
-            Self(InnerFieldValue::Ip(ip)) => LhsValue::Ip(ip),
-            Self(InnerFieldValue::Bytes(bytes)) => LhsValue::Bytes(bytes),
-        }
+    fn get_value<U>(self, ctx: &'e ExecutionContext<'e, U>) -> LhsValue<'e> {
+        ctx.get_field_value_unchecked(self)
     }
 }
 
-impl<'e> From<LhsValue<'e>> for FieldValue<'e> {
+impl<'e> GetValue<'e> for &'e LhsValue<'e> {
     #[inline]
-    fn from(value: LhsValue<'e>) -> Self {
-        match value {
-            LhsValue::Bool(b) => Self(InnerFieldValue::Bool(b)),
-            LhsValue::Int(i) => Self(InnerFieldValue::Int(i)),
-            LhsValue::Ip(ip) => Self(InnerFieldValue::Ip(ip)),
-            LhsValue::Bytes(bytes) => Self(InnerFieldValue::Bytes(bytes)),
-            LhsValue::Array(_) => unreachable!(),
-            LhsValue::Map(_) => unreachable!(),
+    fn get_bool<U>(self, _: &ExecutionContext<'_, U>) -> bool {
+        match self {
+            LhsValue::Bool(b) => *b,
+            _ => unreachable!(),
         }
+    }
+
+    #[inline]
+    fn get_bytes<U>(self, _: &'e ExecutionContext<'e, U>) -> &'e [u8] {
+        match self {
+            LhsValue::Bytes(bytes) => bytes,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_int<U>(self, _: &ExecutionContext<'_, U>) -> i64 {
+        match self {
+            LhsValue::Int(i) => *i,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_ip<U>(self, _: &ExecutionContext<'_, U>) -> IpAddr {
+        match self {
+            LhsValue::Ip(ip) => *ip,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn get_value<U>(self, _: &'e ExecutionContext<'e, U>) -> LhsValue<'e> {
+        self.as_ref()
     }
 }
 
-impl<'e> From<&'e LhsValue<'e>> for FieldValue<'e> {
-    #[inline]
-    fn from(value: &'e LhsValue<'e>) -> Self {
-        match value {
-            LhsValue::Bool(b) => Self(InnerFieldValue::Bool(*b)),
-            LhsValue::Int(i) => Self(InnerFieldValue::Int(*i)),
-            LhsValue::Ip(ip) => Self(InnerFieldValue::Ip(*ip)),
-            LhsValue::Bytes(bytes) => Self(InnerFieldValue::Bytes(Cow::Borrowed(bytes))),
-            LhsValue::Array(_) => unreachable!(),
-            LhsValue::Map(_) => unreachable!(),
-        }
-    }
+/// Interface used to implement comparison against a value.
+pub trait Compare<'s, U>: Send + Sync + 's {
+    /// Returns true if the value matches the comparison.
+    fn compare<'e, T: GetValue<'e>>(&self, value: T, ctx: &'e ExecutionContext<'e, U>) -> bool;
 }
 
 impl<'s> IndexExpr<'s> {
-    fn compile_one_with<F, C: Compiler<'s> + 's>(
+    fn compile_one_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledOneExpr<'s, C::U>
-    where
-        F: Fn(FieldValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledOneExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -288,7 +276,7 @@ impl<'s> IndexExpr<'s> {
                 if indexes.is_empty() {
                     CompiledOneExpr::new(move |ctx| {
                         call.execute(ctx)
-                            .map_or(default, |val| func(FieldValue::from(val), ctx))
+                            .map_or(default, |val| comp.compare(&val, ctx))
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
@@ -298,16 +286,14 @@ impl<'s> IndexExpr<'s> {
                             default,
                             ctx,
                             #[inline]
-                            |val, ctx| func(val, ctx),
+                            |val, ctx| comp.compare(val, ctx),
                         )
                     })
                 }
             }
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| {
-                        func(FieldValue(InnerFieldValue::Field(f)), ctx)
-                    })
+                    CompiledOneExpr::new(move |ctx| comp.compare(f, ctx))
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         index_access_one(
@@ -316,7 +302,7 @@ impl<'s> IndexExpr<'s> {
                             default,
                             ctx,
                             #[inline]
-                            |val, ctx| func(val, ctx),
+                            |val, ctx| comp.compare(val, ctx),
                         )
                     })
                 }
@@ -324,14 +310,11 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_vec_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_vec_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<'s, C::U>
-    where
-        F: Fn(FieldValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledVecExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -346,7 +329,7 @@ impl<'s> IndexExpr<'s> {
                         call.execute(ctx).ok(),
                         ctx,
                         #[inline]
-                        |val, ctx| func(val, ctx),
+                        |val, ctx| comp.compare(val, ctx),
                     )
                 })
             }
@@ -356,20 +339,17 @@ impl<'s> IndexExpr<'s> {
                     Some(ctx.get_field_value_unchecked(f)),
                     ctx,
                     #[inline]
-                    |val, ctx| func(val, ctx),
+                    |val, ctx| comp.compare(val, ctx),
                 )
             }),
         }
     }
 
-    pub(crate) fn compile_iter_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_iter_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
-        func: F,
-    ) -> CompiledVecExpr<'s, C::U>
-    where
-        F: Fn(FieldValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledVecExpr<'s, C::U> {
         let Self {
             identifier,
             indexes,
@@ -378,7 +358,7 @@ impl<'s> IndexExpr<'s> {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
                 iter.reset(ctx.get_field_value_unchecked(f));
-                TypedArray::from_iter(iter.map(|item| func(FieldValue::from(item), ctx)))
+                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
@@ -390,7 +370,7 @@ impl<'s> IndexExpr<'s> {
                         return TypedArray::default();
                     }
 
-                    TypedArray::from_iter(iter.map(|item| func(FieldValue::from(item), ctx)))
+                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
                 })
             }
         }
@@ -398,21 +378,18 @@ impl<'s> IndexExpr<'s> {
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
     /// provided comparison function that returns a boolean.
-    pub fn compile_with<F, C: Compiler<'s> + 's>(
+    pub fn compile_with<C: Compiler<'s> + 's>(
         self,
         compiler: &mut C,
         default: bool,
-        func: F,
-    ) -> CompiledExpr<'s, C::U>
-    where
-        F: Fn(FieldValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
-    {
+        comp: impl Compare<'s, C::U>,
+    ) -> CompiledExpr<'s, C::U> {
         match self.map_each_count() {
-            0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),
+            0 => CompiledExpr::One(self.compile_one_with(compiler, default, comp)),
             1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
-                CompiledExpr::Vec(self.compile_vec_with(compiler, func))
+                CompiledExpr::Vec(self.compile_vec_with(compiler, comp))
             }
-            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, func)),
+            _ => CompiledExpr::Vec(self.compile_iter_with(compiler, comp)),
         }
     }
 

@@ -82,7 +82,7 @@ pub use self::{
     ast::{
         field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, IntOp, OrderingOp},
         function_expr::{FunctionCallArgExpr, FunctionCallExpr},
-        index_expr::{FieldValue, IndexExpr},
+        index_expr::{Compare, GetValue, IndexExpr},
         logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr, UnaryOp},
         parse::{FilterParser, ParseError},
         visitor::{Visitor, VisitorMut},
