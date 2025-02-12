@@ -559,14 +559,29 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     use rand::{thread_rng, Rng};
                     use sliceslice::x86::*;
 
-                    impl<N: Needle> Compare<'static> for Avx2Searcher<N> {
+                    struct ArraySearcher<const N: usize>(Avx2Searcher<[u8; N]>);
+
+                    impl<const N: usize, U> Compare<'_, U> for ArraySearcher<N> {
                         #[inline]
                         fn compare<'e, T: GetValue<'e>>(
                             &self,
                             value: T,
                             ctx: &'e crate::ExecutionContext<'e, U>,
                         ) -> bool {
-                            self.search_in(value.get_bytes(ctx))
+                            unsafe { self.0.search_in(value.get_bytes(ctx)) }
+                        }
+                    }
+
+                    struct BoxSearcher(Avx2Searcher<Box<[u8]>>);
+
+                    impl<U> Compare<'_, U> for BoxSearcher {
+                        #[inline]
+                        fn compare<'e, T: GetValue<'e>>(
+                            &self,
+                            value: T,
+                            ctx: &'e crate::ExecutionContext<'e, U>,
+                        ) -> bool {
+                            unsafe { self.0.search_in(value.get_bytes(ctx)) }
                         }
                     }
 
@@ -579,67 +594,67 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
                     let position = thread_rng().gen_range(1..bytes.len());
                     return unsafe {
                         match bytes.len() {
-                            2 => search!(Avx2Searcher::with_position(
+                            2 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<2>(&bytes),
                                 position
-                            )),
-                            3 => search!(Avx2Searcher::with_position(
+                            ))),
+                            3 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<3>(&bytes),
                                 position
-                            )),
-                            4 => search!(Avx2Searcher::with_position(
+                            ))),
+                            4 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<4>(&bytes),
                                 position
-                            )),
-                            5 => search!(Avx2Searcher::with_position(
+                            ))),
+                            5 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<5>(&bytes),
                                 position
-                            )),
-                            6 => search!(Avx2Searcher::with_position(
+                            ))),
+                            6 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<6>(&bytes),
                                 position
-                            )),
-                            7 => search!(Avx2Searcher::with_position(
+                            ))),
+                            7 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<7>(&bytes),
                                 position
-                            )),
-                            8 => search!(Avx2Searcher::with_position(
+                            ))),
+                            8 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<8>(&bytes),
                                 position
-                            )),
-                            9 => search!(Avx2Searcher::with_position(
+                            ))),
+                            9 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<9>(&bytes),
                                 position
-                            )),
-                            10 => search!(Avx2Searcher::with_position(
+                            ))),
+                            10 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<10>(&bytes),
                                 position
-                            )),
-                            11 => search!(Avx2Searcher::with_position(
+                            ))),
+                            11 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<11>(&bytes),
                                 position
-                            )),
-                            12 => search!(Avx2Searcher::with_position(
+                            ))),
+                            12 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<12>(&bytes),
                                 position
-                            )),
-                            13 => search!(Avx2Searcher::with_position(
+                            ))),
+                            13 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<13>(&bytes),
                                 position
-                            )),
-                            14 => search!(Avx2Searcher::with_position(
+                            ))),
+                            14 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<14>(&bytes),
                                 position
-                            )),
-                            15 => search!(Avx2Searcher::with_position(
+                            ))),
+                            15 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<15>(&bytes),
                                 position
-                            )),
-                            16 => search!(Avx2Searcher::with_position(
+                            ))),
+                            16 => search!(ArraySearcher(Avx2Searcher::with_position(
                                 slice_to_array::<16>(&bytes),
                                 position
-                            )),
-                            _ => search!(Avx2Searcher::with_position(bytes, position)),
+                            ))),
+                            _ => search!(BoxSearcher(Avx2Searcher::with_position(bytes, position))),
                         }
                     };
                 }
