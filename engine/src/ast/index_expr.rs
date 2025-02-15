@@ -112,7 +112,12 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         };
         if last == Some(0) {
             // Fast path
-            identifier.compile_with_compiler(compiler)
+            match identifier {
+                IdentifierExpr::Field(f) => {
+                    CompiledValueExpr::new(move |ctx| Ok(ctx.get_field_value_unchecked(f).as_ref()))
+                }
+                IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
+            }
         } else if let Some(last) = last {
             // Average path
             match identifier {
