@@ -7,7 +7,7 @@ use super::{
 use crate::{
     ast::index_expr::IndexExpr,
     compiler::Compiler,
-    filter::{CompiledExpr, CompiledValueExpr},
+    filter::CompiledExpr,
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     range_set::RangeSet,
     rhs_types::{Bytes, ExplicitIpRange, ListName, Regex, Wildcard},
@@ -239,20 +239,6 @@ pub enum IdentifierExpr<'s> {
     Field(Field<'s>),
     /// Function call
     FunctionCallExpr(FunctionCallExpr<'s>),
-}
-
-impl<'s> IdentifierExpr<'s> {
-    pub(crate) fn compile_with_compiler<C: Compiler<'s> + 's>(
-        self,
-        compiler: &mut C,
-    ) -> CompiledValueExpr<'s, C::U> {
-        match self {
-            IdentifierExpr::Field(f) => {
-                CompiledValueExpr::new(move |ctx| Ok(ctx.get_field_value_unchecked(f).as_ref()))
-            }
-            IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
-        }
-    }
 }
 
 impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr<'s> {
