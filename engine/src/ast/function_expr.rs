@@ -484,6 +484,18 @@ impl<'s> FunctionCallExpr<'s> {
             self.context.as_ref(),
         )
     }
+
+    /// Returns a reference to the function definition context.
+    #[inline]
+    pub fn context(&self) -> Option<&FunctionDefinitionContext> {
+        self.context.as_ref()
+    }
+
+    /// Returns a mutable reference to the function definition context.
+    #[inline]
+    pub fn context_mut(&mut self) -> Option<&mut FunctionDefinitionContext> {
+        self.context.as_mut()
+    }
 }
 
 fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> LexError<'i> {
