@@ -444,7 +444,7 @@ impl<'a, 'b> MapMut<'a, 'b> {
     /// Get a mutable reference to an element if it exists
     #[inline]
     pub fn get_mut(&'a mut self, key: &[u8]) -> Option<LhsValueMut<'a, 'b>> {
-        self.0.get_mut(key).map(LhsValueMut::from)
+        self.0.get_mut(key)
     }
 
     /// Inserts an element, overwriting if one already exists

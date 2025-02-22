@@ -470,7 +470,7 @@ impl<'a, 'b> ArrayMut<'a, 'b> {
     /// Get a mutable reference to an element if it exists
     #[inline]
     pub fn get_mut(&'a mut self, idx: usize) -> Option<LhsValueMut<'a, 'b>> {
-        self.0.get_mut(idx).map(LhsValueMut::from)
+        self.0.get_mut(idx)
     }
 }
 
