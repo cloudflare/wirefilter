@@ -1,21 +1,21 @@
 use super::{
+    Expr,
     function_expr::FunctionCallExpr,
     parse::FilterParser,
     visitor::{Visitor, VisitorMut},
-    Expr,
 };
 use crate::{
+    Field, List,
     ast::index_expr::IndexExpr,
     compiler::Compiler,
     filter::CompiledExpr,
-    lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     range_set::RangeSet,
     rhs_types::{Bytes, ExplicitIpRange, ListName, Regex, Wildcard},
     scheme::Identifier,
     searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
-    Field, List,
 };
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
@@ -492,7 +492,7 @@ impl Expr for ComparisonExpr {
 
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if *USE_AVX2 {
-                    use rand::{thread_rng, Rng};
+                    use rand::{Rng, thread_rng};
                     use sliceslice::x86::*;
 
                     fn slice_to_array<const N: usize>(slice: &[u8]) -> [u8; N] {
@@ -570,7 +570,7 @@ impl Expr for ComparisonExpr {
                 }
                 #[cfg(target_arch = "wasm32")]
                 if *USE_SIMD128 {
-                    use rand::{thread_rng, Rng};
+                    use rand::{Rng, thread_rng};
                     use sliceslice::wasm32::*;
 
                     let position = thread_rng().gen_range(1..bytes.len());
@@ -649,6 +649,7 @@ impl Expr for ComparisonExpr {
 mod tests {
     use super::*;
     use crate::{
+        BytesFormat, FieldRef, ParserSettings,
         ast::{
             function_expr::{FunctionCallArgExpr, FunctionCallExpr},
             logical_expr::LogicalExpr,
@@ -664,7 +665,6 @@ mod tests {
         rhs_types::{IpRange, RegexFormat},
         scheme::{FieldIndex, IndexAccessError, Scheme},
         types::ExpectedType,
-        BytesFormat, FieldRef, ParserSettings,
     };
     use cidr::IpCidr;
     use std::sync::LazyLock;

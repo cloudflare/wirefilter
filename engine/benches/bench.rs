@@ -5,7 +5,7 @@ use std::alloc::System;
 #[global_allocator]
 static A: System = System;
 
-use criterion::{criterion_group, criterion_main, Bencher, Criterion};
+use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
     ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, SchemeBuilder,

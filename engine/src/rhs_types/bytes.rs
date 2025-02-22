@@ -1,5 +1,5 @@
 use crate::{
-    lex::{take, Lex, LexErrorKind, LexResult},
+    lex::{Lex, LexErrorKind, LexResult, take},
     strict_partial_ord::StrictPartialOrd,
 };
 use serde::{Serialize, Serializer};

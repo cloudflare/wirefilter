@@ -67,9 +67,9 @@ impl<U> CompiledVecExpr<U> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
         closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult
-            + Sync
-            + Send
-            + 'static,
+        + Sync
+        + Send
+        + 'static,
     ) -> Self {
         CompiledVecExpr(Box::new(closure))
     }
@@ -148,9 +148,9 @@ impl<U> CompiledValueExpr<U> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
         closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e>
-            + Sync
-            + Send
-            + 'static,
+        + Sync
+        + Send
+        + 'static,
     ) -> Self {
         CompiledValueExpr(Box::new(closure))
     }

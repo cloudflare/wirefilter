@@ -1,13 +1,13 @@
 use super::{
+    Expr,
     field_expr::ComparisonExpr,
     parse::FilterParser,
     visitor::{Visitor, VisitorMut},
-    Expr,
 };
 use crate::{
     compiler::Compiler,
     filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr},
-    lex::{expect, skip_space, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space},
     types::{GetType, Type, TypeMismatchError},
 };
 use serde::Serialize;
@@ -69,7 +69,7 @@ pub enum LogicalExpr {
 impl GetType for LogicalExpr {
     fn get_type(&self) -> Type {
         match &self {
-            LogicalExpr::Combining { ref items, .. } => items[0].get_type(),
+            LogicalExpr::Combining { items, .. } => items[0].get_type(),
             LogicalExpr::Comparison(comparison) => comparison.get_type(),
             LogicalExpr::Parenthesized(parenthesized) => parenthesized.expr.get_type(),
             LogicalExpr::Unary { arg, .. } => arg.get_type(),
@@ -147,7 +147,7 @@ impl LogicalExpr {
                             actual: rhsty,
                         }),
                         lookahead.1,
-                    ))
+                    ));
                 }
             }
 

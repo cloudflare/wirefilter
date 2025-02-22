@@ -13,7 +13,7 @@ resolver = "2"
 authors = [ "Ingvar Stepanyan <me@rreverser.com>" ]
 version = "0.7.0"
 publish = true
-edition = "2021"
+edition = "2024"
 
 [workspace.dependencies]
 backtrace = "0.3"

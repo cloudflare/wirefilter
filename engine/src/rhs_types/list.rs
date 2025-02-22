@@ -1,4 +1,4 @@
-use crate::lex::{expect, Lex, LexErrorKind, LexResult};
+use crate::lex::{Lex, LexErrorKind, LexResult, expect};
 use serde::Serialize;
 use std::str;
 

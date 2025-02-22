@@ -1,8 +1,8 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt::Write;
 use wirefilter::{
-    panic_catcher_disable, panic_catcher_enable, panic_catcher_set_fallback_mode,
-    panic_catcher_set_hook, PanicCatcherFallbackMode,
+    PanicCatcherFallbackMode, panic_catcher_disable, panic_catcher_enable,
+    panic_catcher_set_fallback_mode, panic_catcher_set_hook,
 };
 
 #[repr(u8)]
@@ -12,12 +12,12 @@ pub enum CPanicCatcherFallbackMode {
     Abort = 1u8,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_set_panic_catcher_hook() {
     panic_catcher_set_hook()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_set_panic_catcher_fallback_mode(fallback_mode: u8) -> bool {
     let fallback_mode = match fallback_mode {
         0 => PanicCatcherFallbackMode::Continue,
@@ -32,12 +32,12 @@ pub extern "C" fn wirefilter_set_panic_catcher_fallback_mode(fallback_mode: u8) 
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_enable_panic_catcher() {
     panic_catcher_enable()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_disable_panic_catcher() {
     panic_catcher_disable()
 }

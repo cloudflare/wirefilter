@@ -1,8 +1,10 @@
 use wirefilter_ffi as _;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C-unwind" fn rust_assert(check: bool, msg: *const std::os::raw::c_char) {
-    assert!(check, "{}", std::ffi::CStr::from_ptr(msg).to_str().unwrap());
+    unsafe {
+        assert!(check, "{}", std::ffi::CStr::from_ptr(msg).to_str().unwrap());
+    }
 }
 
 macro_rules! ffi_ctest {
@@ -11,7 +13,7 @@ macro_rules! ffi_ctest {
             #[test]
             #[cfg_attr(miri, ignore)]
             pub fn $name() {
-                extern "C-unwind" {
+                unsafe extern "C-unwind" {
                     #[link_name = $link_name]
                     fn ctest();
                 }

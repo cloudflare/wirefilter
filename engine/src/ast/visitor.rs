@@ -1,9 +1,9 @@
 use super::{
+    Expr, ValueExpr,
     field_expr::{ComparisonExpr, ComparisonOpExpr},
     function_expr::{FunctionCallArgExpr, FunctionCallExpr},
     index_expr::IndexExpr,
     logical_expr::LogicalExpr,
-    Expr, ValueExpr,
 };
 use crate::{Field, FieldRef, Function};
 

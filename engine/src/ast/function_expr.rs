@@ -1,9 +1,10 @@
 use super::{
+    ValueExpr,
     parse::FilterParser,
     visitor::{Visitor, VisitorMut},
-    ValueExpr,
 };
 use crate::{
+    FunctionRef,
     ast::{
         field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr},
         index_expr::IndexExpr,
@@ -15,11 +16,10 @@ use crate::{
         ExactSizeChain, FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
         FunctionParamError,
     },
-    lex::{expect, skip_space, span, Lex, LexError, LexErrorKind, LexResult, LexWith},
+    lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     lhs_types::Array,
     scheme::Function,
     types::{GetType, LhsValue, RhsValue, Type},
-    FunctionRef,
 };
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
@@ -280,10 +280,9 @@ impl ValueExpr for FunctionCallExpr {
             #[inline(always)]
             fn compute<'s, 'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
                 first: CompiledValueResult<'a>,
-                call: &(dyn for<'b> Fn(FunctionArgs<'_, 'b>) -> Option<LhsValue<'b>>
-                      + Sync
-                      + Send
-                      + 's),
+                call: &(
+                     dyn for<'b> Fn(FunctionArgs<'_, 'b>) -> Option<LhsValue<'b>> + Sync + Send + 's
+                 ),
                 return_type: Type,
                 f: impl Fn(LhsValue<'a>) -> I,
             ) -> CompiledValueResult<'a> {
@@ -338,11 +337,12 @@ impl ValueExpr for FunctionCallExpr {
             }
         } else {
             CompiledValueExpr::new(move |ctx| {
-                if let Some(value) = call(&mut args.iter().map(|arg| arg.execute(ctx))) {
-                    debug_assert!(value.get_type() == return_type);
-                    Ok(value)
-                } else {
-                    Err(return_type)
+                match call(&mut args.iter().map(|arg| arg.execute(ctx))) {
+                    Some(value) => {
+                        debug_assert!(value.get_type() == return_type);
+                        Ok(value)
+                    }
+                    _ => Err(return_type),
                 }
             })
         }
@@ -1099,7 +1099,10 @@ mod tests {
             }
         );
 
-        let expr = FunctionCallArgExpr::lex_with("lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"", &FilterParser::new(&SCHEME));
+        let expr = FunctionCallArgExpr::lex_with(
+            "lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"",
+            &FilterParser::new(&SCHEME),
+        );
         assert!(expr.is_ok());
 
         let expr = assert_ok!(

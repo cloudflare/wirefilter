@@ -1,6 +1,6 @@
-use crate::lex::{span, LexErrorKind, LexResult, LexWith};
-use crate::rhs_types::bytes::lex_raw_string_as_str;
 use crate::FilterParser;
+use crate::lex::{LexErrorKind, LexResult, LexWith, span};
+use crate::rhs_types::bytes::lex_raw_string_as_str;
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
