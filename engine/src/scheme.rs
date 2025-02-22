@@ -1,10 +1,10 @@
 use crate::{
     ast::{
-        parse::{FilterParser, ParseError, ParserSettings},
         FilterAst, FilterValueAst,
+        parse::{FilterParser, ParseError, ParserSettings},
     },
     functions::FunctionDefinition,
-    lex::{expect, span, take_while, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{Lex, LexErrorKind, LexResult, LexWith, expect, span, take_while},
     list_matcher::ListDefinition,
     types::{GetType, RhsValue, Type},
 };
@@ -862,7 +862,7 @@ impl<'s> Scheme {
     }
 
     /// Iterates over all registered [`lists`](trait.ListDefinition.html).
-    pub fn lists(&self) -> impl ExactSizeIterator<Item = ListRef<'_>> {
+    pub fn lists(&self) -> impl ExactSizeIterator<Item = ListRef<'_>> + use<'_> {
         (0..self.inner.lists.len()).map(|index| ListRef {
             scheme: self,
             index,
@@ -886,8 +886,8 @@ macro_rules! Scheme {
 
 #[test]
 fn test_parse_error() {
-    use crate::types::{ExpectedTypeList, TypeMismatchError};
     use crate::ConcatFunction;
+    use crate::types::{ExpectedTypeList, TypeMismatchError};
     use indoc::indoc;
 
     let mut builder = Scheme! {

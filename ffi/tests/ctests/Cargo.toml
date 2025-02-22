@@ -4,7 +4,7 @@ name = "wirefilter-ffi-ctests"
 version = "0.1.0"
 description = "C based tests for FFI bindings of the Wirefilter engine"
 publish = false
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 wirefilter-ffi = {path = "../.."}

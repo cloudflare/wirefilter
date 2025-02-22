@@ -87,10 +87,10 @@ impl FunctionDefinition for ConcatFunction {
             while let Some(arg) = args.next() {
                 match arg {
                     Ok(LhsValue::Array(array)) => {
-                        return Some(LhsValue::Array(concat_array(array, args)))
+                        return Some(LhsValue::Array(concat_array(array, args)));
                     }
                     Ok(LhsValue::Bytes(bytes)) => {
-                        return Some(LhsValue::Bytes(concat_bytes(bytes, args)))
+                        return Some(LhsValue::Bytes(concat_bytes(bytes, args)));
                     }
                     Err(_) => (),
                     _ => unreachable!(),

@@ -1,6 +1,6 @@
 use super::{FilterAst, FilterValueAst};
 use crate::{
-    lex::{complete, LexErrorKind, LexResult, LexWith},
+    lex::{LexErrorKind, LexResult, LexWith, complete},
     scheme::Scheme,
 };
 use std::cmp::{max, min};

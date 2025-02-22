@@ -17,7 +17,7 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{catch_panic, AlwaysList, LhsValue, NeverList, Type};
+use wirefilter::{AlwaysList, LhsValue, NeverList, Type, catch_panic};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -245,7 +245,7 @@ pub enum Status {
 }
 
 /// Returns a pointer to the last error string if there was one or NULL.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_get_last_error() -> *const c_char {
     crate::LAST_ERROR.with_borrow(|last_error| last_error.as_c_str())
 }
@@ -254,24 +254,24 @@ pub extern "C" fn wirefilter_get_last_error() -> *const c_char {
 ///
 /// Further calls to `wirefilter_get_last_error` will return NULL,
 /// until another error is written to it.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_clear_last_error() {
     crate::LAST_ERROR.with_borrow_mut(|last_error| {
         last_error.clear();
     });
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_scheme_builder() -> Box<SchemeBuilder> {
     Box::default()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_scheme_builder(scheme: Box<SchemeBuilder>) {
     drop(scheme);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_primitive_type(ty: CPrimitiveType) -> CType {
     CType {
         layers: 0,
@@ -280,12 +280,12 @@ pub extern "C" fn wirefilter_create_primitive_type(ty: CPrimitiveType) -> CType 
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_map_type(ty: CType) -> CType {
     ty.push(Layer::Map)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_array_type(ty: CType) -> CType {
     ty.push(Layer::Array)
 }
@@ -311,7 +311,7 @@ macro_rules! to_str {
     };
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
     builder: &mut SchemeBuilder,
     name_ptr: *const c_char,
@@ -322,7 +322,7 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
     builder.add_field(name, ty.into()).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_always_list_to_scheme(
     builder: &mut SchemeBuilder,
     ty: CType,
@@ -330,7 +330,7 @@ pub extern "C" fn wirefilter_add_always_list_to_scheme(
     builder.add_list(ty.into(), AlwaysList {}).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_never_list_to_scheme(
     builder: &mut SchemeBuilder,
     ty: CType,
@@ -338,12 +338,12 @@ pub extern "C" fn wirefilter_add_never_list_to_scheme(
     builder.add_list(ty.into(), NeverList {}).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_build_scheme(builder: Box<SchemeBuilder>) -> Box<Scheme> {
     Box::new(Scheme(builder.0.build()))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_scheme(scheme: Box<Scheme>) {
     drop(scheme);
 }
@@ -384,7 +384,7 @@ impl Drop for RustAllocatedString {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_string(s: RustAllocatedString) {
     drop(s);
 }
@@ -396,7 +396,7 @@ pub struct ParsingResult {
     pub ast: Option<Box<FilterAst>>,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_parse_filter(
     scheme: &Scheme,
     input_ptr: *const c_char,
@@ -432,7 +432,7 @@ pub extern "C" fn wirefilter_parse_filter(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_parsed_filter(ast: Box<FilterAst>) {
     drop(ast);
 }
@@ -464,7 +464,7 @@ pub struct HashingResult {
     pub hash: u64,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst) -> HashingResult {
     let mut hasher = FnvHasher::default();
     // Serialize JSON to our Write-compatible wrapper around FnvHasher,
@@ -511,36 +511,36 @@ impl From<Result<String, serde_json::Error>> for SerializingResult {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_serialize_filter_to_json(filter_ast: &FilterAst) -> SerializingResult {
     serde_json::to_string(filter_ast.deref()).into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_serialize_scheme_to_json(scheme: &Scheme) -> SerializingResult {
     serde_json::to_string(scheme.deref()).into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_serialize_type_to_json(ty: CType) -> SerializingResult {
     serde_json::to_string(&Type::from(ty)).into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
     scheme: &'s Scheme,
 ) -> Box<ExecutionContext<'e>> {
     Box::new(ExecutionContext(wirefilter::ExecutionContext::new(scheme)))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_serialize_execution_context_to_json(
     exec_context: &mut ExecutionContext<'_>,
 ) -> SerializingResult {
     serde_json::to_string(exec_context.as_ref()).into()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_deserialize_json_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     json_ptr: *const u8,
@@ -558,12 +558,12 @@ pub extern "C" fn wirefilter_deserialize_json_to_execution_context(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_execution_context(exec_context: Box<ExecutionContext<'_>>) {
     drop(exec_context);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_int_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name_ptr: *const c_char,
@@ -574,7 +574,7 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context(
     exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name_ptr: *const c_char,
@@ -588,7 +588,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context(
     exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name_ptr: *const c_char,
@@ -601,7 +601,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
         .is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name_ptr: *const c_char,
@@ -614,7 +614,7 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
         .is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
     name_ptr: *const c_char,
@@ -625,7 +625,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name_ptr: *const c_char,
@@ -636,7 +636,7 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
     exec_context.set_field_value_from_name(name, *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
     exec_context: &mut ExecutionContext<'a>,
     name_ptr: *const c_char,
@@ -647,12 +647,12 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
     exec_context.set_field_value_from_name(name, *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_map<'a>(ty: CType) -> Box<Map<'a>> {
     Box::new(Map(wirefilter::Map::new(Type::from(ty))))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_int_value_to_map(
     map: &mut Map<'_>,
     name_ptr: *const u8,
@@ -664,7 +664,7 @@ pub extern "C" fn wirefilter_add_int_value_to_map(
     map.insert(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bytes_value_to_map(
     map: &mut Map<'_>,
     name_ptr: *const u8,
@@ -679,7 +679,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_map(
     map.insert(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv6_value_to_map(
     map: &mut Map<'_>,
     name_ptr: *const u8,
@@ -692,7 +692,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_map(
     map.insert(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv4_value_to_map(
     map: &mut Map<'_>,
     name_ptr: *const u8,
@@ -705,7 +705,7 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_map(
     map.insert(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bool_value_to_map(
     map: &mut Map<'_>,
     name_ptr: *const u8,
@@ -717,7 +717,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_map(
     map.insert(name, value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
     map: &mut Map<'a>,
     name_ptr: *const u8,
@@ -729,7 +729,7 @@ pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
     map.insert(name, *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
     map: &mut Map<'a>,
     name_ptr: *const u8,
@@ -741,17 +741,17 @@ pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
     map.insert(name, *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_map(map: Box<Map<'_>>) {
     drop(map)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_create_array<'a>(ty: CType) -> Box<Array<'a>> {
     Box::new(Array(wirefilter::Array::new(Type::from(ty))))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_int_value_to_array(
     array: &mut Array<'_>,
     index: u32,
@@ -760,7 +760,7 @@ pub extern "C" fn wirefilter_add_int_value_to_array(
     array.insert(index.try_into().unwrap(), value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bytes_value_to_array(
     array: &mut Array<'_>,
     index: u32,
@@ -772,7 +772,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_array(
     array.insert(index.try_into().unwrap(), value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv6_value_to_array(
     array: &mut Array<'_>,
     index: u32,
@@ -782,7 +782,7 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_array(
     array.insert(index.try_into().unwrap(), value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_ipv4_value_to_array(
     array: &mut Array<'_>,
     index: u32,
@@ -792,7 +792,7 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_array(
     array.insert(index.try_into().unwrap(), value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bool_value_to_array(
     array: &mut Array<'_>,
     index: u32,
@@ -801,7 +801,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_array(
     array.insert(index.try_into().unwrap(), value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_map_value_to_array<'a>(
     array: &mut Array<'a>,
     index: u32,
@@ -810,7 +810,7 @@ pub extern "C" fn wirefilter_add_map_value_to_array<'a>(
     array.insert(index.try_into().unwrap(), *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_array_value_to_array<'a>(
     array: &mut Array<'a>,
     index: u32,
@@ -819,7 +819,7 @@ pub extern "C" fn wirefilter_add_array_value_to_array<'a>(
     array.insert(index.try_into().unwrap(), *value).is_ok()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_array(array: Box<Array<'_>>) {
     drop(array)
 }
@@ -831,7 +831,7 @@ pub struct CompilingResult {
     pub filter: Option<Box<Filter>>,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_compile_filter(filter_ast: Box<FilterAst>) -> CompilingResult {
     match catch_panic(std::panic::AssertUnwindSafe(|| {
         wirefilter::FilterAst::from(*filter_ast).compile()
@@ -878,7 +878,7 @@ impl MatchingResult {
     };
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_match(
     filter: &Filter,
     exec_context: &ExecutionContext<'_>,
@@ -901,7 +901,7 @@ pub extern "C" fn wirefilter_match(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_compiled_filter(filter: Box<Filter>) {
     drop(filter);
 }
@@ -934,7 +934,7 @@ impl UsingResult {
     };
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_filter_uses(
     filter_ast: &FilterAst,
     field_name_ptr: *const c_char,
@@ -957,7 +957,7 @@ pub extern "C" fn wirefilter_filter_uses(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_filter_uses_list(
     filter_ast: &FilterAst,
     field_name_ptr: *const c_char,
@@ -1011,7 +1011,7 @@ impl From<&'static str> for StaticRustAllocatedString {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
     StaticRustAllocatedString::from(VERSION)
 }

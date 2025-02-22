@@ -80,13 +80,13 @@ mod types;
 
 pub use self::{
     ast::{
+        Expr, FilterAst, FilterValueAst, ValueExpr,
         field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, IntOp, OrderingOp},
         function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         index_expr::IndexExpr,
         logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr, UnaryOp},
         parse::{FilterParser, ParseError, ParserSettings},
         visitor::{Visitor, VisitorMut},
-        Expr, FilterAst, FilterValueAst, ValueExpr,
     },
     compiler::{Compiler, DefaultCompiler},
     execution_context::{
@@ -107,8 +107,8 @@ pub use self::{
         AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
     },
     panic::{
-        catch_panic, panic_catcher_disable, panic_catcher_enable, panic_catcher_get_backtrace,
-        panic_catcher_set_fallback_mode, panic_catcher_set_hook, PanicCatcherFallbackMode,
+        PanicCatcherFallbackMode, catch_panic, panic_catcher_disable, panic_catcher_enable,
+        panic_catcher_get_backtrace, panic_catcher_set_fallback_mode, panic_catcher_set_hook,
     },
     rhs_types::{
         Bytes, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,

@@ -1,10 +1,10 @@
 pub use cidr::IpCidr;
 
 use crate::{
-    lex::{take_while, Lex, LexError, LexErrorKind, LexResult},
+    lex::{Lex, LexError, LexErrorKind, LexResult, take_while},
     strict_partial_ord::StrictPartialOrd,
 };
-use cidr::{errors::NetworkParseError, Ipv4Cidr, Ipv6Cidr};
+use cidr::{Ipv4Cidr, Ipv6Cidr, errors::NetworkParseError};
 use serde::Serialize;
 use std::{
     cmp::Ordering,

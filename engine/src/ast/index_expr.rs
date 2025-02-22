@@ -1,8 +1,8 @@
 use super::{
+    ValueExpr,
     field_expr::IdentifierExpr,
     parse::FilterParser,
     visitor::{Visitor, VisitorMut},
-    ValueExpr,
 };
 use crate::{
     compiler::Compiler,
@@ -10,12 +10,12 @@ use crate::{
     filter::{
         CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, CompiledVecExprResult,
     },
-    lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
+    lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     lhs_types::{Array, Map, TypedArray},
     scheme::{FieldIndex, IndexAccessError},
     types::{GetType, IntoIter, LhsValue, Type},
 };
-use serde::{ser::SerializeSeq, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeSeq};
 
 /// IndexExpr is an expr that destructures an index into an IdentifierExpr.
 ///
@@ -282,10 +282,13 @@ impl IndexExpr {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
                     let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    if let Ok(val) = call.execute(ctx) {
-                        iter.reset(val);
-                    } else {
-                        return TypedArray::default();
+                    match call.execute(ctx) {
+                        Ok(val) => {
+                            iter.reset(val);
+                        }
+                        _ => {
+                            return TypedArray::default();
+                        }
                     }
 
                     TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
@@ -363,7 +366,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
                                 actual: current_type,
                             }),
                             span(input, rest),
-                        ))
+                        ));
                     }
                 },
                 FieldIndex::MapKey(_) => match current_type {
@@ -377,7 +380,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
                                 actual: current_type,
                             }),
                             span(input, rest),
-                        ))
+                        ));
                     }
                 },
                 FieldIndex::MapEach => match current_type {
@@ -394,7 +397,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
                                 actual: current_type,
                             }),
                             span(input, rest),
-                        ))
+                        ));
                     }
                 },
             };
@@ -544,9 +547,9 @@ impl<'a> Iterator for MapEachIterator<'a, '_> {
 mod tests {
     use super::*;
     use crate::{
-        ast::field_expr::IdentifierExpr, Array, FieldIndex, FilterParser, FunctionArgKind,
-        FunctionArgs, FunctionCallArgExpr, FunctionCallExpr, Scheme, SchemeBuilder,
-        SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam,
+        Array, FieldIndex, FilterParser, FunctionArgKind, FunctionArgs, FunctionCallArgExpr,
+        FunctionCallExpr, Scheme, SchemeBuilder, SimpleFunctionDefinition, SimpleFunctionImpl,
+        SimpleFunctionParam, ast::field_expr::IdentifierExpr,
     };
     use std::sync::LazyLock;
 

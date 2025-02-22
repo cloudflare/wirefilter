@@ -6,9 +6,9 @@ use crate::{
     },
 };
 use serde::{
+    Serialize, Serializer,
     de::{self, DeserializeSeed, Deserializer, SeqAccess, Visitor},
     ser::SerializeSeq,
-    Serialize, Serializer,
 };
 use std::{
     fmt,
@@ -17,7 +17,7 @@ use std::{
     ops::Deref,
 };
 
-use super::{map::InnerMap, TypedMap};
+use super::{TypedMap, map::InnerMap};
 
 // Ideally, we would want to use Cow<'a, LhsValue<'a>> here
 // but it doesnt work for unknown reasons

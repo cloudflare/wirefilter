@@ -6,9 +6,9 @@ use crate::{
     },
 };
 use serde::{
+    Serialize, Serializer,
     de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeMap, SerializeSeq},
-    Serialize, Serializer,
 };
 use std::{
     borrow::Cow,
@@ -19,7 +19,7 @@ use std::{
     ops::Deref,
 };
 
-use super::{array::InnerArray, TypedArray};
+use super::{TypedArray, array::InnerArray};
 
 #[derive(Debug, Clone)]
 pub(crate) enum InnerMap<'a> {
