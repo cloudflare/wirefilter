@@ -715,6 +715,7 @@ mod tests {
     impl FunctionDefinition for FilterFunction {
         fn check_param(
             &self,
+            _: &FilterParser<'_>,
             params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
             next_param: &FunctionParam<'_>,
             _: Option<&mut FunctionDefinitionContext>,
