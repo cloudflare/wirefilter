@@ -1,6 +1,7 @@
 use crate::{
     filter::CompiledValueResult,
     types::{ExpectedType, ExpectedTypeList, GetType, LhsValue, RhsValue, Type, TypeMismatchError},
+    FilterParser,
 };
 use std::any::Any;
 use std::convert::TryFrom;
@@ -370,6 +371,7 @@ pub trait FunctionDefinition: Debug + Send + Sync {
     /// correct. Return the expected the parameter definition.
     fn check_param(
         &self,
+        parser: &FilterParser<'_>,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         next_param: &FunctionParam<'_>,
         ctx: Option<&mut FunctionDefinitionContext>,
@@ -458,6 +460,7 @@ pub struct SimpleFunctionDefinition {
 impl FunctionDefinition for SimpleFunctionDefinition {
     fn check_param(
         &self,
+        _parser: &FilterParser<'_>,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         next_param: &FunctionParam<'_>,
         _: Option<&mut FunctionDefinitionContext>,
