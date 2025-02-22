@@ -411,7 +411,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
         let lhs = self.lhs;
 
         macro_rules! cast_value {
-            ($value:expr, $ty:ident) => {
+            ($value:expr_2021, $ty:ident) => {
                 match $value {
                     LhsValue::$ty(value) => value,
                     _ => unreachable!(),
@@ -468,7 +468,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
             }),
             ComparisonOpExpr::Contains(bytes) => {
                 macro_rules! search {
-                    ($searcher:expr) => {{
+                    ($searcher:expr_2021) => {{
                         let searcher = $searcher;
                         lhs.compile_with(compiler, false, move |x, _ctx| {
                             searcher.search_in(cast_value!(x, Bytes).as_ref())

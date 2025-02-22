@@ -69,7 +69,7 @@ pub enum LogicalExpr<'s> {
 impl GetType for LogicalExpr<'_> {
     fn get_type(&self) -> Type {
         match &self {
-            LogicalExpr::Combining { ref items, .. } => items[0].get_type(),
+            LogicalExpr::Combining { items, .. } => items[0].get_type(),
             LogicalExpr::Comparison(comparison) => comparison.get_type(),
             LogicalExpr::Parenthesized(parenthesized) => parenthesized.expr.get_type(),
             LogicalExpr::Unary { arg, .. } => arg.get_type(),

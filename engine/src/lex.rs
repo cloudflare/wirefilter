@@ -227,7 +227,7 @@ macro_rules! lex_enum {
     // On the parser side, tries to parse either of the given string values,
     // and returns the variant if any of them succeeded.
     (@decl $preamble:tt $name:ident $input:ident { $($decl:tt)* } { $($expr:tt)* } {
-        $(#[$meta:meta])* $($s:literal)|+ => $item:ident $(= $value:expr)*,
+        $(#[$meta:meta])* $($s:literal)|+ => $item:ident $(= $value:expr_2021)*,
         $($rest:tt)*
     }) => {
         lex_enum!(@decl $preamble $name $input {
@@ -324,27 +324,27 @@ pub fn complete<T>(res: LexResult<'_, T>) -> Result<T, LexError<'_>> {
 
 #[cfg(test)]
 macro_rules! assert_ok {
-    ($s:expr, $res:expr, $rest:expr) => {{
+    ($s:expr_2021, $res:expr_2021, $rest:expr_2021) => {{
         let expr = $s.unwrap();
         assert_eq!(expr, ($res, $rest));
         expr.0
     }};
 
-    ($s:expr, $res:expr) => {
+    ($s:expr_2021, $res:expr_2021) => {
         assert_ok!($s, $res, "")
     };
 }
 
 #[cfg(test)]
 macro_rules! assert_err {
-    ($s:expr, $kind:expr, $span:expr) => {
+    ($s:expr_2021, $kind:expr_2021, $span:expr_2021) => {
         assert_eq!($s, Err(($kind, $span)))
     };
 }
 
 #[cfg(test)]
 macro_rules! assert_json {
-    ($expr:expr, $json:tt) => {{
+    ($expr:expr_2021, $json:tt) => {{
         let json = ::serde_json::to_value(&$expr).unwrap();
         assert_eq!(json, ::serde_json::json!($json));
         json

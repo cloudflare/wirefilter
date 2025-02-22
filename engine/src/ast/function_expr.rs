@@ -115,13 +115,13 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr<'s> {
 
         macro_rules! c_is_field {
             // characters above F/f in the alphabet mean it can't be a decimal or hex int
-            ($c:expr) => {
+            ($c:expr_2021) => {
                 (($c.is_ascii_alphanumeric() && !$c.is_ascii_hexdigit()) || $c == '_')
             };
         }
 
         macro_rules! c_is_field_or_int {
-            ($c:expr) => {
+            ($c:expr_2021) => {
                 ($c.is_ascii_alphanumeric() || $c == '_')
             };
         }
@@ -343,11 +343,12 @@ impl<'s> ValueExpr<'s> for FunctionCallExpr<'s> {
             }
         } else {
             CompiledValueExpr::new(move |ctx| {
-                if let Some(value) = call(&mut args.iter().map(|arg| arg.execute(ctx))) {
-                    debug_assert!(value.get_type() == return_type);
-                    Ok(value)
-                } else {
-                    Err(return_type)
+                match call(&mut args.iter().map(|arg| arg.execute(ctx))) {
+                    Some(value) => {
+                        debug_assert!(value.get_type() == return_type);
+                        Ok(value)
+                    }
+                    _ => Err(return_type),
                 }
             })
         }

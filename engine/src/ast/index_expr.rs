@@ -285,10 +285,13 @@ impl<'s> IndexExpr<'s> {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
                     let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    if let Ok(val) = call.execute(ctx) {
-                        iter.reset(val);
-                    } else {
-                        return TypedArray::default();
+                    match call.execute(ctx) {
+                        Ok(val) => {
+                            iter.reset(val);
+                        }
+                        _ => {
+                            return TypedArray::default();
+                        }
                     }
 
                     TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
