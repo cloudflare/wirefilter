@@ -4,11 +4,8 @@ use crate::{
 };
 use std::any::Any;
 use std::convert::TryFrom;
-use std::{
-    fmt::{self, Debug},
-    iter::once,
-    sync::Arc,
-};
+use std::fmt::{self, Debug};
+use std::iter::once;
 use thiserror::Error;
 
 pub(crate) struct ExactSizeChain<A, B>
@@ -274,16 +271,16 @@ impl<'a> FunctionParam<'a> {
 /// Context that can be created and used
 /// when parsing a function call
 pub struct FunctionDefinitionContext {
-    inner: Arc<dyn Any + Send + Sync>,
-    clone_cb: fn(&(dyn Any + Send + Sync)) -> Arc<dyn Any + Send + Sync>,
+    inner: Box<dyn Any + Send + Sync>,
+    clone_cb: fn(&(dyn Any + Send + Sync)) -> Box<dyn Any + Send + Sync>,
     fmt_cb: fn(&(dyn Any + Send + Sync), &mut std::fmt::Formatter<'_>) -> std::fmt::Result,
 }
 
 impl FunctionDefinitionContext {
     fn clone_any<T: Any + Clone + Send + Sync>(
         t: &(dyn Any + Send + Sync),
-    ) -> Arc<dyn Any + Send + Sync> {
-        Arc::new(t.downcast_ref::<T>().unwrap().clone())
+    ) -> Box<dyn Any + Send + Sync> {
+        Box::new(t.downcast_ref::<T>().unwrap().clone())
     }
 
     fn fmt_any<T: Any + Debug + Send + Sync>(
@@ -297,26 +294,30 @@ impl FunctionDefinitionContext {
     /// object of type `T`
     pub fn new<T: Any + Clone + Debug + Send + Sync>(t: T) -> Self {
         Self {
-            inner: Arc::new(t),
+            inner: Box::new(t),
             clone_cb: Self::clone_any::<T>,
             fmt_cb: Self::fmt_any::<T>,
         }
     }
+
     /// Returns a reference to the underlying Any object
     pub fn as_any_ref(&self) -> &(dyn Any + Send + Sync) {
         &*self.inner
     }
+
     /// Returns a mutable reference to the underlying Any object
     pub fn as_any_mut(&mut self) -> &mut (dyn Any + Send + Sync) {
-        Arc::get_mut(&mut self.inner).unwrap()
+        &mut self.inner
     }
-    /// Converts current `FunctionDefinitionContext` to `Box<dyn Dy>`
-    pub fn into_any(self) -> Arc<dyn Any + Send + Sync> {
+
+    /// Converts current `FunctionDefinitionContext` to `Box<dyn Any>`
+    pub fn into_any(self) -> Box<dyn Any + Send + Sync> {
         let Self { inner, .. } = self;
         inner
     }
+
     /// Attempt to downcast the context to a concrete type.
-    pub fn downcast<T: Any + Send + Sync>(self) -> Result<Arc<T>, Self> {
+    pub fn downcast<T: Any + Send + Sync>(self) -> Result<Box<T>, Self> {
         let Self {
             inner,
             clone_cb,
@@ -329,27 +330,14 @@ impl FunctionDefinitionContext {
         })
     }
 
-    /// Attempt to extract the concrete value stored in the context.
-    pub fn try_unwrap<T: Any + Send + Sync>(self) -> Result<T, Self> {
-        self.downcast::<T>().map(|val| match Arc::try_unwrap(val) {
-            Ok(val) => val,
-            Err(_) => unreachable!(),
-        })
+    /// Returns some reference to the inner value if it is of type T, or None if it isn’t.
+    pub fn downcast_ref<T: Any + Send + Sync>(&self) -> Option<&T> {
+        self.inner.downcast_ref::<T>()
     }
-}
 
-impl<T: Any> std::convert::AsRef<T> for FunctionDefinitionContext {
-    fn as_ref(&self) -> &T {
-        self.inner.downcast_ref::<T>().unwrap()
-    }
-}
-
-impl<T: Any> std::convert::AsMut<T> for FunctionDefinitionContext {
-    fn as_mut(&mut self) -> &mut T {
-        Arc::get_mut(&mut self.inner)
-            .unwrap()
-            .downcast_mut::<T>()
-            .unwrap()
+    /// Returns some mutable reference to the inner value if it is of type T, or None if it isn’t.
+    pub fn downcast_mut<T: Any + Send + Sync>(&mut self) -> Option<&mut T> {
+        self.inner.downcast_mut::<T>()
     }
 }
 
@@ -533,29 +521,33 @@ mod tests {
 
     #[test]
     fn test_function_definition_context() {
-        let ctx1 = FunctionDefinitionContext::new(Some(42u8));
+        let mut ctx1 = FunctionDefinitionContext::new(42u8);
 
         assert_eq!(
-            "FunctionDefinitionContext(Some(42))".to_owned(),
+            "FunctionDefinitionContext(42)".to_owned(),
             format!("{ctx1:?}")
         );
 
-        assert_eq!(
-            ctx1.as_any_ref().downcast_ref::<Option<u8>>().unwrap(),
-            &Some(42u8)
-        );
+        assert_eq!(ctx1.downcast_ref::<u8>(), Some(&42u8));
 
         let ctx2 = ctx1.clone();
 
-        let value = ctx1.downcast::<Option<u8>>().unwrap();
+        assert_eq!(ctx2.downcast_ref::<u8>(), Some(&42u8));
 
-        assert_eq!(value, Arc::new(Some(42u8)));
+        *ctx1.downcast_mut::<u8>().unwrap() = 255u8;
 
-        assert_eq!(
-            ctx2.as_any_ref().downcast_ref::<Option<u8>>().unwrap(),
-            &*value
-        );
+        let value = ctx1.downcast::<u8>().unwrap();
 
-        assert_eq!(ctx2.try_unwrap::<Option<u8>>().unwrap(), Some(42u8));
+        assert_eq!(*value, 255u8);
+
+        assert_eq!(*ctx2.downcast::<u8>().unwrap(), 42u8);
+
+        fn is_send<T: Send>() {}
+
+        is_send::<FunctionDefinitionContext>();
+
+        fn is_sync<T: Sync>() {}
+
+        is_sync::<FunctionDefinitionContext>();
     }
 }
