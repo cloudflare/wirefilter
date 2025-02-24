@@ -126,7 +126,7 @@ impl<const STRICT: bool> Serialize for Wildcard<STRICT> {
 impl<'i, 's, const STRICT: bool> LexWith<'i, &FilterParser<'s>> for Wildcard<STRICT> {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Wildcard<STRICT>> {
         lex_quoted_or_raw_string(input).and_then(|(pattern, rest)| {
-            match Wildcard::new(pattern, parser.wildcard_star_limit) {
+            match Wildcard::new(pattern, parser.settings.wildcard_star_limit) {
                 Ok(wildcard) => Ok((wildcard, rest)),
                 Err(err) => Err((LexErrorKind::ParseWildcard(err), input)),
             }

@@ -645,8 +645,10 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
 mod tests {
     use super::*;
     use crate::{
-        ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr},
-        ast::logical_expr::LogicalExpr,
+        ast::{
+            function_expr::{FunctionCallArgExpr, FunctionCallExpr},
+            logical_expr::LogicalExpr,
+        },
         execution_context::ExecutionContext,
         functions::{
             FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
@@ -658,7 +660,7 @@ mod tests {
         rhs_types::{IpRange, RegexFormat},
         scheme::{FieldIndex, IndexAccessError, Scheme},
         types::ExpectedType,
-        BytesFormat,
+        BytesFormat, ParserSettings,
     };
     use cidr::IpCidr;
     use std::sync::LazyLock;
@@ -715,7 +717,7 @@ mod tests {
     impl FunctionDefinition for FilterFunction {
         fn check_param(
             &self,
-            _: &FilterParser<'_>,
+            _: &ParserSettings,
             params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
             next_param: &FunctionParam<'_>,
             _: Option<&mut FunctionDefinitionContext>,

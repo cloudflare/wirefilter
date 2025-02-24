@@ -84,7 +84,7 @@ pub use self::{
         function_expr::{FunctionCallArgExpr, FunctionCallExpr},
         index_expr::IndexExpr,
         logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr, UnaryOp},
-        parse::{FilterParser, ParseError},
+        parse::{FilterParser, ParseError, ParserSettings},
         visitor::{Visitor, VisitorMut},
         Expr, FilterAst, FilterValueAst, ValueExpr,
     },

@@ -96,27 +96,54 @@ impl Display for ParseError<'_> {
     }
 }
 
-/// A structure used to drive parsing of an expression into a [`FilterAst`].
+/// Parser settings.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FilterParser<'s> {
-    pub(crate) scheme: &'s Scheme,
-    pub(crate) regex_dfa_size_limit: usize,
-    pub(crate) regex_compiled_size_limit: usize,
-    pub(crate) wildcard_star_limit: usize,
+pub struct ParserSettings {
+    /// Approximate size of the cache used by the DFA of a regex.
+    /// Default: 10MB
+    pub regex_dfa_size_limit: usize,
+    /// Approximate size limit of the compiled regular expression.
+    /// Default: 2MB
+    pub regex_compiled_size_limit: usize,
+    /// Maximum number of star metacharacters allowed in a wildcard.
+    /// Default: unlimited
+    pub wildcard_star_limit: usize,
 }
 
-impl<'s> FilterParser<'s> {
-    /// Creates a new parser with default configuration.
+impl Default for ParserSettings {
     #[inline]
-    pub fn new(scheme: &'s Scheme) -> Self {
+    fn default() -> Self {
         Self {
-            scheme,
             // Default value extracted from the regex crate.
             regex_compiled_size_limit: 10 * (1 << 20),
             // Default value extracted from the regex crate.
             regex_dfa_size_limit: 2 * (1 << 20),
             wildcard_star_limit: usize::MAX,
         }
+    }
+}
+
+/// A structure used to drive parsing of an expression into a [`FilterAst`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilterParser<'s> {
+    pub(crate) scheme: &'s Scheme,
+    pub(crate) settings: ParserSettings,
+}
+
+impl<'s> FilterParser<'s> {
+    /// Creates a new parser with default settings.
+    #[inline]
+    pub fn new(scheme: &'s Scheme) -> Self {
+        Self {
+            scheme,
+            settings: ParserSettings::default(),
+        }
+    }
+
+    /// Creates a new parser with the specified settings.
+    #[inline]
+    pub fn with_settings(scheme: &'s Scheme, settings: ParserSettings) -> Self {
+        Self { scheme, settings }
     }
 
     /// Returns the [`Scheme`](struct@Scheme) for which this parser has been constructor for.
@@ -143,39 +170,45 @@ impl<'s> FilterParser<'s> {
         complete(self.lex_as(input.trim())).map_err(|err| ParseError::new(input, err))
     }
 
+    /// Retrieve parser settings.
+    #[inline]
+    pub fn settings(&self) -> &ParserSettings {
+        &self.settings
+    }
+
     /// Set the approximate size limit of the compiled regular expression.
     #[inline]
     pub fn regex_set_compiled_size_limit(&mut self, regex_compiled_size_limit: usize) {
-        self.regex_compiled_size_limit = regex_compiled_size_limit;
+        self.settings.regex_compiled_size_limit = regex_compiled_size_limit;
     }
 
     /// Get the approximate size limit of the compiled regular expression.
     #[inline]
     pub fn regex_get_compiled_size_limit(&self) -> usize {
-        self.regex_compiled_size_limit
+        self.settings.regex_compiled_size_limit
     }
 
     /// Set the approximate size of the cache used by the DFA of a regex.
     #[inline]
     pub fn regex_set_dfa_size_limit(&mut self, regex_dfa_size_limit: usize) {
-        self.regex_dfa_size_limit = regex_dfa_size_limit;
+        self.settings.regex_dfa_size_limit = regex_dfa_size_limit;
     }
 
     /// Get the approximate size of the cache used by the DFA of a regex.
     #[inline]
     pub fn regex_get_dfa_size_limit(&self) -> usize {
-        self.regex_dfa_size_limit
+        self.settings.regex_dfa_size_limit
     }
 
     /// Set the maximum number of star metacharacters allowed in a wildcard.
     #[inline]
     pub fn wildcard_set_star_limit(&mut self, wildcard_star_limit: usize) {
-        self.wildcard_star_limit = wildcard_star_limit;
+        self.settings.wildcard_star_limit = wildcard_star_limit;
     }
 
     /// Get the maximum number of star metacharacters allowed in a wildcard.
     #[inline]
     pub fn wildcard_get_star_limit(&self) -> usize {
-        self.wildcard_star_limit
+        self.settings.wildcard_star_limit
     }
 }
