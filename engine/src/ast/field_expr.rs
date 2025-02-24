@@ -2646,9 +2646,9 @@ mod tests {
 
         // Matches operator
         let parser = FilterParser::new(&SCHEME);
-        let r = Regex::new("a.b", RegexFormat::Literal, &parser).unwrap();
+        let r = Regex::new("a.b", RegexFormat::Literal, parser.settings()).unwrap();
         let expr = assert_ok!(
-            FilterParser::new(&SCHEME).lex_as("http.host matches r###\"a.b\"###"),
+            parser.lex_as("http.host matches r###\"a.b\"###"),
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host")),

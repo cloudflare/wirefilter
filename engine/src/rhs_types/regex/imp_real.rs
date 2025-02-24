@@ -1,4 +1,4 @@
-use crate::{FilterParser, RegexFormat};
+use crate::{ParserSettings, RegexFormat};
 
 pub use regex::Error;
 
@@ -14,12 +14,12 @@ impl Regex {
     pub fn new(
         pattern: &str,
         format: RegexFormat,
-        parser: &FilterParser<'_>,
+        settings: &ParserSettings,
     ) -> Result<Self, Error> {
         ::regex::bytes::RegexBuilder::new(pattern)
             .unicode(false)
-            .size_limit(parser.settings.regex_compiled_size_limit)
-            .dfa_size_limit(parser.settings.regex_dfa_size_limit)
+            .size_limit(settings.regex_compiled_size_limit)
+            .dfa_size_limit(settings.regex_dfa_size_limit)
             .build()
             .map(|r| Regex {
                 compiled_regex: r,
@@ -51,15 +51,13 @@ impl From<Regex> for regex::bytes::Regex {
 
 #[test]
 fn test_compiled_size_limit() {
-    use crate::Scheme;
-
-    let scheme = Scheme::default();
-
     const COMPILED_SIZE_LIMIT: usize = 1024 * 1024;
-    let mut parser = FilterParser::new(&scheme);
-    parser.regex_set_compiled_size_limit(COMPILED_SIZE_LIMIT);
+    let settings = ParserSettings {
+        regex_compiled_size_limit: COMPILED_SIZE_LIMIT,
+        ..Default::default()
+    };
     assert_eq!(
-        Regex::new(".{4079,65535}", RegexFormat::Literal, &parser),
+        Regex::new(".{4079,65535}", RegexFormat::Literal, &settings),
         Err(Error::CompiledTooBig(COMPILED_SIZE_LIMIT))
     );
 }

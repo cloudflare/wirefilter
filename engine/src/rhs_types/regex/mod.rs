@@ -52,7 +52,7 @@ fn lex_regex_from_raw_string<'i>(
     parser: &FilterParser<'_>,
 ) -> LexResult<'i, Regex> {
     let ((lexed, hashes), input) = lex_raw_string_as_str(input)?;
-    match Regex::new(lexed, RegexFormat::Raw(hashes), parser) {
+    match Regex::new(lexed, RegexFormat::Raw(hashes), parser.settings()) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), input)),
     }
@@ -94,7 +94,7 @@ fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexR
             };
         }
     };
-    match Regex::new(&regex_buf, RegexFormat::Literal, parser) {
+    match Regex::new(&regex_buf, RegexFormat::Literal, parser.settings()) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
     }
@@ -123,17 +123,19 @@ impl Serialize for Regex {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::Scheme;
+    use crate::{ParserSettings, Scheme};
 
     #[test]
     fn test() {
         let scheme = Scheme::new();
+        let parser = FilterParser::new(&scheme);
+
         let expr = assert_ok!(
-            Regex::lex_with(r#""[a-z"\]]+\d{1,10}\"";"#, &FilterParser::new(&scheme)),
+            Regex::lex_with(r#""[a-z"\]]+\d{1,10}\"";"#, &parser),
             Regex::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Literal,
-                &FilterParser::new(&scheme)
+                &ParserSettings::default(),
             )
             .unwrap(),
             ";"
@@ -142,7 +144,7 @@ mod test {
         assert_json!(expr, r#"[a-z"\]]+\d{1,10}""#);
 
         assert_err!(
-            Regex::lex_with(r#""abcd\"#, &FilterParser::new(&scheme)),
+            Regex::lex_with(r#""abcd\"#, &parser),
             LexErrorKind::MissingEndingQuote,
             "abcd\\"
         );
@@ -151,6 +153,8 @@ mod test {
     #[test]
     fn test_raw_string() {
         let scheme = Scheme::new();
+        let parser = FilterParser::new(&scheme);
+
         let expr = assert_ok!(
             Regex::lex_with(
                 r###"r#"[a-z"\]]+\d{1,10}""#;"###,
@@ -159,7 +163,7 @@ mod test {
             Regex::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Raw(1),
-                &FilterParser::new(&scheme)
+                parser.settings(),
             )
             .unwrap(),
             ";"
@@ -170,12 +174,12 @@ mod test {
         let expr = assert_ok!(
             Regex::lex_with(
                 r##"r#"(?u)\*\a\f\t\n\r\v\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#"##,
-                &FilterParser::new(&scheme)
+                &parser,
             ),
             Regex::new(
                 r#"(?u)\*\a\f\t\n\r\v\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#,
                 RegexFormat::Raw(1),
-                &FilterParser::new(&scheme)
+                parser.settings(),
             )
             .unwrap(),
             ""
