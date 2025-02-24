@@ -18,8 +18,8 @@ impl Regex {
     ) -> Result<Self, Error> {
         ::regex::bytes::RegexBuilder::new(pattern)
             .unicode(false)
-            .size_limit(parser.regex_compiled_size_limit)
-            .dfa_size_limit(parser.regex_dfa_size_limit)
+            .size_limit(parser.settings.regex_compiled_size_limit)
+            .dfa_size_limit(parser.settings.regex_dfa_size_limit)
             .build()
             .map(|r| Regex {
                 compiled_regex: r,

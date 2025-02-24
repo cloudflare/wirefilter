@@ -418,7 +418,7 @@ impl<'s> FunctionCallExpr<'s> {
 
             definition
                 .check_param(
-                    parser,
+                    parser.settings(),
                     &mut args.iter().map(|arg| arg.into()),
                     &next_param,
                     ctx.as_mut(),

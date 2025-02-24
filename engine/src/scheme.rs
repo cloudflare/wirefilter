@@ -1,6 +1,8 @@
 use crate::{
-    ast::parse::{FilterParser, ParseError},
-    ast::{FilterAst, FilterValueAst},
+    ast::{
+        parse::{FilterParser, ParseError, ParserSettings},
+        FilterAst, FilterValueAst,
+    },
     functions::FunctionDefinition,
     lex::{expect, span, take_while, Lex, LexErrorKind, LexResult, LexWith},
     list_matcher::ListDefinition,
@@ -534,6 +536,16 @@ impl<'s> Scheme {
             scheme: self,
             index,
         })
+    }
+
+    /// Creates a new parser with default settings.
+    pub fn parser(&self) -> FilterParser<'_> {
+        FilterParser::new(self)
+    }
+
+    /// Creates a new parser with the specified settings.
+    pub fn parser_with_settings(&self, settings: ParserSettings) -> FilterParser<'_> {
+        FilterParser::with_settings(self, settings)
     }
 
     /// Parses a filter expression into an AST form.
