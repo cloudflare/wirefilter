@@ -1039,7 +1039,7 @@ pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
 #[allow(clippy::bool_assert_comparison)]
 mod ffi_test {
     use super::*;
-    use regex::Regex;
+    use regex_automata::meta::Regex;
     use std::ffi::CStr;
 
     impl RustAllocatedString {

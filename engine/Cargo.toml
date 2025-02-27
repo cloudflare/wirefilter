@@ -26,7 +26,7 @@ cidr.workspace = true
 fnv.workspace = true
 memmem.workspace = true
 rand.workspace = true
-regex = { workspace = true, optional = true }
+regex-automata = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sliceslice.workspace = true
@@ -38,4 +38,5 @@ criterion.workspace = true
 indoc.workspace = true
 
 [features]
+regex = ["dep:regex-automata"]
 default = [ "regex" ]

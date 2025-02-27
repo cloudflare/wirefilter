@@ -1,51 +1,92 @@
+use regex_automata::MatchKind;
+
+use super::Error;
 use crate::{ParserSettings, RegexFormat};
+use std::ops::Deref;
+use std::sync::Arc;
 
-pub use regex::Error;
-
-/// Wrapper around [`regex::bytes::Regex`]
+/// Wrapper around [`regex_automata::meta::Regex`]
 #[derive(Clone)]
 pub struct Regex {
-    compiled_regex: regex::bytes::Regex,
+    pattern: Arc<str>,
+    regex: regex_automata::meta::Regex,
     format: RegexFormat,
 }
 
 impl Regex {
+    /// Retrieves the syntax configuration that will be used to build the regex.
+    #[inline]
+    pub fn syntax_config() -> regex_automata::util::syntax::Config {
+        regex_automata::util::syntax::Config::new()
+            .unicode(false)
+            .utf8(false)
+    }
+
+    /// Retrieves the meta configuration that will be used to build the regex.
+    #[inline]
+    pub fn meta_config(settings: &ParserSettings) -> regex_automata::meta::Config {
+        regex_automata::meta::Config::new()
+            .match_kind(MatchKind::LeftmostFirst)
+            .utf8_empty(false)
+            .dfa(false)
+            .nfa_size_limit(Some(settings.regex_compiled_size_limit))
+            .onepass_size_limit(Some(settings.regex_compiled_size_limit))
+            .dfa_size_limit(Some(settings.regex_compiled_size_limit))
+            .hybrid_cache_capacity(settings.regex_dfa_size_limit)
+    }
+
     /// Compiles a regular expression.
     pub fn new(
         pattern: &str,
         format: RegexFormat,
         settings: &ParserSettings,
     ) -> Result<Self, Error> {
-        ::regex::bytes::RegexBuilder::new(pattern)
-            .unicode(false)
-            .size_limit(settings.regex_compiled_size_limit)
-            .dfa_size_limit(settings.regex_dfa_size_limit)
-            .build()
-            .map(|r| Regex {
-                compiled_regex: r,
+        ::regex_automata::meta::Builder::new()
+            .configure(Self::meta_config(settings))
+            .syntax(Self::syntax_config())
+            .build(pattern)
+            .map(|regex| Regex {
+                pattern: Arc::from(pattern),
+                regex,
                 format,
+            })
+            .map_err(|err| {
+                if let Some(limit) = err.size_limit() {
+                    Error::CompiledTooBig(limit)
+                } else if let Some(syntax) = err.syntax_error() {
+                    Error::Syntax(syntax.to_string())
+                } else {
+                    unreachable!()
+                }
             })
     }
 
-    /// Returns true if and only if the regex matches the string given.
-    pub fn is_match(&self, text: &[u8]) -> bool {
-        self.compiled_regex.is_match(text)
-    }
-
-    /// Returns the original string of this regex.
+    /// Returns the pattern of this regex.
+    #[inline]
     pub fn as_str(&self) -> &str {
-        self.compiled_regex.as_str()
+        &self.pattern
     }
 
-    /// Returns the format behind the regex
+    /// Returns the format used by the pattern.
+    #[inline]
     pub fn format(&self) -> RegexFormat {
         self.format
     }
 }
 
-impl From<Regex> for regex::bytes::Regex {
+impl From<Regex> for regex_automata::meta::Regex {
+    #[inline]
     fn from(regex: Regex) -> Self {
-        regex.compiled_regex
+        regex.regex
+    }
+}
+
+impl Deref for Regex {
+    type Target = regex_automata::meta::Regex;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.regex
     }
 }
 

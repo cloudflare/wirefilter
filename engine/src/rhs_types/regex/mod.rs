@@ -3,10 +3,9 @@ use crate::rhs_types::bytes::lex_raw_string_as_str;
 use crate::FilterParser;
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
-use std::{
-    fmt::{self, Debug, Formatter},
-    hash::{Hash, Hasher},
-};
+use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::{Hash, Hasher};
+use thiserror::Error;
 
 cfg_if! {
     if #[cfg(feature = "regex")] {
@@ -19,7 +18,7 @@ cfg_if! {
 }
 
 /// RegexFormat describes the format behind the regex
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum RegexFormat {
     /// Literal string was used to define the expression
     Literal,
@@ -41,9 +40,20 @@ impl Hash for Regex {
     }
 }
 
-impl Debug for Regex {
+impl Display for Regex {
+    /// Shows the original regular expression.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl Debug for Regex {
+    /// Shows the original regular expression.
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Regex")
+            .field("pattern", &self.as_str())
+            .field("format", &self.format())
+            .finish()
     }
 }
 
@@ -117,6 +127,28 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
 impl Serialize for Regex {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.as_str().serialize(ser)
+    }
+}
+
+/// An error that occurred during parsing or compiling a regular expression.
+#[non_exhaustive]
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum Error {
+    /// A syntax error.
+    Syntax(String),
+    /// The compiled regex exceeded the configured
+    /// regex compiled size limit.
+    CompiledTooBig(usize),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Error::Syntax(ref err) => Display::fmt(err, f),
+            Error::CompiledTooBig(limit) => {
+                write!(f, "Compiled regex exceeds size limit of {} bytes.", limit)
+            }
+        }
     }
 }
 
