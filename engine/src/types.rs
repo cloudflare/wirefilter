@@ -768,12 +768,12 @@ impl<'a> LhsValue<'a> {
     /// Both LhsValue::Array and LhsValue::Map support nested elements.
     pub fn get(&'a self, item: &FieldIndex) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
         match (self, item) {
-            (LhsValue::Array(arr), FieldIndex::ArrayIndex(ref idx)) => Ok(arr.get(*idx as usize)),
+            (LhsValue::Array(arr), FieldIndex::ArrayIndex(idx)) => Ok(arr.get(*idx as usize)),
             (_, FieldIndex::ArrayIndex(_)) => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
             }),
-            (LhsValue::Map(map), FieldIndex::MapKey(ref key)) => Ok(map.get(key.as_bytes())),
+            (LhsValue::Map(map), FieldIndex::MapKey(key)) => Ok(map.get(key.as_bytes())),
             (_, FieldIndex::MapKey(_)) => Err(IndexAccessError {
                 index: item.clone(),
                 actual: self.get_type(),
@@ -823,7 +823,7 @@ impl<'a> LhsValue<'a> {
         let value = value.into();
         match item {
             FieldIndex::ArrayIndex(idx) => match self {
-                LhsValue::Array(ref mut arr) => arr
+                LhsValue::Array(arr) => arr
                     .insert(idx as usize, value)
                     .map_err(SetValueError::TypeMismatch),
                 _ => Err(SetValueError::IndexAccess(IndexAccessError {
@@ -832,7 +832,7 @@ impl<'a> LhsValue<'a> {
                 })),
             },
             FieldIndex::MapKey(name) => match self {
-                LhsValue::Map(ref mut map) => map
+                LhsValue::Map(map) => map
                     .insert(name.as_bytes(), value)
                     .map_err(SetValueError::TypeMismatch),
                 _ => Err(SetValueError::IndexAccess(IndexAccessError {

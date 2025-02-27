@@ -590,7 +590,7 @@ impl<'s> Scheme {
     }
 
     /// Iterates over all registered [`lists`](trait.ListDefinition.html).
-    pub fn lists(&self) -> impl ExactSizeIterator<Item = List<'_>> {
+    pub fn lists(&self) -> impl ExactSizeIterator<Item = List<'_>> + use<'_> {
         (0..self.lists.len()).map(|index| List {
             scheme: self,
             index,
