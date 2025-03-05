@@ -16,7 +16,7 @@ pub struct Regex {
 impl Regex {
     /// Retrieves the syntax configuration that will be used to build the regex.
     #[inline]
-    pub fn syntax_config() -> regex_automata::util::syntax::Config {
+    fn syntax_config() -> regex_automata::util::syntax::Config {
         regex_automata::util::syntax::Config::new()
             .unicode(false)
             .utf8(false)
@@ -24,7 +24,7 @@ impl Regex {
 
     /// Retrieves the meta configuration that will be used to build the regex.
     #[inline]
-    pub fn meta_config(settings: &ParserSettings) -> regex_automata::meta::Config {
+    fn meta_config(settings: &ParserSettings) -> regex_automata::meta::Config {
         regex_automata::meta::Config::new()
             .match_kind(MatchKind::LeftmostFirst)
             .utf8_empty(false)
