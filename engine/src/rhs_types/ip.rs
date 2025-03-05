@@ -105,7 +105,7 @@ impl Lex<'_> for IpRange {
 }
 
 macro_rules! impl_ip_range_from {
-    (@single $v:ident, |$input:ident: $ty:ty| $transform:expr) => {
+    (@single $v:ident, |$input:ident: $ty:ty| $transform:expr_2021) => {
         impl From<$ty> for ExplicitIpRange {
             fn from($input: $ty) -> Self {
                 ExplicitIpRange::$v($transform)
@@ -113,7 +113,7 @@ macro_rules! impl_ip_range_from {
         }
     };
 
-    ($ty:ident { $v4:ty, $v6:ty }, |$input:ident| $transform:expr) => {
+    ($ty:ident { $v4:ty, $v6:ty }, |$input:ident| $transform:expr_2021) => {
         impl_ip_range_from!(@single V4, |$input: $v4| $transform);
         impl_ip_range_from!(@single V6, |$input: $v6| $transform);
 

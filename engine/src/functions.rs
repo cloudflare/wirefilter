@@ -191,7 +191,7 @@ impl<'a> FunctionParam<'a> {
     /// Returns the underlying type if the current parameter is a variable, otherwise an error.
     pub fn as_variable(&self) -> Result<&Type, FunctionArgKindMismatchError> {
         match self {
-            Self::Variable(ref ty) => Ok(ty),
+            Self::Variable(ty) => Ok(ty),
             Self::Constant(_) => Err(FunctionArgKindMismatchError {
                 expected: FunctionArgKind::Field,
                 actual: FunctionArgKind::Literal,

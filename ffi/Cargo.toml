@@ -28,7 +28,7 @@ indoc.workspace = true
 regex-automata.workspace = true
 
 [build-dependencies]
-cbindgen = "0.27"
+cbindgen = "0.28"
 
 [target.'cfg(unix)'.dev-dependencies]
 wirefilter-ffi-ctests = { path = "tests/ctests" }
