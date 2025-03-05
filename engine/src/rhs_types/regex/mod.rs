@@ -135,21 +135,15 @@ impl Serialize for Regex {
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum Error {
     /// A syntax error.
+    #[error("{0}")]
     Syntax(String),
     /// The compiled regex exceeded the configured
     /// regex compiled size limit.
+    #[error("Compiled regex exceeds size limit of {0} bytes.")]
     CompiledTooBig(usize),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match *self {
-            Error::Syntax(ref err) => Display::fmt(err, f),
-            Error::CompiledTooBig(limit) => {
-                write!(f, "Compiled regex exceeds size limit of {} bytes.", limit)
-            }
-        }
-    }
+    /// An uncategorized error.
+    #[error("{0}")]
+    Other(String),
 }
 
 #[cfg(test)]

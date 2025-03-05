@@ -56,7 +56,7 @@ impl Regex {
                 } else if let Some(syntax) = err.syntax_error() {
                     Error::Syntax(syntax.to_string())
                 } else {
-                    unreachable!()
+                    Error::Other(err.to_string())
                 }
             })
     }
