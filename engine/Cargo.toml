@@ -38,5 +38,5 @@ criterion.workspace = true
 indoc.workspace = true
 
 [features]
-regex = ["dep:regex-automata"]
 default = [ "regex" ]
+regex = ["dep:regex-automata"]
