@@ -41,7 +41,8 @@ fn concat_bytes<'a>(mut accumulator: Cow<'a, [u8]>, args: FunctionArgs<'_, 'a>) 
     accumulator
 }
 
-const EXPECTED_TYPES: [ExpectedType; 2] = [ExpectedType::Array, ExpectedType::Type(Type::Bytes)];
+pub(crate) const EXPECTED_TYPES: [ExpectedType; 2] =
+    [ExpectedType::Array, ExpectedType::Type(Type::Bytes)];
 
 impl FunctionDefinition for ConcatFunction {
     fn check_param(

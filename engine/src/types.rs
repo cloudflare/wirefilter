@@ -56,6 +56,16 @@ impl From<Type> for ExpectedType {
     }
 }
 
+impl std::fmt::Display for ExpectedType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ExpectedType::Array => write!(f, "Array<_>"),
+            ExpectedType::Map => write!(f, "Map<_>"),
+            ExpectedType::Type(ty) => write!(f, "{}", ty),
+        }
+    }
+}
+
 /// A list of expected types.
 #[derive(Default, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ExpectedTypeList(BTreeSet<ExpectedType>);
@@ -96,7 +106,25 @@ impl<T: Iterator<Item = ExpectedType>> From<T> for ExpectedTypeList {
 
 impl std::fmt::Display for ExpectedTypeList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        match self.0.len() {
+            0 => unreachable!(),
+            1 => write!(f, "{}", self.0.first().unwrap()),
+            2 => write!(
+                f,
+                "{} or {}",
+                self.0.first().unwrap(),
+                self.0.last().unwrap()
+            ),
+            _ => {
+                let mut iter = self.0.iter();
+                let first = iter.next().unwrap();
+                write!(f, "{{{}", first)?;
+                for expected_type in iter {
+                    write!(f, ", {}", expected_type)?;
+                }
+                write!(f, "}}")
+            }
+        }
     }
 }
 
@@ -399,8 +427,8 @@ impl std::fmt::Display for Type {
             Self::Bytes => write!(f, "Bytes"),
             Self::Int => write!(f, "Int"),
             Self::Ip => write!(f, "Ip"),
-            Self::Array(ty) => write!(f, "Array({})", Type::from(*ty)),
-            Self::Map(ty) => write!(f, "Map({})", Type::from(*ty)),
+            Self::Array(ty) => write!(f, "Array<{}>", Type::from(*ty)),
+            Self::Map(ty) => write!(f, "Map<{}>", Type::from(*ty)),
         }
     }
 }
