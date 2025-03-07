@@ -628,14 +628,19 @@ macro_rules! Scheme {
 
 #[test]
 fn test_parse_error() {
-    use crate::types::TypeMismatchError;
+    use crate::types::{ExpectedTypeList, TypeMismatchError};
+    use crate::ConcatFunction;
     use indoc::indoc;
 
-    let scheme = &Scheme! {
+    let mut scheme = Scheme! {
         num: Int,
         str: Bytes,
         arr: Array(Bool),
     };
+
+    scheme
+        .add_function("concat", ConcatFunction::new())
+        .unwrap();
 
     {
         let err = scheme.parse("xyz").unwrap_err();
@@ -768,7 +773,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (1:12):
                 arr and arr
-                           ^ expected value of type {Type(Bool)}, but got Array(Bool)
+                           ^ expected value of type Bool, but got Array<Bool>
                 "#
             )
         );
@@ -795,7 +800,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (1:2):
                  arr[*] 
-                 ^^^^^^ expected value of type {Type(Bool)}, but got Array(Bool)
+                 ^^^^^^ expected value of type Bool, but got Array<Bool>
                 "#
             )
         );
@@ -868,6 +873,38 @@ fn test_parse_error() {
                 Filter parsing error (1:9):
                 num in {
                         ^ expected digit
+                "#
+            )
+        );
+    }
+
+    {
+        let err = scheme.parse(indoc!(r"concat(0, 0) == 0")).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::InvalidArgumentType {
+                    index: 0,
+                    mismatch: TypeMismatchError {
+                        expected: ExpectedTypeList::from(
+                            crate::functions::concat::EXPECTED_TYPES.into_iter()
+                        ),
+                        actual: Type::Int,
+                    },
+                },
+                input: "concat(0, 0) == 0",
+                line_number: 0,
+                span_start: 7,
+                span_len: 1,
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:8):
+                concat(0, 0) == 0
+                       ^ invalid type of argument #0: expected value of type Bytes or Array<_>, but got Int
                 "#
             )
         );
