@@ -1,8 +1,15 @@
+mod all;
+mod any;
+mod concat;
+
 use crate::{
     filter::CompiledValueResult,
     types::{ExpectedType, ExpectedTypeList, GetType, LhsValue, RhsValue, Type, TypeMismatchError},
     ParserSettings,
 };
+pub use all::AllFunction;
+pub use any::AnyFunction;
+pub use concat::ConcatFunction;
 use std::any::Any;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug};
