@@ -1,7 +1,7 @@
 use crate::{
     scheme::{Field, List, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, Type, TypeMismatchError},
-    ListMatcher, UnknownFieldError,
+    FieldRef, ListMatcher, ListRef, UnknownFieldError,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
@@ -42,7 +42,7 @@ pub struct InvalidListMatcherError {
 /// index-based access to values for a filter during execution.
 #[derive(Debug, PartialEq)]
 pub struct ExecutionContext<'e, U = ()> {
-    scheme: &'e Scheme,
+    scheme: Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
     list_matchers: Box<[Box<dyn ListMatcher>]>,
     user_data: U,
@@ -52,7 +52,7 @@ impl<'e, U> ExecutionContext<'e, U> {
     /// Creates an execution context associated with a given scheme.
     ///
     /// This scheme will be used for resolving any field names and indices.
-    pub fn new<'s: 'e>(scheme: &'s Scheme) -> Self
+    pub fn new(scheme: &Scheme) -> Self
     where
         U: Default,
     {
@@ -62,9 +62,9 @@ impl<'e, U> ExecutionContext<'e, U> {
     /// Creates an execution context associated with a given scheme.
     ///
     /// This scheme will be used for resolving any field names and indices.
-    pub fn new_with<'s: 'e>(scheme: &'s Scheme, f: impl FnOnce() -> U) -> Self {
+    pub fn new_with(scheme: &Scheme, f: impl FnOnce() -> U) -> Self {
         ExecutionContext {
-            scheme,
+            scheme: scheme.clone(),
             values: vec![None; scheme.field_count()].into(),
             list_matchers: scheme
                 .lists()
@@ -75,17 +75,17 @@ impl<'e, U> ExecutionContext<'e, U> {
     }
 
     /// Returns the associated scheme.
-    pub fn scheme(&self) -> &'e Scheme {
-        self.scheme
+    pub fn scheme(&self) -> &Scheme {
+        &self.scheme
     }
 
     /// Sets a runtime value for a given field name.
     pub fn set_field_value<'v: 'e, V: Into<LhsValue<'v>>>(
         &mut self,
-        field: Field<'e>,
+        field: FieldRef<'_>,
         value: V,
     ) -> Result<Option<LhsValue<'e>>, SetFieldValueError> {
-        if !std::ptr::eq(self.scheme, field.scheme()) {
+        if self.scheme != *field.scheme() {
             return Err(SetFieldValueError::SchemeMismatch(SchemeMismatchError));
         }
         let value = value.into();
@@ -129,7 +129,7 @@ impl<'e, U> ExecutionContext<'e, U> {
     }
 
     #[inline]
-    pub(crate) fn get_field_value_unchecked(&self, field: Field<'_>) -> &LhsValue<'_> {
+    pub(crate) fn get_field_value_unchecked(&self, field: &Field) -> &LhsValue<'_> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.
@@ -147,21 +147,21 @@ impl<'e, U> ExecutionContext<'e, U> {
     }
 
     /// Get the value of a field.
-    pub fn get_field_value(&self, field: Field<'_>) -> Option<&LhsValue<'_>> {
+    pub fn get_field_value(&self, field: FieldRef<'_>) -> Option<&LhsValue<'_>> {
         assert!(self.scheme() == field.scheme());
 
         self.values[field.index()].as_ref()
     }
 
     #[inline]
-    pub(crate) fn get_list_matcher_unchecked(&self, list: List<'_>) -> &dyn ListMatcher {
+    pub(crate) fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
         debug_assert!(self.scheme() == list.scheme());
 
         &*self.list_matchers[list.index()]
     }
 
     /// Get the list matcher object for the specified list type.
-    pub fn get_list_matcher(&self, list: List<'_>) -> &dyn ListMatcher {
+    pub fn get_list_matcher(&self, list: ListRef<'_>) -> &dyn ListMatcher {
         assert!(self.scheme() == list.scheme());
 
         &*self.list_matchers[list.index()]
@@ -174,7 +174,7 @@ impl<'e, U> ExecutionContext<'e, U> {
     }
 
     /// Get the list matcher object for the specified list type.
-    pub fn get_list_matcher_mut(&mut self, list: List<'_>) -> &mut dyn ListMatcher {
+    pub fn get_list_matcher_mut(&mut self, list: ListRef<'_>) -> &mut dyn ListMatcher {
         assert!(self.scheme() == list.scheme());
 
         &mut *self.list_matchers[list.index()]
@@ -238,7 +238,7 @@ pub struct ExecutionContextGuard<'a, 'e, U, T> {
 
 impl<'a, 'e, U, T> ExecutionContextGuard<'a, 'e, U, T> {
     fn new(old: &'a mut ExecutionContext<'e, U>, user_data: T) -> Self {
-        let scheme = old.scheme();
+        let scheme = old.scheme().clone();
         let values = std::mem::take(&mut old.values);
         let list_matchers = std::mem::take(&mut old.list_matchers);
 
@@ -385,7 +385,7 @@ impl Serialize for ExecutionContext<'_> {
         if !self.list_matchers.is_empty() {
             map.serialize_entry(
                 "$lists",
-                &ListMatcherSlice(self.scheme, &self.list_matchers),
+                &ListMatcherSlice(&self.scheme, &self.list_matchers),
             )?;
         }
         map.end()

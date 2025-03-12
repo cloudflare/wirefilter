@@ -36,37 +36,37 @@ lex_enum!(
 /// A parenthesized expression.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(transparent)]
-pub struct ParenthesizedExpr<'s> {
+pub struct ParenthesizedExpr {
     /// The inner expression.
-    pub expr: LogicalExpr<'s>,
+    pub expr: LogicalExpr,
 }
 
 /// LogicalExpr is a either a generic sub-expression
 /// or a logical conjunction expression.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
-pub enum LogicalExpr<'s> {
+pub enum LogicalExpr {
     /// Logical conjunction expression
     Combining {
         /// Logical operator
         op: LogicalOp,
         /// List of sub-expressions
-        items: Vec<LogicalExpr<'s>>,
+        items: Vec<LogicalExpr>,
     },
     /// A comparison expression.
-    Comparison(ComparisonExpr<'s>),
+    Comparison(ComparisonExpr),
     /// A parenthesized expression.
-    Parenthesized(Box<ParenthesizedExpr<'s>>),
+    Parenthesized(Box<ParenthesizedExpr>),
     /// A unary expression.
     Unary {
         /// Unary operator.
         op: UnaryOp,
         /// Sub-expression.
-        arg: Box<LogicalExpr<'s>>,
+        arg: Box<LogicalExpr>,
     },
 }
 
-impl GetType for LogicalExpr<'_> {
+impl GetType for LogicalExpr {
     fn get_type(&self) -> Type {
         match &self {
             LogicalExpr::Combining { ref items, .. } => items[0].get_type(),
@@ -77,7 +77,7 @@ impl GetType for LogicalExpr<'_> {
     }
 }
 
-impl<'s> LogicalExpr<'s> {
+impl LogicalExpr {
     fn lex_combining_op(input: &str) -> (Option<LogicalOp>, &str) {
         match LogicalOp::lex(skip_space(input)) {
             Ok((op, input)) => (Some(op), skip_space(input)),
@@ -85,7 +85,7 @@ impl<'s> LogicalExpr<'s> {
         }
     }
 
-    fn lex_simple_expr<'i>(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+    fn lex_simple_expr<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
         Ok(if let Ok(input) = expect(input, "(") {
             let input = skip_space(input);
             let (expr, input) = LogicalExpr::lex_with(input, parser)?;
@@ -113,7 +113,7 @@ impl<'s> LogicalExpr<'s> {
 
     fn lex_more_with_precedence<'i>(
         self,
-        parser: &FilterParser<'s>,
+        parser: &FilterParser<'_>,
         min_prec: Option<LogicalOp>,
         mut lookahead: (Option<LogicalOp>, &'i str),
     ) -> LexResult<'i, Self> {
@@ -177,7 +177,7 @@ impl<'s> LogicalExpr<'s> {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for LogicalExpr<'s> {
+impl<'i, 's> LexWith<'i, &FilterParser<'s>> for LogicalExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         let (lhs, input) = Self::lex_simple_expr(input, parser)?;
         let lookahead = Self::lex_combining_op(input);
@@ -185,9 +185,9 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for LogicalExpr<'s> {
     }
 }
 
-impl<'s> Expr<'s> for LogicalExpr<'s> {
+impl Expr for LogicalExpr {
     #[inline]
-    fn walk<'a, V: Visitor<'s, 'a>>(&'a self, visitor: &mut V) {
+    fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
         match self {
             LogicalExpr::Comparison(node) => visitor.visit_comparison_expr(node),
             LogicalExpr::Parenthesized(node) => visitor.visit_logical_expr(&node.expr),
@@ -201,7 +201,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
     }
 
     #[inline]
-    fn walk_mut<'a, V: VisitorMut<'s, 'a>>(&'a mut self, visitor: &mut V) {
+    fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
         match self {
             LogicalExpr::Comparison(node) => visitor.visit_comparison_expr(node),
             LogicalExpr::Parenthesized(node) => visitor.visit_logical_expr(&mut node.expr),
@@ -214,10 +214,7 @@ impl<'s> Expr<'s> for LogicalExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler<'s> + 's>(
-        self,
-        compiler: &mut C,
-    ) -> CompiledExpr<'s, C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
         match self {
             LogicalExpr::Comparison(op) => compiler.compile_comparison_expr(op),
             LogicalExpr::Parenthesized(node) => compiler.compile_logical_expr(node.expr),
@@ -603,7 +600,7 @@ fn test() {
 
     {
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("t and af"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("t and af"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Type::Bool.into()),
@@ -612,7 +609,7 @@ fn test() {
         );
 
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("at and f"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("at and f"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Type::Bool.into()).into(),
                 actual: Type::Bool,
@@ -623,7 +620,7 @@ fn test() {
 
     {
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("t or af"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("t or af"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Type::Bool.into()),
@@ -632,7 +629,7 @@ fn test() {
         );
 
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("at or f"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("at or f"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Type::Bool.into()).into(),
                 actual: Type::Bool,
@@ -643,7 +640,7 @@ fn test() {
 
     {
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("t xor af"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("t xor af"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Bool.into(),
                 actual: Type::Array(Type::Bool.into()),
@@ -652,7 +649,7 @@ fn test() {
         );
 
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("at xor f"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("at xor f"),
             LexErrorKind::TypeMismatch(TypeMismatchError {
                 expected: Type::Array(Type::Bool.into()).into(),
                 actual: Type::Bool,
@@ -702,7 +699,7 @@ fn test() {
             FilterParser::new(scheme).lex_as("at[*]"),
             LogicalExpr::Comparison(ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(scheme.get_field("at").unwrap()),
+                    identifier: IdentifierExpr::Field(scheme.get_field("at").unwrap().to_owned()),
                     indexes: vec![FieldIndex::MapEach],
                 },
                 op: ComparisonOpExpr::IsTrue
@@ -726,7 +723,7 @@ fn test() {
 
     {
         assert_err!(
-            FilterParser::new(scheme).lex_as::<LogicalExpr<'_>>("aat[*]"),
+            FilterParser::new(scheme).lex_as::<LogicalExpr>("aat[*]"),
             LexErrorKind::UnsupportedOp {
                 lhs_type: Type::Array(Type::Array(Type::Bool.into()).into())
             },

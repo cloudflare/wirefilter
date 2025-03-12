@@ -24,9 +24,9 @@ use serde::{ser::SerializeSeq, Serialize, Serializer};
 /// `http.request.headers["Cookie"][0]` would have an IdentifierExpr
 /// of `http.request.headers` and indexes `["Cookie", 0]`.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
-pub struct IndexExpr<'s> {
+pub struct IndexExpr {
     /// The accessed identifier.
-    pub identifier: IdentifierExpr<'s>,
+    pub identifier: IdentifierExpr,
     /// The list of indexes access.
     pub indexes: Vec<FieldIndex>,
 }
@@ -72,9 +72,9 @@ where
         })
 }
 
-impl<'s> ValueExpr<'s> for IndexExpr<'s> {
+impl ValueExpr for IndexExpr {
     #[inline]
-    fn walk<'a, V: Visitor<'s, 'a>>(&'a self, visitor: &mut V) {
+    fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
         match self.identifier {
             IdentifierExpr::Field(ref field) => visitor.visit_field(field),
             IdentifierExpr::FunctionCallExpr(ref call) => visitor.visit_function_call_expr(call),
@@ -82,7 +82,7 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
     }
 
     #[inline]
-    fn walk_mut<'a, V: VisitorMut<'s, 'a>>(&'a mut self, visitor: &mut V) {
+    fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
         match self.identifier {
             IdentifierExpr::Field(ref field) => visitor.visit_field(field),
             IdentifierExpr::FunctionCallExpr(ref mut call) => {
@@ -91,10 +91,7 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         }
     }
 
-    fn compile_with_compiler<C: Compiler<'s> + 's>(
-        self,
-        compiler: &mut C,
-    ) -> CompiledValueExpr<'s, C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U> {
         let mut ty = self.get_type();
         let map_each_count = self.map_each_count();
         let Self {
@@ -113,9 +110,9 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
         if last == Some(0) {
             // Fast path
             match identifier {
-                IdentifierExpr::Field(f) => {
-                    CompiledValueExpr::new(move |ctx| Ok(ctx.get_field_value_unchecked(f).as_ref()))
-                }
+                IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                    Ok(ctx.get_field_value_unchecked(&f).as_ref())
+                }),
                 IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
             }
         } else if let Some(last) = last {
@@ -124,7 +121,7 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     indexes[..last]
                         .iter()
-                        .try_fold(ctx.get_field_value_unchecked(f), |value, index| {
+                        .try_fold(ctx.get_field_value_unchecked(&f), |value, index| {
                             value.get(index).unwrap()
                         })
                         .map(LhsValue::as_ref)
@@ -148,7 +145,7 @@ impl<'s> ValueExpr<'s> for IndexExpr<'s> {
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    iter.reset(ctx.get_field_value_unchecked(f).as_ref());
+                    iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
                     Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
@@ -171,15 +168,15 @@ fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
     indexes.into_boxed_slice()
 }
 
-impl<'s> IndexExpr<'s> {
-    fn compile_one_with<F, C: Compiler<'s> + 's>(
+impl IndexExpr {
+    fn compile_one_with<F, C: Compiler>(
         self,
         compiler: &mut C,
         default: bool,
         func: F,
-    ) -> CompiledOneExpr<'s, C::U>
+    ) -> CompiledOneExpr<C::U>
     where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
     {
         let Self {
             identifier,
@@ -208,12 +205,12 @@ impl<'s> IndexExpr<'s> {
             }
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(f), ctx))
+                    CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(&f), ctx))
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         index_access_one(
                             &indexes,
-                            Some(ctx.get_field_value_unchecked(f)),
+                            Some(ctx.get_field_value_unchecked(&f)),
                             default,
                             ctx,
                             #[inline]
@@ -225,13 +222,13 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_vec_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_vec_with<F, C: Compiler>(
         self,
         compiler: &mut C,
         func: F,
-    ) -> CompiledVecExpr<'s, C::U>
+    ) -> CompiledVecExpr<C::U>
     where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
     {
         let Self {
             identifier,
@@ -254,7 +251,7 @@ impl<'s> IndexExpr<'s> {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 index_access_vec(
                     &indexes,
-                    Some(ctx.get_field_value_unchecked(f)),
+                    Some(ctx.get_field_value_unchecked(&f)),
                     ctx,
                     #[inline]
                     |val, ctx| func(val, ctx),
@@ -263,13 +260,13 @@ impl<'s> IndexExpr<'s> {
         }
     }
 
-    pub(crate) fn compile_iter_with<F, C: Compiler<'s> + 's>(
+    pub(crate) fn compile_iter_with<F, C: Compiler>(
         self,
         compiler: &mut C,
         func: F,
-    ) -> CompiledVecExpr<'s, C::U>
+    ) -> CompiledVecExpr<C::U>
     where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
     {
         let Self {
             identifier,
@@ -278,7 +275,7 @@ impl<'s> IndexExpr<'s> {
         match identifier {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                iter.reset(ctx.get_field_value_unchecked(f).as_ref());
+                iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
                 TypedArray::from_iter(iter.map(|item| func(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
@@ -299,14 +296,14 @@ impl<'s> IndexExpr<'s> {
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the
     /// provided comparison function that returns a boolean.
-    pub fn compile_with<F, C: Compiler<'s> + 's>(
+    pub fn compile_with<F, C: Compiler>(
         self,
         compiler: &mut C,
         default: bool,
         func: F,
-    ) -> CompiledExpr<'s, C::U>
+    ) -> CompiledExpr<C::U>
     where
-        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 's,
+        F: Fn(&LhsValue<'_>, &ExecutionContext<'_, C::U>) -> bool + Sync + Send + 'static,
     {
         match self.map_each_count() {
             0 => CompiledExpr::One(self.compile_one_with(compiler, default, func)),
@@ -325,7 +322,7 @@ impl<'s> IndexExpr<'s> {
     }
 
     /// Returns the associated identifier (field or function call).
-    pub fn identifier(&self) -> &IdentifierExpr<'s> {
+    pub fn identifier(&self) -> &IdentifierExpr {
         &self.identifier
     }
 
@@ -335,7 +332,7 @@ impl<'s> IndexExpr<'s> {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr<'s> {
+impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
     fn lex_with(mut input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         let (identifier, rest) = IdentifierExpr::lex_with(input, parser)?;
 
@@ -417,7 +414,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr<'s> {
     }
 }
 
-impl GetType for IndexExpr<'_> {
+impl GetType for IndexExpr {
     fn get_type(&self) -> Type {
         let mut ty = self.identifier.get_type();
         for index in &self.indexes {
@@ -433,7 +430,7 @@ impl GetType for IndexExpr<'_> {
     }
 }
 
-impl Serialize for IndexExpr<'_> {
+impl Serialize for IndexExpr {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         if self.indexes.is_empty() {
             self.identifier.serialize(ser)
@@ -622,7 +619,7 @@ mod tests {
             assert_ok!(
                 FilterParser::new(&SCHEME).lex_as(&filter),
                 IndexExpr {
-                    identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                    identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap().to_owned()),
                     indexes: vec![FieldIndex::ArrayIndex(i)],
                 }
             );
@@ -636,7 +633,7 @@ mod tests {
         run(99999);
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>("test[-1]"),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>("test[-1]"),
             LexErrorKind::ExpectedLiteral("expected positive integer as index"),
             "-1]"
         );
@@ -647,7 +644,7 @@ mod tests {
         assert_ok!(
             FilterParser::new(&SCHEME).lex_as(r#"map["a"]"#),
             IndexExpr {
-                identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap()),
+                identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap().to_owned()),
                 indexes: vec![FieldIndex::MapKey("a".to_string())],
             }
         );
@@ -655,7 +652,7 @@ mod tests {
         assert_ok!(
             FilterParser::new(&SCHEME).lex_as(r#"map["😍"]"#),
             IndexExpr {
-                identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap()),
+                identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap().to_owned()),
                 indexes: vec![FieldIndex::MapKey("😍".to_string())],
             }
         );
@@ -664,13 +661,13 @@ mod tests {
     #[test]
     fn test_access_with_non_string() {
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(r#"test[a]"#),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(r#"test[a]"#),
             LexErrorKind::ExpectedLiteral("expected quoted utf8 string or positive integer"),
             "a]"
         );
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(r#"map[a]"#),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(r#"map[a]"#),
             LexErrorKind::ExpectedLiteral("expected quoted utf8 string or positive integer"),
             "a]"
         );
@@ -682,9 +679,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"array(test[0])[0]"#),
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                    function: SCHEME.get_function("array").unwrap(),
+                    function: SCHEME.get_function("array").unwrap().to_owned(),
                     args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                        identifier: IdentifierExpr::Field(
+                            SCHEME.get_field("test").unwrap().to_owned()
+                        ),
                         indexes: vec![FieldIndex::ArrayIndex(0)],
                     })],
                     context: None
@@ -710,9 +709,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"array(test[0])[*]"#),
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                    function: SCHEME.get_function("array").unwrap(),
+                    function: SCHEME.get_function("array").unwrap().to_owned(),
                     args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                        identifier: IdentifierExpr::Field(
+                            SCHEME.get_field("test").unwrap().to_owned()
+                        ),
                         indexes: vec![FieldIndex::ArrayIndex(0)],
                     })],
                     context: None
@@ -741,9 +742,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"array2(test[0])[*][*]"#),
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                    function: SCHEME.get_function("array2").unwrap(),
+                    function: SCHEME.get_function("array2").unwrap().to_owned(),
                     args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                        identifier: IdentifierExpr::Field(
+                            SCHEME.get_field("test").unwrap().to_owned()
+                        ),
                         indexes: vec![FieldIndex::ArrayIndex(0)],
                     })],
                     context: None
@@ -775,9 +778,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"array2(test[0])[*][0]"#),
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                    function: SCHEME.get_function("array2").unwrap(),
+                    function: SCHEME.get_function("array2").unwrap().to_owned(),
                     args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                        identifier: IdentifierExpr::Field(
+                            SCHEME.get_field("test").unwrap().to_owned()
+                        ),
                         indexes: vec![FieldIndex::ArrayIndex(0)],
                     })],
                     context: None
@@ -809,9 +814,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"array2(test[0])[0][*]"#),
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                    function: SCHEME.get_function("array2").unwrap(),
+                    function: SCHEME.get_function("array2").unwrap().to_owned(),
                     args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                        identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap()),
+                        identifier: IdentifierExpr::Field(
+                            SCHEME.get_field("test").unwrap().to_owned()
+                        ),
                         indexes: vec![FieldIndex::ArrayIndex(0)],
                     })],
                     context: None
@@ -847,7 +854,7 @@ mod tests {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
-                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap()),
+                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
                 indexes: vec![FieldIndex::ArrayIndex(0), FieldIndex::MapEach],
             }
         );
@@ -860,7 +867,7 @@ mod tests {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
-                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap()),
+                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
                 indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(0)],
             }
         );
@@ -873,7 +880,7 @@ mod tests {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
-                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap()),
+                identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
                 indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
             }
         );
@@ -884,7 +891,7 @@ mod tests {
         let filter = "test2[0][*][*]".to_string();
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(&filter),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(&filter),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes
@@ -895,7 +902,7 @@ mod tests {
         let filter = "test2[*][0][*]".to_string();
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(&filter),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(&filter),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes
@@ -906,7 +913,7 @@ mod tests {
         let filter = "test2[*][*][0]".to_string();
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(&filter),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(&filter),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::ArrayIndex(0),
                 actual: Type::Bytes
@@ -917,7 +924,7 @@ mod tests {
         let filter = "test2[*][*][*]".to_string();
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<IndexExpr<'_>>(&filter),
+            FilterParser::new(&SCHEME).lex_as::<IndexExpr>(&filter),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes

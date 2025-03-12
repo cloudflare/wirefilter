@@ -218,15 +218,15 @@ impl<'s> From<Map<'s>> for LhsValue<'s> {
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
-pub struct FilterAst<'s>(wirefilter::FilterAst<'s>);
+pub struct FilterAst(wirefilter::FilterAst);
 
-wrap_type!(FilterAst<'s>);
+wrap_type!(FilterAst);
 
 #[derive(Debug)]
 #[repr(Rust)]
-pub struct Filter<'s>(wirefilter::Filter<'s, ()>);
+pub struct Filter(wirefilter::Filter<()>);
 
-wrap_type!(Filter<'s>);
+wrap_type!(Filter);
 
 /// Represents the status of an operation.
 #[derive(Debug, PartialEq)]
@@ -391,9 +391,9 @@ pub extern "C" fn wirefilter_free_string(s: RustAllocatedString) {
 
 #[derive(Debug, PartialEq)]
 #[repr(C)]
-pub struct ParsingResult<'a> {
+pub struct ParsingResult {
     pub status: Status,
-    pub ast: Option<Box<FilterAst<'a>>>,
+    pub ast: Option<Box<FilterAst>>,
 }
 
 #[no_mangle]
@@ -401,7 +401,7 @@ pub extern "C" fn wirefilter_parse_filter(
     scheme: &Scheme,
     input_ptr: *const c_char,
     input_len: usize,
-) -> ParsingResult<'_> {
+) -> ParsingResult {
     let input = to_str!(
         input_ptr,
         input_len,
@@ -433,7 +433,7 @@ pub extern "C" fn wirefilter_parse_filter(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_parsed_filter(ast: Box<FilterAst<'_>>) {
+pub extern "C" fn wirefilter_free_parsed_filter(ast: Box<FilterAst>) {
     drop(ast);
 }
 
@@ -465,7 +465,7 @@ pub struct HashingResult {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst<'_>) -> HashingResult {
+pub extern "C" fn wirefilter_get_filter_hash(filter_ast: &FilterAst) -> HashingResult {
     let mut hasher = FnvHasher::default();
     // Serialize JSON to our Write-compatible wrapper around FnvHasher,
     // effectively calculating a hash for our filter in a streaming fashion
@@ -512,9 +512,7 @@ impl From<Result<String, serde_json::Error>> for SerializingResult {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_serialize_filter_to_json(
-    filter_ast: &FilterAst<'_>,
-) -> SerializingResult {
+pub extern "C" fn wirefilter_serialize_filter_to_json(filter_ast: &FilterAst) -> SerializingResult {
     serde_json::to_string(filter_ast.deref()).into()
 }
 
@@ -573,11 +571,7 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context(
     value: i64,
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-    exec_context.set_field_value(field, value).is_ok()
+    exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
 #[no_mangle]
@@ -591,11 +585,7 @@ pub extern "C" fn wirefilter_add_bytes_value_to_execution_context(
     let name = to_str!(name_ptr, name_len);
     assert!(!value_ptr.is_null());
     let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len) };
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-    exec_context.set_field_value(field, value).is_ok()
+    exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
 #[no_mangle]
@@ -606,12 +596,8 @@ pub extern "C" fn wirefilter_add_ipv6_value_to_execution_context(
     value: &[u8; 16],
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
     exec_context
-        .set_field_value(field, IpAddr::from(*value))
+        .set_field_value_from_name(name, IpAddr::from(*value))
         .is_ok()
 }
 
@@ -623,12 +609,8 @@ pub extern "C" fn wirefilter_add_ipv4_value_to_execution_context(
     value: &[u8; 4],
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
     exec_context
-        .set_field_value(field, IpAddr::from(*value))
+        .set_field_value_from_name(name, IpAddr::from(*value))
         .is_ok()
 }
 
@@ -640,11 +622,7 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
     value: bool,
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-    exec_context.set_field_value(field, value).is_ok()
+    exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
 #[no_mangle]
@@ -655,11 +633,7 @@ pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
     value: Box<Map<'a>>,
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-    exec_context.set_field_value(field, *value).is_ok()
+    exec_context.set_field_value_from_name(name, *value).is_ok()
 }
 
 #[no_mangle]
@@ -670,11 +644,7 @@ pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
     value: Box<Array<'a>>,
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    let field = match exec_context.scheme().get_field(name) {
-        Ok(f) => f,
-        Err(_) => return false,
-    };
-    exec_context.set_field_value(field, *value).is_ok()
+    exec_context.set_field_value_from_name(name, *value).is_ok()
 }
 
 #[no_mangle]
@@ -856,13 +826,13 @@ pub extern "C" fn wirefilter_free_array(array: Box<Array<'_>>) {
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct CompilingResult<'a> {
+pub struct CompilingResult {
     pub status: Status,
-    pub filter: Option<Box<Filter<'a>>>,
+    pub filter: Option<Box<Filter>>,
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_compile_filter(filter_ast: Box<FilterAst<'_>>) -> CompilingResult<'_> {
+pub extern "C" fn wirefilter_compile_filter(filter_ast: Box<FilterAst>) -> CompilingResult {
     match catch_panic(std::panic::AssertUnwindSafe(|| {
         wirefilter::FilterAst::from(*filter_ast).compile()
     })) {
@@ -909,9 +879,9 @@ impl MatchingResult {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_match<'e, 's: 'e>(
-    filter: &Filter<'s>,
-    exec_context: &ExecutionContext<'e>,
+pub extern "C" fn wirefilter_match(
+    filter: &Filter,
+    exec_context: &ExecutionContext<'_>,
 ) -> MatchingResult {
     match catch_panic(std::panic::AssertUnwindSafe(|| {
         filter.execute(exec_context)
@@ -932,7 +902,7 @@ pub extern "C" fn wirefilter_match<'e, 's: 'e>(
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_compiled_filter(filter: Box<Filter<'_>>) {
+pub extern "C" fn wirefilter_free_compiled_filter(filter: Box<Filter>) {
     drop(filter);
 }
 
@@ -966,7 +936,7 @@ impl UsingResult {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_filter_uses(
-    filter_ast: &FilterAst<'_>,
+    filter_ast: &FilterAst,
     field_name_ptr: *const c_char,
     field_name_len: usize,
 ) -> UsingResult {
@@ -989,7 +959,7 @@ pub extern "C" fn wirefilter_filter_uses(
 
 #[no_mangle]
 pub extern "C" fn wirefilter_filter_uses_list(
-    filter_ast: &FilterAst<'_>,
+    filter_ast: &FilterAst,
     field_name_ptr: *const c_char,
     field_name_len: usize,
 ) -> UsingResult {
@@ -1214,7 +1184,7 @@ mod ffi_test {
         exec_context
     }
 
-    fn parse_filter<'s>(scheme: &'s Scheme, input: &'static str) -> ParsingResult<'s> {
+    fn parse_filter(scheme: &Scheme, input: &'static str) -> ParsingResult {
         wirefilter_parse_filter(scheme, input.as_ptr().cast(), input.len())
     }
 

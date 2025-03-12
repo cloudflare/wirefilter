@@ -13,13 +13,13 @@ use crate::{
 };
 use std::fmt;
 
-type BoxedClosureToOneBool<'s, U> =
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 's>;
+type BoxedClosureToOneBool<U> =
+    Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 'static>;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
-pub struct CompiledOneExpr<'s, U = ()>(BoxedClosureToOneBool<'s, U>);
+pub struct CompiledOneExpr<U = ()>(BoxedClosureToOneBool<U>);
 
-impl<U> fmt::Debug for CompiledOneExpr<'_, U> {
+impl<U> fmt::Debug for CompiledOneExpr<U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledOneExpr")
             .field(&((&*self.0) as *const _))
@@ -27,10 +27,10 @@ impl<U> fmt::Debug for CompiledOneExpr<'_, U> {
     }
 }
 
-impl<'s, U> CompiledOneExpr<'s, U> {
+impl<U> CompiledOneExpr<U> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 's,
+        closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 'static,
     ) -> Self {
         CompiledOneExpr(Box::new(closure))
     }
@@ -41,20 +41,21 @@ impl<'s, U> CompiledOneExpr<'s, U> {
     }
 
     /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToOneBool<'s, U> {
+    pub fn into_boxed_closure(self) -> BoxedClosureToOneBool<U> {
         self.0
     }
 }
 
 pub(crate) type CompiledVecExprResult = TypedArray<'static, bool>;
 
-type BoxedClosureToVecBool<'s, U> =
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult + Sync + Send + 's>;
+type BoxedClosureToVecBool<U> = Box<
+    dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult + Sync + Send + 'static,
+>;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-pub struct CompiledVecExpr<'s, U = ()>(BoxedClosureToVecBool<'s, U>);
+pub struct CompiledVecExpr<U = ()>(BoxedClosureToVecBool<U>);
 
-impl<U> fmt::Debug for CompiledVecExpr<'_, U> {
+impl<U> fmt::Debug for CompiledVecExpr<U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledVecExpr")
             .field(&((&*self.0) as *const _))
@@ -62,13 +63,13 @@ impl<U> fmt::Debug for CompiledVecExpr<'_, U> {
     }
 }
 
-impl<'s, U> CompiledVecExpr<'s, U> {
+impl<U> CompiledVecExpr<U> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
         closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult
             + Sync
             + Send
-            + 's,
+            + 'static,
     ) -> Self {
         CompiledVecExpr(Box::new(closure))
     }
@@ -79,21 +80,21 @@ impl<'s, U> CompiledVecExpr<'s, U> {
     }
 
     /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToVecBool<'s, U> {
+    pub fn into_boxed_closure(self) -> BoxedClosureToVecBool<U> {
         self.0
     }
 }
 
 /// Enum of boxed closure for [`crate::Expr`] AST nodes.
 #[derive(Debug)]
-pub enum CompiledExpr<'s, U = ()> {
+pub enum CompiledExpr<U = ()> {
     /// Variant for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
-    One(CompiledOneExpr<'s, U>),
+    One(CompiledOneExpr<U>),
     /// Variant for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-    Vec(CompiledVecExpr<'s, U>),
+    Vec(CompiledVecExpr<U>),
 }
 
-impl<U> CompiledExpr<'_, U> {
+impl<U> CompiledExpr<U> {
     #[cfg(test)]
     pub(crate) fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> bool {
         match self {
@@ -128,13 +129,14 @@ impl From<Type> for CompiledValueResult<'_> {
     }
 }
 
-type BoxedClosureToValue<'s, U> =
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e> + Sync + Send + 's>;
+type BoxedClosureToValue<U> = Box<
+    dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e> + Sync + Send + 'static,
+>;
 
 /// Boxed closure for [`crate::ValueExpr`] AST node that evaluates to an [`LhsValue`].
-pub struct CompiledValueExpr<'s, U = ()>(BoxedClosureToValue<'s, U>);
+pub struct CompiledValueExpr<U = ()>(BoxedClosureToValue<U>);
 
-impl<U> fmt::Debug for CompiledValueExpr<'_, U> {
+impl<U> fmt::Debug for CompiledValueExpr<U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledValueExpr")
             .field(&((&*self.0) as *const _))
@@ -142,13 +144,13 @@ impl<U> fmt::Debug for CompiledValueExpr<'_, U> {
     }
 }
 
-impl<'s, U> CompiledValueExpr<'s, U> {
+impl<U> CompiledValueExpr<U> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
         closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e>
             + Sync
             + Send
-            + 's,
+            + 'static,
     ) -> Self {
         CompiledValueExpr(Box::new(closure))
     }
@@ -159,7 +161,7 @@ impl<'s, U> CompiledValueExpr<'s, U> {
     }
 
     /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToValue<'s, U> {
+    pub fn into_boxed_closure(self) -> BoxedClosureToValue<U> {
         self.0
     }
 }
@@ -179,23 +181,23 @@ impl<'s, U> CompiledValueExpr<'s, U> {
 /// In the future the underlying representation might change, but for now it
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
-pub struct Filter<'s, U = ()> {
-    root_expr: CompiledOneExpr<'s, U>,
-    scheme: &'s Scheme,
+pub struct Filter<U = ()> {
+    root_expr: CompiledOneExpr<U>,
+    scheme: Scheme,
 }
 
-impl<U> std::fmt::Debug for Filter<'_, U> {
+impl<U> std::fmt::Debug for Filter<U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Filter")
             .field("root", &self.root_expr)
-            .field("scheme", &(self.scheme as *const _))
+            .field("scheme", &self.scheme)
             .finish()
     }
 }
 
-impl<'s, U> Filter<'s, U> {
+impl<U> Filter<U> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledOneExpr<'s, U>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledOneExpr<U>, scheme: Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 
@@ -204,7 +206,7 @@ impl<'s, U> Filter<'s, U> {
         &self,
         ctx: &'e ExecutionContext<'e, U>,
     ) -> Result<bool, SchemeMismatchError> {
-        if ctx.scheme() == self.scheme {
+        if ctx.scheme() == &self.scheme {
             Ok(self.root_expr.execute(ctx))
         } else {
             Err(SchemeMismatchError)
@@ -213,14 +215,14 @@ impl<'s, U> Filter<'s, U> {
 }
 
 /// An IR for a compiled value expression.
-pub struct FilterValue<'s, U = ()> {
-    root_expr: CompiledValueExpr<'s, U>,
-    scheme: &'s Scheme,
+pub struct FilterValue<U = ()> {
+    root_expr: CompiledValueExpr<U>,
+    scheme: Scheme,
 }
 
-impl<'s, U> FilterValue<'s, U> {
+impl<U> FilterValue<U> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledValueExpr<'s, U>, scheme: &'s Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledValueExpr<U>, scheme: Scheme) -> Self {
         FilterValue { root_expr, scheme }
     }
 
@@ -229,7 +231,7 @@ impl<'s, U> FilterValue<'s, U> {
         &self,
         ctx: &'e ExecutionContext<'e, U>,
     ) -> Result<Result<LhsValue<'e>, Type>, SchemeMismatchError> {
-        if ctx.scheme() == self.scheme {
+        if ctx.scheme() == &self.scheme {
             Ok(self.root_expr.execute(ctx))
         } else {
             Err(SchemeMismatchError)
@@ -257,7 +259,7 @@ mod tests {
         fn is_send<T: Send>() {}
         fn is_sync<T: Sync>() {}
 
-        is_send::<Filter<'_, ExecutionContext<'_>>>();
-        is_sync::<Filter<'_, ExecutionContext<'_>>>();
+        is_send::<Filter<ExecutionContext<'_>>>();
+        is_sync::<Filter<ExecutionContext<'_>>>();
     }
 }
