@@ -396,11 +396,11 @@ pub trait FunctionDefinition: Debug + Send + Sync {
     fn arg_count(&self) -> (usize, Option<usize>);
     /// Compile the function definition down to a closure that is going to be called
     /// during filter execution.
-    fn compile<'s>(
-        &'s self,
+    fn compile(
+        &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ctx: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
+    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>;
 }
 
 /* Simple function APIs */
@@ -505,7 +505,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + '_>
+    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>
     {
         let params_count = params.len();
         let opt_params = &self.opt_params[(params_count - self.params.len())..];
