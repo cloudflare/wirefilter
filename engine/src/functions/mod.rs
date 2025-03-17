@@ -78,7 +78,8 @@ where
 }
 
 /// An iterator over function arguments as [`LhsValue`]s.
-pub type FunctionArgs<'i, 'a> = &'i mut dyn ExactSizeIterator<Item = CompiledValueResult<'a>>;
+pub type FunctionArgs<'i, 'a> =
+    &'i mut (dyn ExactSizeIterator<Item = CompiledValueResult<'a>> + 'i);
 
 /// Defines what kind of argument a function expects.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -399,15 +400,15 @@ pub trait FunctionDefinition: Debug + Send + Sync {
         &'s self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ctx: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
+    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>;
 }
 
 /* Simple function APIs */
 
-type FunctionPtr = for<'a> fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>>;
+type FunctionPtr = for<'i, 'a> fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>>;
 
 /// Wrapper around a function pointer providing the runtime implementation.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SimpleFunctionImpl(FunctionPtr);
 
 impl SimpleFunctionImpl {
@@ -500,17 +501,19 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         (self.params.len(), Some(self.opt_params.len()))
     }
 
-    fn compile<'s>(
-        &'s self,
+    fn compile(
+        &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's> {
+    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + '_>
+    {
         let params_count = params.len();
         let opt_params = &self.opt_params[(params_count - self.params.len())..];
+        let implementation = self.implementation;
         if opt_params.is_empty() {
             Box::new(move |args| {
                 assert_eq!(params_count, args.len());
-                (self.implementation.0)(args)
+                (implementation.0)(args)
             })
         } else {
             let opt_args: Vec<Result<LhsValue<'static>, Type>> = opt_params
@@ -519,7 +522,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
                 .collect();
             Box::new(move |args| {
                 assert_eq!(params_count, args.len());
-                (self.implementation.0)(&mut ExactSizeChain::new(args, opt_args.iter().cloned()))
+                (implementation.0)(&mut ExactSizeChain::new(args, opt_args.iter().cloned()))
             })
         }
     }
