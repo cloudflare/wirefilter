@@ -13,7 +13,7 @@ fn main() {
         .nth(1)
         .expect("Expected an input as a command-line argument");
 
-    let mut scheme = Scheme! {
+    let mut builder = Scheme! {
         ip: Ip,
         str: Bytes,
         int: Int,
@@ -23,7 +23,7 @@ fn main() {
         bool_arr: Array(Bool),
     };
 
-    scheme
+    builder
         .add_function(
             "panic",
             SimpleFunctionDefinition {
@@ -40,6 +40,8 @@ fn main() {
             },
         )
         .unwrap();
+
+    let scheme = builder.build();
 
     match scheme.parse(&filter) {
         Ok(res) => println!("{res:#?}"),

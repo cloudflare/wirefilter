@@ -592,7 +592,7 @@ mod tests {
     }
 
     static SCHEME: LazyLock<Scheme> = LazyLock::new(|| {
-        let mut scheme = Scheme! {
+        let mut builder = Scheme! {
             http.headers: Map(Bytes),
             http.host: Bytes,
             http.request.headers.names: Array(Bytes),
@@ -602,7 +602,7 @@ mod tests {
             ssl: Bool,
             tcp.port: Int,
         };
-        scheme
+        builder
             .add_function(
                 "any",
                 SimpleFunctionDefinition {
@@ -616,7 +616,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
@@ -639,7 +639,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "lower",
                 SimpleFunctionDefinition {
@@ -653,7 +653,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "regex_replace",
                 SimpleFunctionDefinition {
@@ -677,7 +677,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "len",
                 SimpleFunctionDefinition {
@@ -691,7 +691,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder.build()
     });
 
     #[test]

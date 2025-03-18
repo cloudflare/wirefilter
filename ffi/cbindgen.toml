@@ -32,6 +32,7 @@ renaming_overrides_prefixing = false
 "ParsingResult" = "parsing_result"
 "RustAllocatedString" = "rust_allocated_str"
 "Scheme" = "scheme"
+"SchemeBuilder" = "scheme_builder"
 "SerializingResult" = "serializing_result"
 "StaticRustAllocatedString" = "static_rust_allocated_str"
 "Status" = "status"

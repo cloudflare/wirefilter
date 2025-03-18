@@ -355,7 +355,7 @@ impl Serialize for ExecutionContext<'_> {
 fn test_field_value_type_mismatch() {
     use crate::types::Type;
 
-    let scheme = Scheme! { foo: Int };
+    let scheme = Scheme! { foo: Int }.build();
 
     let mut ctx = ExecutionContext::<()>::new(&scheme);
 
@@ -370,11 +370,11 @@ fn test_field_value_type_mismatch() {
 
 #[test]
 fn test_scheme_mismatch() {
-    let scheme = Scheme! { foo: Bool };
+    let scheme = Scheme! { foo: Bool }.build();
 
     let mut ctx = ExecutionContext::<()>::new(&scheme);
 
-    let scheme2 = Scheme! { foo: Bool };
+    let scheme2 = Scheme! { foo: Bool }.build();
 
     assert_eq!(
         ctx.set_field_value(scheme2.get_field("foo").unwrap(), LhsValue::Bool(false)),
@@ -391,20 +391,18 @@ fn test_serde() {
     use std::net::IpAddr;
     use std::str::FromStr;
 
-    let mut scheme = Scheme::new();
-    scheme.add_field("bool", Type::Bool).unwrap();
-    scheme.add_field("ip", Type::Ip).unwrap();
-    scheme.add_field("str", Type::Bytes).unwrap();
-    scheme.add_field("bytes", Type::Bytes).unwrap();
-    scheme.add_field("num", Type::Int).unwrap();
-    scheme.add_field("min_num", Type::Int).unwrap();
-    scheme.add_field("max_num", Type::Int).unwrap();
-    scheme
-        .add_field("arr", Type::Array(Type::Bool.into()))
-        .unwrap();
-    scheme
-        .add_field("map", Type::Map(Type::Int.into()))
-        .unwrap();
+    let scheme = Scheme! {
+        bool: Bool,
+        ip: Ip,
+        str: Bytes,
+        bytes: Bytes,
+        num: Int,
+        min_num: Int,
+        max_num: Int,
+        arr: Array(Bool),
+        map: Map(Int),
+    }
+    .build();
 
     let mut ctx = ExecutionContext::new(&scheme);
 
@@ -550,13 +548,14 @@ fn test_serde() {
 
 #[test]
 fn test_clear() {
-    use crate::types::Type;
     use std::net::IpAddr;
     use std::str::FromStr;
 
-    let mut scheme = Scheme::new();
-    scheme.add_field("bool", Type::Bool).unwrap();
-    scheme.add_field("ip", Type::Ip).unwrap();
+    let scheme = Scheme! {
+        bool: Bool,
+        ip: Ip,
+    }
+    .build();
 
     let bool_field = scheme.get_field("bool").unwrap();
     let ip_field = scheme.get_field("ip").unwrap();

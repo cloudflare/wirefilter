@@ -172,7 +172,13 @@ macro_rules! wrap_type {
     };
 }
 
-/* Wrapper types needed by cbindgen to forard declare opaque structs */
+/* Wrapper types needed by cbindgen to forward declare opaque structs */
+
+#[derive(Debug, Default)]
+#[repr(Rust)]
+pub struct SchemeBuilder(wirefilter::SchemeBuilder);
+
+wrap_type!(SchemeBuilder);
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
@@ -256,12 +262,12 @@ pub extern "C" fn wirefilter_clear_last_error() {
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_create_scheme() -> Box<Scheme> {
-    Box::new(Scheme(Default::default()))
+pub extern "C" fn wirefilter_create_scheme_builder() -> Box<SchemeBuilder> {
+    Box::default()
 }
 
 #[no_mangle]
-pub extern "C" fn wirefilter_free_scheme(scheme: Box<Scheme>) {
+pub extern "C" fn wirefilter_free_scheme_builder(scheme: Box<SchemeBuilder>) {
     drop(scheme);
 }
 
@@ -307,13 +313,13 @@ macro_rules! to_str {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_type_field_to_scheme(
-    scheme: &mut Scheme,
+    builder: &mut SchemeBuilder,
     name_ptr: *const c_char,
     name_len: usize,
     ty: CType,
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
-    scheme.add_field(name, ty.into()).is_ok()
+    builder.add_field(name, ty.into()).is_ok()
 }
 
 pub type CListDefinition = Box<dyn ListDefinition>;
@@ -330,11 +336,21 @@ pub extern "C" fn wirefilter_create_never_list() -> Box<CListDefinition> {
 
 #[no_mangle]
 pub extern "C" fn wirefilter_add_type_list_to_scheme(
-    scheme: &mut Scheme,
+    builder: &mut SchemeBuilder,
     ty: CType,
     list: Box<CListDefinition>,
 ) -> bool {
-    scheme.add_list(ty.into(), *list).is_ok()
+    builder.add_list(ty.into(), *list).is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_build_scheme(builder: Box<SchemeBuilder>) -> Box<Scheme> {
+    Box::new(Scheme(builder.0.build()))
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_free_scheme(scheme: Box<Scheme>) {
+    drop(scheme);
 }
 
 #[derive(Debug, PartialEq)]
@@ -1060,12 +1076,12 @@ mod ffi_test {
     }
 
     fn create_scheme() -> Box<Scheme> {
-        let mut scheme = wirefilter_create_scheme();
+        let mut builder = wirefilter_create_scheme_builder();
 
         macro_rules! add_field {
-            ($scheme:ident, $field:literal, $ty:expr) => {
+            ($builder:ident, $field:literal, $ty:expr) => {
                 assert!(wirefilter_add_type_field_to_scheme(
-                    &mut $scheme,
+                    &mut $builder,
                     $field.as_ptr().cast(),
                     $field.len(),
                     $ty.into(),
@@ -1073,29 +1089,33 @@ mod ffi_test {
             };
         }
 
-        add_field!(scheme, "ip1", Type::Ip);
-        add_field!(scheme, "ip2", Type::Ip);
+        add_field!(builder, "ip1", Type::Ip);
+        add_field!(builder, "ip2", Type::Ip);
 
-        add_field!(scheme, "str1", Type::Bytes);
-        add_field!(scheme, "str2", Type::Bytes);
+        add_field!(builder, "str1", Type::Bytes);
+        add_field!(builder, "str2", Type::Bytes);
 
-        add_field!(scheme, "num1", Type::Int);
-        add_field!(scheme, "num2", Type::Int);
+        add_field!(builder, "num1", Type::Int);
+        add_field!(builder, "num2", Type::Int);
 
-        add_field!(scheme, "map1", wirefilter_create_map_type(Type::Int.into()));
         add_field!(
-            scheme,
+            builder,
+            "map1",
+            wirefilter_create_map_type(Type::Int.into())
+        );
+        add_field!(
+            builder,
             "map2",
             wirefilter_create_map_type(Type::Bytes.into())
         );
 
         wirefilter_add_type_list_to_scheme(
-            &mut scheme,
+            &mut builder,
             Type::Int.into(),
             wirefilter_create_always_list(),
         );
 
-        scheme
+        wirefilter_build_scheme(builder)
     }
 
     fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> Box<ExecutionContext<'e>> {

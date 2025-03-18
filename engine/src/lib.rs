@@ -14,7 +14,7 @@
 //!         http.method: Bytes,
 //!         http.ua: Bytes,
 //!         port: Int,
-//!     };
+//!     }.build();
 //!
 //!     // Parse a Wireshark-like expression into an AST.
 //!     let ast = scheme.parse(
@@ -116,8 +116,8 @@ pub use self::{
     },
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
-        IdentifierRedefinitionError, IndexAccessError, List, Scheme, SchemeMismatchError,
-        UnknownFieldError,
+        IdentifierRedefinitionError, IndexAccessError, List, Scheme, SchemeBuilder,
+        SchemeMismatchError, UnknownFieldError,
     },
     types::{
         CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LhsValueMut, RhsValue,

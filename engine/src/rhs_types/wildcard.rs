@@ -137,7 +137,7 @@ impl<'i, 's, const STRICT: bool> LexWith<'i, &FilterParser<'s>> for Wildcard<STR
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{BytesFormat, Scheme};
+    use crate::{BytesFormat, SchemeBuilder};
 
     #[test]
     fn test_wildcard_eq() {
@@ -178,7 +178,7 @@ mod test {
     #[test]
     fn test_wildcard_lex_quoted_string() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             let expr = assert_ok!(
                 Wildcard::<STRICT>::lex_with(r#""a quoted string";"#, &FilterParser::new(&scheme)),
@@ -206,7 +206,7 @@ mod test {
     #[test]
     fn test_wildcard_lex_raw_string() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             // Note that the `\\xaa` is escaping the `\` at the wildcard-language level, not at the
             // wirefilter-language level.
@@ -243,7 +243,7 @@ mod test {
     #[test]
     fn test_wildcard_lex_escape_quoted_string_invalid_utf8() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             let bytes = [
                 "a quoted ".as_bytes().to_vec(),
@@ -281,7 +281,7 @@ mod test {
     #[test]
     fn test_wildcard_lex_reject_bytes_syntax() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             assert_err!(
                 Wildcard::<STRICT>::lex_with("61:20:71:75:6F:74", &FilterParser::new(&scheme)),
@@ -297,7 +297,7 @@ mod test {
     #[test]
     fn test_wildcard_reject_invalid_wildcard() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             assert!(matches!(
                 Wildcard::<STRICT>::lex_with(r#"r"*foo\bar*""#, &FilterParser::new(&scheme))
@@ -315,7 +315,7 @@ mod test {
     #[test]
     fn test_wildcard_star_limit() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
             let mut parser = FilterParser::new(&scheme);
 
             parser.wildcard_set_star_limit(3);
@@ -337,7 +337,7 @@ mod test {
     #[test]
     fn test_wildcard_reject_double_star() {
         fn t<const STRICT: bool>() {
-            let scheme = Scheme::new();
+            let scheme = SchemeBuilder::new().build();
 
             assert!(
                 Wildcard::<STRICT>::lex_with("\"*foo*bar*\"", &FilterParser::new(&scheme)).is_ok()

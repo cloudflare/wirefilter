@@ -345,7 +345,8 @@ fn test() {
         at: Array(Bool),
         af: Array(Bool),
         aat: Array(Array(Bool)),
-    };
+    }
+    .build();
 
     let ctx = &mut ExecutionContext::new(scheme);
 

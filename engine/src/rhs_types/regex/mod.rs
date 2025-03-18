@@ -149,11 +149,11 @@ pub enum Error {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ParserSettings, Scheme};
+    use crate::{ParserSettings, SchemeBuilder};
 
     #[test]
     fn test() {
-        let scheme = Scheme::new();
+        let scheme = SchemeBuilder::new().build();
         let parser = FilterParser::new(&scheme);
 
         let expr = assert_ok!(
@@ -178,7 +178,7 @@ mod test {
 
     #[test]
     fn test_raw_string() {
-        let scheme = Scheme::new();
+        let scheme = SchemeBuilder::new().build();
         let parser = FilterParser::new(&scheme);
 
         let expr = assert_ok!(

@@ -8,7 +8,7 @@ static A: System = System;
 use criterion::{criterion_group, criterion_main, Bencher, Criterion};
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, Scheme,
+    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, SchemeBuilder,
     SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
 };
 
@@ -79,11 +79,12 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
             let mut group = c.benchmark_group("parsing");
 
             group.bench_function(name, {
-                let mut scheme = Scheme::default();
-                scheme.add_field(field, ty).unwrap();
+                let mut builder = SchemeBuilder::default();
+                builder.add_field(field, ty).unwrap();
                 for (name, function) in functions {
-                    scheme.add_function(name, function.clone()).unwrap();
+                    builder.add_function(name, function.clone()).unwrap();
                 }
+                let scheme = builder.build();
                 move |b: &mut Bencher| {
                     b.iter(|| scheme.parse(filter).unwrap());
                 }
@@ -94,11 +95,12 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
             let mut group = c.benchmark_group("compilation");
 
             group.bench_function(name, {
-                let mut scheme = Scheme::default();
-                scheme.add_field(field, ty).unwrap();
+                let mut builder = SchemeBuilder::default();
+                builder.add_field(field, ty).unwrap();
                 for (name, function) in functions {
-                    scheme.add_function(name, function.clone()).unwrap();
+                    builder.add_function(name, function.clone()).unwrap();
                 }
+                let scheme = builder.build();
                 move |b: &mut Bencher| {
                     let filter = scheme.parse(filter).unwrap();
 
@@ -111,11 +113,12 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
             let mut group = c.benchmark_group("execution");
 
             group.bench_with_input(name, values, {
-                let mut scheme = Scheme::default();
-                scheme.add_field(field, ty).unwrap();
+                let mut builder = SchemeBuilder::default();
+                builder.add_field(field, ty).unwrap();
                 for (name, function) in functions {
-                    scheme.add_function(name, function.clone()).unwrap();
+                    builder.add_function(name, function.clone()).unwrap();
                 }
+                let scheme = builder.build();
                 move |b: &mut Bencher, values: &[T]| {
                     let filter = scheme.parse(filter).unwrap();
 

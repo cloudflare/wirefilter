@@ -61,6 +61,8 @@ struct wirefilter_map;
 
 struct wirefilter_scheme;
 
+struct wirefilter_scheme_builder;
+
 struct wirefilter_type {
   uint32_t layers;
   uint8_t len;
@@ -124,9 +126,9 @@ const char *wirefilter_get_last_error(void);
  */
 void wirefilter_clear_last_error(void);
 
-struct wirefilter_scheme *wirefilter_create_scheme(void);
+struct wirefilter_scheme_builder *wirefilter_create_scheme_builder(void);
 
-void wirefilter_free_scheme(struct wirefilter_scheme *scheme);
+void wirefilter_free_scheme_builder(struct wirefilter_scheme_builder *scheme);
 
 struct wirefilter_type wirefilter_create_primitive_type(wirefilter_primitive_type ty);
 
@@ -134,7 +136,7 @@ struct wirefilter_type wirefilter_create_map_type(struct wirefilter_type ty);
 
 struct wirefilter_type wirefilter_create_array_type(struct wirefilter_type ty);
 
-bool wirefilter_add_type_field_to_scheme(struct wirefilter_scheme *scheme,
+bool wirefilter_add_type_field_to_scheme(struct wirefilter_scheme_builder *builder,
                                          const char *name_ptr,
                                          size_t name_len,
                                          struct wirefilter_type ty);
@@ -143,9 +145,13 @@ struct wirefilter_list_definition *wirefilter_create_always_list(void);
 
 struct wirefilter_list_definition *wirefilter_create_never_list(void);
 
-bool wirefilter_add_type_list_to_scheme(struct wirefilter_scheme *scheme,
+bool wirefilter_add_type_list_to_scheme(struct wirefilter_scheme_builder *builder,
                                         struct wirefilter_type ty,
                                         struct wirefilter_list_definition *list);
+
+struct wirefilter_scheme *wirefilter_build_scheme(struct wirefilter_scheme_builder *builder);
+
+void wirefilter_free_scheme(struct wirefilter_scheme *scheme);
 
 void wirefilter_free_string(struct wirefilter_rust_allocated_str s);
 
