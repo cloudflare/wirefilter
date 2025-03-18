@@ -548,8 +548,8 @@ mod tests {
     use super::*;
     use crate::{
         ast::field_expr::IdentifierExpr, Array, FieldIndex, FilterParser, FunctionArgKind,
-        FunctionArgs, FunctionCallArgExpr, FunctionCallExpr, Scheme, SimpleFunctionDefinition,
-        SimpleFunctionImpl, SimpleFunctionParam,
+        FunctionArgs, FunctionCallArgExpr, FunctionCallExpr, Scheme, SchemeBuilder,
+        SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam,
     };
     use std::sync::LazyLock;
 
@@ -574,17 +574,17 @@ mod tests {
     }
 
     static SCHEME: LazyLock<Scheme> = LazyLock::new(|| {
-        let mut scheme = Scheme::new();
-        scheme
+        let mut builder = SchemeBuilder::new();
+        builder
             .add_field("test", Type::Array(Type::Bytes.into()))
             .unwrap();
-        scheme
+        builder
             .add_field("test2", Type::Array(Type::Array(Type::Bytes.into()).into()))
             .unwrap();
-        scheme
+        builder
             .add_field("map", Type::Map(Type::Bytes.into()))
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "array",
                 SimpleFunctionDefinition {
@@ -598,7 +598,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "array2",
                 SimpleFunctionDefinition {
@@ -612,7 +612,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder.build()
     });
 
     #[test]

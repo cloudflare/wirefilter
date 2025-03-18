@@ -225,7 +225,7 @@ mod tests {
     use std::sync::LazyLock;
 
     static SCHEME: LazyLock<Scheme> = LazyLock::new(|| {
-        let mut scheme = Scheme! {
+        let mut builder = Scheme! {
             http.headers: Map(Bytes),
             http.request.headers.names: Array(Bytes),
             http.request.headers.values: Array(Bytes),
@@ -234,7 +234,7 @@ mod tests {
             ssl: Bool,
             tcp.port: Int,
         };
-        scheme
+        builder
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
@@ -248,10 +248,10 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_list(Type::Bytes, Box::new(AlwaysList {}))
             .unwrap();
-        scheme
+        builder.build()
     });
 
     #[test]

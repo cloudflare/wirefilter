@@ -33,7 +33,7 @@ mod ffi_ctest {
         create_array_type,
         create_map_type,
         create_complex_type,
-        create_scheme,
+        create_scheme_builder,
         add_fields_to_scheme,
         add_malloced_type_field_to_scheme,
         parse_good_filter,

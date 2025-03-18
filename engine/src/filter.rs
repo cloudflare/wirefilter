@@ -244,8 +244,8 @@ mod tests {
 
     #[test]
     fn test_scheme_mismatch() {
-        let scheme1 = Scheme! { foo: Int };
-        let scheme2 = Scheme! { foo: Int, bar: Int };
+        let scheme1 = Scheme! { foo: Int }.build();
+        let scheme2 = Scheme! { foo: Int, bar: Int }.build();
         let filter = scheme1.parse("foo == 42").unwrap().compile();
         let ctx = ExecutionContext::new(&scheme2);
 

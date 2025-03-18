@@ -15,47 +15,56 @@ extern void rust_assert(bool check, const char *msg);
 #define WIREFILTER_TYPE_BOOL (wirefilter_create_primitive_type(WIREFILTER_PRIMITIVE_TYPE_BOOL))
 #define WIREFILTER_TYPE_INT (wirefilter_create_primitive_type(WIREFILTER_PRIMITIVE_TYPE_INT))
 
-void initialize_scheme(struct wirefilter_scheme *scheme) {
+void initialize_scheme(struct wirefilter_scheme_builder *builder) {
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("http.host"),
         WIREFILTER_TYPE_BYTES
     ), "could not add field http.host of type \"Bytes\" to scheme");
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("ip.src"),
         WIREFILTER_TYPE_IP
     ), "could not add field ip.src of type \"Ip\" to scheme");
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("ip.dst"),
         WIREFILTER_TYPE_IP
     ), "could not add field ip.dst of type \"Ip\" to scheme");
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("ssl"),
         WIREFILTER_TYPE_BOOL
     ), "could not add field ssl of type \"Bool\" to scheme");
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("tcp.port"),
         WIREFILTER_TYPE_INT
     ), "could not add field tcp.port of type \"Int\" to scheme");
     wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("http.headers"),
         wirefilter_create_map_type(WIREFILTER_TYPE_BYTES)
     );
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("http.cookies"),
         wirefilter_create_array_type(WIREFILTER_TYPE_BYTES)
     ), "could not add field http.cookies of type \"Array<Bytes>\" to scheme");
     rust_assert(wirefilter_add_type_list_to_scheme(
-            scheme,
-            WIREFILTER_TYPE_IP,
-            wirefilter_create_always_list()
+        builder,
+        WIREFILTER_TYPE_IP,
+        wirefilter_create_always_list()
     ), "could not add list for type \"Ip\" to scheme");
+}
+
+struct wirefilter_scheme *build_scheme() {
+    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
+    rust_assert(builder != NULL, "could not create scheme builder");
+
+    initialize_scheme(builder);
+
+    return wirefilter_build_scheme(builder);
 }
 
 void wirefilter_ffi_ctest_create_array_type() {
@@ -88,45 +97,43 @@ void wirefilter_ffi_ctest_create_complex_type() {
     rust_assert(type.primitive == WIREFILTER_PRIMITIVE_TYPE_BYTES, "could not create valid type");
 }
 
-void wirefilter_ffi_ctest_create_scheme() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
-    rust_assert(scheme != NULL, "could not create scheme");
-    wirefilter_free_scheme(scheme);
+void wirefilter_ffi_ctest_create_scheme_builder() {
+    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
+    rust_assert(builder != NULL, "could not create scheme builder");
+    wirefilter_free_scheme_builder(builder);
 }
 
 void wirefilter_ffi_ctest_add_fields_to_scheme() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
-    rust_assert(scheme != NULL, "could not create scheme");
+    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
+    rust_assert(builder != NULL, "could not create scheme builder");
 
-    initialize_scheme(scheme);
+    initialize_scheme(builder);
 
-    wirefilter_free_scheme(scheme);
+    wirefilter_free_scheme_builder(builder);
 }
 
 void wirefilter_ffi_ctest_add_malloced_type_field_to_scheme() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
-    rust_assert(scheme != NULL, "could not create scheme");
+    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
+    rust_assert(builder != NULL, "could not create scheme builder");
 
     struct wirefilter_type *byte_type = (struct wirefilter_type *)malloc(sizeof(struct wirefilter_type));
     rust_assert(byte_type != NULL, "could not allocate type");
     *byte_type = WIREFILTER_TYPE_BYTES;
 
     rust_assert(wirefilter_add_type_field_to_scheme(
-        scheme,
+        builder,
         STRING("http.host"),
         *byte_type
     ), "could not add field http.host of type \"Bytes\" to scheme");
 
     free(byte_type);
 
-    wirefilter_free_scheme(scheme);
+    wirefilter_free_scheme_builder(builder);
 }
 
 void wirefilter_ffi_ctest_parse_good_filter() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -141,10 +148,8 @@ void wirefilter_ffi_ctest_parse_good_filter() {
 }
 
 void wirefilter_ffi_ctest_parse_bad_filter() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -157,10 +162,8 @@ void wirefilter_ffi_ctest_parse_bad_filter() {
 }
 
 void wirefilter_ffi_ctest_filter_uses_field() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result parsing_result = wirefilter_parse_filter(
         scheme,
@@ -193,10 +196,8 @@ void wirefilter_ffi_ctest_filter_uses_field() {
 }
 
 void wirefilter_ffi_ctest_filter_uses_list_field() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result parsing_result = wirefilter_parse_filter(
         scheme,
@@ -229,10 +230,8 @@ void wirefilter_ffi_ctest_filter_uses_list_field() {
 }
 
 void wirefilter_ffi_ctest_filter_hash() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result1 = wirefilter_parse_filter(
         scheme,
@@ -268,10 +267,8 @@ void wirefilter_ffi_ctest_filter_hash() {
 }
 
 void wirefilter_ffi_ctest_filter_serialize() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -299,10 +296,8 @@ void wirefilter_ffi_ctest_filter_serialize() {
 }
 
 void wirefilter_ffi_ctest_scheme_serialize() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_serializing_result serializing_result = wirefilter_serialize_scheme_to_json(scheme);
     rust_assert(serializing_result.status == WIREFILTER_STATUS_SUCCESS, "could not serialize scheme to JSON");
@@ -353,10 +348,8 @@ void wirefilter_ffi_ctest_type_serialize() {
 }
 
 void wirefilter_ffi_ctest_compile_filter() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -375,7 +368,7 @@ void wirefilter_ffi_ctest_compile_filter() {
 }
 
 void wirefilter_ffi_ctest_create_execution_context() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
 
     struct wirefilter_execution_context *exec_ctx = wirefilter_create_execution_context(scheme);
@@ -387,10 +380,8 @@ void wirefilter_ffi_ctest_create_execution_context() {
 }
 
 void wirefilter_ffi_ctest_add_values_to_execution_context() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_execution_context *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -433,10 +424,8 @@ void wirefilter_ffi_ctest_add_values_to_execution_context() {
 }
 
 void wirefilter_ffi_ctest_add_values_to_execution_context_errors() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_execution_context *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -497,10 +486,8 @@ void wirefilter_ffi_ctest_add_values_to_execution_context_errors() {
 }
 
 void wirefilter_ffi_ctest_execution_context_serialize() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_execution_context *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -561,10 +548,8 @@ void wirefilter_ffi_ctest_execution_context_serialize() {
 }
 
 void wirefilter_ffi_ctest_execution_context_deserialize() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_execution_context *exec_ctx = wirefilter_create_execution_context(scheme);
     rust_assert(exec_ctx != NULL, "could not create execution context");
@@ -618,10 +603,8 @@ void wirefilter_ffi_ctest_execution_context_deserialize() {
 
 
 void wirefilter_ffi_ctest_match_filter() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -676,10 +659,8 @@ void wirefilter_ffi_ctest_match_filter() {
 }
 
 void wirefilter_ffi_ctest_match_map() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,
@@ -750,10 +731,8 @@ void wirefilter_ffi_ctest_match_map() {
 }
 
 void wirefilter_ffi_ctest_match_array() {
-    struct wirefilter_scheme *scheme = wirefilter_create_scheme();
+    struct wirefilter_scheme *scheme = build_scheme();
     rust_assert(scheme != NULL, "could not create scheme");
-
-    initialize_scheme(scheme);
 
     struct wirefilter_parsing_result result = wirefilter_parse_filter(
         scheme,

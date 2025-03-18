@@ -805,7 +805,7 @@ mod tests {
     }
 
     static SCHEME: LazyLock<Scheme> = LazyLock::new(|| {
-        let mut scheme: Scheme = Scheme! {
+        let mut builder = Scheme! {
             http.cookies: Array(Bytes),
             http.headers: Map(Bytes),
             http.host: Bytes,
@@ -816,7 +816,7 @@ mod tests {
             array.of.bool: Array(Bool),
             http.parts: Array(Array(Bytes)),
         };
-        scheme
+        builder
             .add_function(
                 "any",
                 SimpleFunctionDefinition {
@@ -830,7 +830,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
@@ -844,7 +844,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "lowercase",
                 SimpleFunctionDefinition {
@@ -858,7 +858,7 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "concat",
                 SimpleFunctionDefinition {
@@ -878,10 +878,10 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_function("filter", FilterFunction::new())
             .unwrap();
-        scheme
+        builder
             .add_function(
                 "len",
                 SimpleFunctionDefinition {
@@ -895,10 +895,10 @@ mod tests {
                 },
             )
             .unwrap();
-        scheme
+        builder
             .add_list(Type::Int, Box::new(NumMListDefinition {}))
             .unwrap();
-        scheme
+        builder.build()
     });
 
     fn field(name: &'static str) -> Field<'static> {

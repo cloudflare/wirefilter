@@ -140,7 +140,7 @@ impl<'s> Field<'s> {
     /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &'s str {
-        &self.scheme.fields[self.index].0
+        &self.scheme.inner.fields[self.index].0
     }
 
     /// Get the field's index in the [`Scheme`](struct@Scheme) identifier's list.
@@ -159,7 +159,7 @@ impl<'s> Field<'s> {
 impl GetType for Field<'_> {
     #[inline]
     fn get_type(&self) -> Type {
-        self.scheme.fields[self.index].1
+        self.scheme.inner.fields[self.index].1
     }
 }
 
@@ -202,7 +202,7 @@ impl<'s> Function<'s> {
     /// Returns the function's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &'s str {
-        &self.scheme.functions[self.index].0
+        &self.scheme.inner.functions[self.index].0
     }
 
     /// Get the function's index in the [`Scheme`](struct@Scheme) identifier's list.
@@ -219,7 +219,7 @@ impl<'s> Function<'s> {
 
     #[inline]
     pub(crate) fn as_definition(&self) -> &'s dyn FunctionDefinition {
-        &*self.scheme.functions[self.index].1
+        &*self.scheme.inner.functions[self.index].1
     }
 }
 
@@ -342,20 +342,20 @@ impl<'s> List<'s> {
     }
 
     pub(crate) fn definition(&self) -> &'s dyn ListDefinition {
-        &*self.scheme.lists[self.index].1
+        &*self.scheme.inner.lists[self.index].1
     }
 }
 
 impl Debug for List<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.scheme.lists[self.index])
+        write!(f, "{:?}", self.scheme.inner.lists[self.index])
     }
 }
 
 impl GetType for List<'_> {
     #[inline]
     fn get_type(&self) -> Type {
-        self.scheme.lists[self.index].0
+        self.scheme.inner.lists[self.index].0
     }
 }
 
@@ -366,19 +366,115 @@ pub struct ListRedefinitionError(Type);
 
 type IdentifierName = Arc<str>;
 
-/// The main registry for fields and their associated types.
-///
-/// This is necessary to provide typechecking for runtime values provided
-/// to the [`crate::ExecutionContext`] and also to aid parser
-/// in ambiguous contexts.
+/// A builder for a [`Scheme`].
 #[derive(Default, Debug)]
-pub struct Scheme {
+pub struct SchemeBuilder {
     fields: Vec<(IdentifierName, Type)>,
     functions: Vec<(IdentifierName, Box<dyn FunctionDefinition>)>,
     items: HashMap<IdentifierName, SchemeItem, FnvBuildHasher>,
 
     list_types: HashMap<Type, usize, FnvBuildHasher>,
     lists: Vec<(Type, Box<dyn ListDefinition>)>,
+}
+
+impl SchemeBuilder {
+    /// Creates a new scheme.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Registers a field and its corresponding type.
+    pub fn add_field<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        ty: Type,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        match self.items.entry(name.as_ref().into()) {
+            Entry::Occupied(entry) => match entry.get() {
+                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
+                    FieldRedefinitionError(entry.key().to_string()),
+                )),
+                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
+                    FunctionRedefinitionError(entry.key().to_string()),
+                )),
+            },
+            Entry::Vacant(entry) => {
+                let index = self.fields.len();
+                self.fields.push((entry.key().clone(), ty));
+                entry.insert(SchemeItem::Field(index));
+                Ok(())
+            }
+        }
+    }
+
+    /// Registers a function
+    pub fn add_function<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        function: impl Into<Box<dyn FunctionDefinition + 'static>>,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        match self.items.entry(name.as_ref().into()) {
+            Entry::Occupied(entry) => match entry.get() {
+                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
+                    FieldRedefinitionError(entry.key().to_string()),
+                )),
+                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
+                    FunctionRedefinitionError(entry.key().to_string()),
+                )),
+            },
+            Entry::Vacant(entry) => {
+                let index = self.functions.len();
+                self.functions.push((entry.key().clone(), function.into()));
+                entry.insert(SchemeItem::Function(index));
+                Ok(())
+            }
+        }
+    }
+
+    /// Registers a new [`list`](trait.ListDefinition.html) for a given [`type`](enum.Type.html).
+    pub fn add_list(
+        &mut self,
+        ty: Type,
+        definition: Box<dyn ListDefinition>,
+    ) -> Result<(), ListRedefinitionError> {
+        match self.list_types.entry(ty) {
+            Entry::Occupied(entry) => Err(ListRedefinitionError(*entry.key())),
+            Entry::Vacant(entry) => {
+                let index = self.lists.len();
+                self.lists.push((ty, definition));
+                entry.insert(index);
+                Ok(())
+            }
+        }
+    }
+
+    /// Build a new [`Scheme`] from this builder.
+    pub fn build(self) -> Scheme {
+        Scheme { inner: self }
+    }
+}
+
+impl<N: AsRef<str>> FromIterator<(N, Type)> for SchemeBuilder {
+    fn from_iter<T: IntoIterator<Item = (N, Type)>>(iter: T) -> Self {
+        let mut builder = SchemeBuilder::new();
+        for (name, ty) in iter {
+            builder
+                .add_field(name.as_ref(), ty)
+                .map_err(|err| err.to_string())
+                .unwrap();
+        }
+        builder
+    }
+}
+
+/// The main registry for fields and their associated types.
+///
+/// This is necessary to provide typechecking for runtime values provided
+/// to the [`crate::ExecutionContext`] and also to aid parser
+/// in ambiguous contexts.
+#[derive(Debug)]
+pub struct Scheme {
+    inner: SchemeBuilder,
 }
 
 impl PartialEq for Scheme {
@@ -415,24 +511,19 @@ impl<'de> Deserialize<'de> for Scheme {
     {
         use serde::de::Error;
 
-        let mut scheme = Scheme::new();
+        let mut builder = SchemeBuilder::new();
         let map: HashMap<String, Type> = HashMap::<String, Type>::deserialize(deserializer)?;
         for (name, ty) in map {
-            scheme.add_field(&name, ty).map_err(D::Error::custom)?;
+            builder.add_field(&name, ty).map_err(D::Error::custom)?;
         }
-        Ok(scheme)
+        Ok(builder.build())
     }
 }
 
 impl<'s> Scheme {
-    /// Creates a new scheme.
-    pub fn new() -> Self {
-        Default::default()
-    }
-
     /// Returns the [`identifier`](enum@Identifier) with the specified `name`.
     pub fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
-        self.items.get(name).map(move |item| match *item {
+        self.inner.items.get(name).map(move |item| match *item {
             SchemeItem::Field(index) => Identifier::Field(Field {
                 scheme: self,
                 index,
@@ -442,30 +533,6 @@ impl<'s> Scheme {
                 index,
             }),
         })
-    }
-
-    /// Registers a field and its corresponding type.
-    pub fn add_field<N: AsRef<str>>(
-        &mut self,
-        name: N,
-        ty: Type,
-    ) -> Result<(), IdentifierRedefinitionError> {
-        match self.items.entry(name.as_ref().into()) {
-            Entry::Occupied(entry) => match entry.get() {
-                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
-                    FieldRedefinitionError(entry.key().to_string()),
-                )),
-                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
-                    FunctionRedefinitionError(entry.key().to_string()),
-                )),
-            },
-            Entry::Vacant(entry) => {
-                let index = self.fields.len();
-                self.fields.push((entry.key().clone(), ty));
-                entry.insert(SchemeItem::Field(index));
-                Ok(())
-            }
-        }
     }
 
     /// Returns the [`field`](struct@Field) with the specified `name`.
@@ -479,7 +546,7 @@ impl<'s> Scheme {
     /// Iterates over fields registered in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn fields(&'s self) -> impl ExactSizeIterator<Item = Field<'s>> + 's {
-        (0..self.fields.len()).map(|index| Field {
+        (0..self.inner.fields.len()).map(|index| Field {
             scheme: self,
             index,
         })
@@ -488,37 +555,13 @@ impl<'s> Scheme {
     /// Returns the number of fields in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn field_count(&self) -> usize {
-        self.fields.len()
+        self.inner.fields.len()
     }
 
     /// Returns the number of functions in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn function_count(&self) -> usize {
-        self.functions.len()
-    }
-
-    /// Registers a function
-    pub fn add_function<N: AsRef<str>>(
-        &mut self,
-        name: N,
-        function: impl Into<Box<dyn FunctionDefinition + 'static>>,
-    ) -> Result<(), IdentifierRedefinitionError> {
-        match self.items.entry(name.as_ref().into()) {
-            Entry::Occupied(entry) => match entry.get() {
-                SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
-                    FieldRedefinitionError(entry.key().to_string()),
-                )),
-                SchemeItem::Function(_) => Err(IdentifierRedefinitionError::Function(
-                    FunctionRedefinitionError(entry.key().to_string()),
-                )),
-            },
-            Entry::Vacant(entry) => {
-                let index = self.functions.len();
-                self.functions.push((entry.key().clone(), function.into()));
-                entry.insert(SchemeItem::Function(index));
-                Ok(())
-            }
-        }
+        self.inner.functions.len()
     }
 
     /// Returns the [`function`](struct@Function) with the specified `name`.
@@ -532,7 +575,7 @@ impl<'s> Scheme {
     /// Iterates over functions registered in the [`scheme`](struct@Scheme).
     #[inline]
     pub fn functions(&'s self) -> impl ExactSizeIterator<Item = Function<'s>> + 's {
-        (0..self.functions.len()).map(|index| Function {
+        (0..self.inner.functions.len()).map(|index| Function {
             scheme: self,
             index,
         })
@@ -561,29 +604,12 @@ impl<'s> Scheme {
     /// Returns the number of lists in the [`scheme`](struct@Scheme)
     #[inline]
     pub fn list_count(&self) -> usize {
-        self.lists.len()
-    }
-
-    /// Registers a new [`list`](trait.ListDefinition.html) for a given [`type`](enum.Type.html).
-    pub fn add_list(
-        &mut self,
-        ty: Type,
-        definition: Box<dyn ListDefinition>,
-    ) -> Result<(), ListRedefinitionError> {
-        match self.list_types.entry(ty) {
-            Entry::Occupied(entry) => Err(ListRedefinitionError(*entry.key())),
-            Entry::Vacant(entry) => {
-                let index = self.lists.len();
-                self.lists.push((ty, definition));
-                entry.insert(index);
-                Ok(())
-            }
-        }
+        self.inner.lists.len()
     }
 
     /// Returns the [`list`](struct.List.html) for a given [`type`](enum.Type.html).
     pub fn get_list(&self, ty: &Type) -> Option<List<'_>> {
-        self.list_types.get(ty).map(move |index| List {
+        self.inner.list_types.get(ty).map(move |index| List {
             scheme: self,
             index: *index,
         })
@@ -591,32 +617,18 @@ impl<'s> Scheme {
 
     /// Iterates over all registered [`lists`](trait.ListDefinition.html).
     pub fn lists(&self) -> impl ExactSizeIterator<Item = List<'_>> {
-        (0..self.lists.len()).map(|index| List {
+        (0..self.inner.lists.len()).map(|index| List {
             scheme: self,
             index,
         })
     }
 }
 
-impl<N: AsRef<str>> FromIterator<(N, Type)> for Scheme {
-    fn from_iter<T: IntoIterator<Item = (N, Type)>>(iter: T) -> Self {
-        let mut scheme = Scheme::new();
-        for (name, ty) in iter {
-            scheme
-                .add_field(name.as_ref(), ty)
-                .map_err(|err| err.to_string())
-                .unwrap();
-        }
-        scheme
-    }
-}
-
-/// A convenience macro for constructing a [`Scheme`](struct@Scheme) with static
-/// contents.
+/// A convenience macro for constructing a [`SchemeBuilder`] with static contents.
 #[macro_export]
 macro_rules! Scheme {
     ($($ns:ident $(. $field:ident)*: $ty:ident $(($subty:tt $($rest:tt)*))?),* $(,)*) => {
-        $crate::Scheme::from_iter([$(
+        $crate::SchemeBuilder::from_iter([$(
             (
                 concat!(stringify!($ns) $(, ".", stringify!($field))*),
                 Scheme!($ty $(($subty $($rest)*))?),
@@ -632,15 +644,17 @@ fn test_parse_error() {
     use crate::ConcatFunction;
     use indoc::indoc;
 
-    let mut scheme = Scheme! {
+    let mut builder = Scheme! {
         num: Int,
         str: Bytes,
         arr: Array(Bool),
     };
 
-    scheme
+    builder
         .add_function("concat", ConcatFunction::new())
         .unwrap();
+
+    let scheme = builder.build();
 
     {
         let err = scheme.parse("xyz").unwrap_err();
@@ -924,7 +938,8 @@ fn test_parse_error_in_op() {
         ip: Ip,
         str_arr: Array(Bytes),
         str_map: Map(Bytes),
-    };
+    }
+    .build();
 
     {
         let err = scheme.parse("bool in {0}").unwrap_err();
@@ -1193,7 +1208,8 @@ fn test_parse_error_ordering_op() {
         ip: Ip,
         str_arr: Array(Bytes),
         str_map: Map(Bytes),
-    };
+    }
+    .build();
 
     for op in &["eq", "ne", "ge", "le", "gt", "lt"] {
         {
@@ -1385,7 +1401,8 @@ fn test_field() {
         x.y.z0: Int,
         is_TCP: Bool,
         map: Map(Bytes)
-    };
+    }
+    .build();
 
     assert_ok!(
         Field::lex_with("x;", scheme),
@@ -1462,7 +1479,8 @@ fn test_scheme_iter_fields() {
         x.y.z0: Int,
         is_TCP: Bool,
         map: Map(Bytes)
-    };
+    }
+    .build();
 
     let mut fields = scheme.fields().collect::<Vec<_>>();
     fields.sort_by(|f1, f2| f1.name().partial_cmp(f2.name()).unwrap());
