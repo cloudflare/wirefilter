@@ -115,7 +115,7 @@ pub use self::{
         RegexFormat,
     },
     scheme::{
-        Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError, Identifier,
+        Field, FieldIndex, FieldRedefinitionError, Function, FunctionRedefinitionError,
         IdentifierRedefinitionError, IndexAccessError, List, Scheme, SchemeBuilder,
         SchemeMismatchError, UnknownFieldError,
     },

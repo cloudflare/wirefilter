@@ -226,29 +226,11 @@ impl<'s> Function<'s> {
 /// An enum to represent an entry inside a [`Scheme`](struct@Scheme).
 /// It can be either a [`Field`](struct@Field) or a [`Function`](struct@Function).
 #[derive(Debug)]
-pub enum Identifier<'s> {
+pub(crate) enum Identifier<'s> {
     /// Identifier is a [`Field`](struct@Field)
     Field(Field<'s>),
     /// Identifier is a [`Function`](struct@Function)
     Function(Function<'s>),
-}
-
-impl<'s> Identifier<'s> {
-    /// Converts the identifier into a [`Field`](struct@Field) if possible.
-    pub fn into_field(self) -> Option<Field<'s>> {
-        match self {
-            Self::Field(f) => Some(f),
-            _ => None,
-        }
-    }
-
-    /// Converts the identifier into a [`Function`](struct@Function) if possible.
-    pub fn into_function(self) -> Option<Function<'s>> {
-        match self {
-            Self::Function(f) => Some(f),
-            _ => None,
-        }
-    }
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for Identifier<'s> {
@@ -522,7 +504,7 @@ impl<'de> Deserialize<'de> for Scheme {
 
 impl<'s> Scheme {
     /// Returns the [`identifier`](enum@Identifier) with the specified `name`.
-    pub fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
+    pub(crate) fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
         self.inner.items.get(name).map(move |item| match *item {
             SchemeItem::Field(index) => Identifier::Field(Field {
                 scheme: self,
