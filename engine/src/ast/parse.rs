@@ -161,12 +161,12 @@ impl<'s> FilterParser<'s> {
     }
 
     /// Parses a filter expression into an AST form.
-    pub fn parse<'i>(&self, input: &'i str) -> Result<FilterAst<'s>, ParseError<'i>> {
+    pub fn parse<'i>(&self, input: &'i str) -> Result<FilterAst, ParseError<'i>> {
         complete(self.lex_as(input.trim())).map_err(|err| ParseError::new(input, err))
     }
 
     /// Parses a value expression into an AST form.
-    pub fn parse_value<'i>(&self, input: &'i str) -> Result<FilterValueAst<'s>, ParseError<'i>> {
+    pub fn parse_value<'i>(&self, input: &'i str) -> Result<FilterValueAst, ParseError<'i>> {
         complete(self.lex_as(input.trim())).map_err(|err| ParseError::new(input, err))
     }
 
