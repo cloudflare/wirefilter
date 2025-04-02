@@ -11,10 +11,11 @@ use crate::{
     lex::{expect, skip_space, span, Lex, LexErrorKind, LexResult, LexWith},
     range_set::RangeSet,
     rhs_types::{Bytes, ExplicitIpRange, ListName, Regex, Wildcard},
-    scheme::{Field, Identifier, List},
+    scheme::Identifier,
     searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
+    Field, List,
 };
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
@@ -116,7 +117,7 @@ lex_enum!(ComparisonOp {
 /// comparison expression.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
-pub enum ComparisonOpExpr<'s> {
+pub enum ComparisonOpExpr {
     /// Boolean field verification
     #[serde(serialize_with = "serialize_is_true")]
     IsTrue,
@@ -172,7 +173,7 @@ pub enum ComparisonOpExpr<'s> {
     #[serde(serialize_with = "serialize_list")]
     InList {
         /// `List` from the `Scheme`
-        list: List<'s>,
+        list: List,
         /// List name
         name: ListName,
     },
@@ -226,7 +227,7 @@ fn serialize_contains_one_of<S: Serializer>(rhs: &[Bytes], ser: S) -> Result<S::
     serialize_op_rhs("ContainsOneOf", rhs, ser)
 }
 
-fn serialize_list<S: Serializer>(_: &List<'_>, name: &ListName, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_list<S: Serializer>(_: &List, name: &ListName, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("InList", name, ser)
 }
 
@@ -234,18 +235,18 @@ fn serialize_list<S: Serializer>(_: &List<'_>, name: &ListName, ser: S) -> Resul
 /// a function call.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
-pub enum IdentifierExpr<'s> {
+pub enum IdentifierExpr {
     /// Field access
-    Field(Field<'s>),
+    Field(Field),
     /// Function call
-    FunctionCallExpr(FunctionCallExpr<'s>),
+    FunctionCallExpr(FunctionCallExpr),
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr<'s> {
+impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         let (item, input) = Identifier::lex_with(input, parser.scheme)?;
         match item {
-            Identifier::Field(field) => Ok((IdentifierExpr::Field(field), input)),
+            Identifier::Field(field) => Ok((IdentifierExpr::Field(field.to_owned()), input)),
             Identifier::Function(function) => {
                 FunctionCallExpr::lex_with_function(input, parser, function)
                     .map(|(call, input)| (IdentifierExpr::FunctionCallExpr(call), input))
@@ -254,7 +255,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr<'s> {
     }
 }
 
-impl GetType for IdentifierExpr<'_> {
+impl GetType for IdentifierExpr {
     fn get_type(&self) -> Type {
         match self {
             IdentifierExpr::Field(field) => field.get_type(),
@@ -265,16 +266,16 @@ impl GetType for IdentifierExpr<'_> {
 
 /// Comparison expression
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
-pub struct ComparisonExpr<'s> {
+pub struct ComparisonExpr {
     /// Left-hand side of the comparison expression
-    pub lhs: IndexExpr<'s>,
+    pub lhs: IndexExpr,
 
     /// Operator + right-hand side of the comparison expression
     #[serde(flatten)]
-    pub op: ComparisonOpExpr<'s>,
+    pub op: ComparisonOpExpr,
 }
 
-impl GetType for ComparisonExpr<'_> {
+impl GetType for ComparisonExpr {
     fn get_type(&self) -> Type {
         if self.lhs.map_each_count() > 0 {
             Type::Array(Type::Bool.into())
@@ -287,19 +288,19 @@ impl GetType for ComparisonExpr<'_> {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for ComparisonExpr<'s> {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &FilterParser<'_>> for ComparisonExpr {
+    fn lex_with(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
         let (lhs, input) = IndexExpr::lex_with(input, parser)?;
 
         Self::lex_with_lhs(input, parser, lhs)
     }
 }
 
-impl<'s> ComparisonExpr<'s> {
+impl ComparisonExpr {
     pub(crate) fn lex_with_lhs<'i>(
         input: &'i str,
-        parser: &FilterParser<'s>,
-        lhs: IndexExpr<'s>,
+        parser: &FilterParser<'_>,
+        lhs: IndexExpr,
     ) -> LexResult<'i, Self> {
         let lhs_type = lhs.get_type();
 
@@ -336,7 +337,13 @@ impl<'s> ComparisonExpr<'s> {
                             LexErrorKind::UnsupportedOp { lhs_type },
                             span(initial_input, input),
                         ))?;
-                        (ComparisonOpExpr::InList { name, list }, input)
+                        (
+                            ComparisonOpExpr::InList {
+                                name,
+                                list: list.to_owned(),
+                            },
+                            input,
+                        )
                     } else {
                         let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
                         (ComparisonOpExpr::OneOf(rhs), input)
@@ -383,31 +390,28 @@ impl<'s> ComparisonExpr<'s> {
     }
 
     /// Retrieves the associated left hand side expression.
-    pub fn lhs_expr(&self) -> &IndexExpr<'s> {
+    pub fn lhs_expr(&self) -> &IndexExpr {
         &self.lhs
     }
 
     /// Retrieves the operator applied to the left hand side expression.
-    pub fn operator(&self) -> &ComparisonOpExpr<'s> {
+    pub fn operator(&self) -> &ComparisonOpExpr {
         &self.op
     }
 }
 
-impl<'s> Expr<'s> for ComparisonExpr<'s> {
+impl Expr for ComparisonExpr {
     #[inline]
-    fn walk<'a, V: Visitor<'s, 'a>>(&'a self, visitor: &mut V) {
+    fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
         visitor.visit_index_expr(&self.lhs)
     }
 
     #[inline]
-    fn walk_mut<'a, V: VisitorMut<'s, 'a>>(&'a mut self, visitor: &mut V) {
+    fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
         visitor.visit_index_expr(&mut self.lhs)
     }
 
-    fn compile_with_compiler<C: Compiler<'s> + 's>(
-        self,
-        compiler: &mut C,
-    ) -> CompiledExpr<'s, C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
         let lhs = self.lhs;
 
         macro_rules! cast_value {
@@ -632,7 +636,7 @@ impl<'s> Expr<'s> for ComparisonExpr<'s> {
             }
             ComparisonOpExpr::InList { name, list } => {
                 lhs.compile_with(compiler, false, move |val, ctx| {
-                    ctx.get_list_matcher_unchecked(list)
+                    ctx.get_list_matcher_unchecked(&list)
                         .match_value(name.as_str(), val)
                 })
             }
@@ -660,7 +664,7 @@ mod tests {
         rhs_types::{IpRange, RegexFormat},
         scheme::{FieldIndex, IndexAccessError, Scheme},
         types::ExpectedType,
-        BytesFormat, ParserSettings,
+        BytesFormat, FieldRef, ParserSettings,
     };
     use cidr::IpCidr;
     use std::sync::LazyLock;
@@ -751,12 +755,16 @@ mod tests {
             (2, Some(0))
         }
 
-        fn compile<'s>(
-            &'s self,
+        fn compile(
+            &self,
             _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
             _: Option<FunctionDefinitionContext>,
-        ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's>
-        {
+        ) -> Box<
+            dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>>
+                + Sync
+                + Send
+                + 'static,
+        > {
             Box::new(|args| {
                 let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
                 let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
@@ -899,7 +907,7 @@ mod tests {
         builder.build()
     });
 
-    fn field(name: &'static str) -> Field<'static> {
+    fn field(name: &'static str) -> FieldRef<'static> {
         SCHEME.get_field(name).unwrap()
     }
 
@@ -909,7 +917,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("ssl"),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("ssl")),
+                    identifier: IdentifierExpr::Field(field("ssl").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::IsTrue
@@ -940,7 +948,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("ip.addr <= 10:20:30:40:50:60:70:80"),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("ip.addr")),
+                    identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -995,7 +1003,7 @@ mod tests {
                 FilterParser::new(&SCHEME).lex_as("http.host >= 10:20:30:40:50:60:70:80"),
                 ComparisonExpr {
                     lhs: IndexExpr {
-                        identifier: IdentifierExpr::Field(field("http.host")),
+                        identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                         indexes: vec![],
                     },
                     op: ComparisonOpExpr::Ordering {
@@ -1020,7 +1028,7 @@ mod tests {
         // just check that parsing doesn't conflict with regular numbers
         {
             assert_err!(
-                FilterParser::new(&SCHEME).lex_as::<ComparisonExpr<'_>>(r#"http.host < 12"#),
+                FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"http.host < 12"#),
                 LexErrorKind::CountMismatch {
                     name: "character",
                     actual: 0,
@@ -1033,7 +1041,7 @@ mod tests {
                 FilterParser::new(&SCHEME).lex_as(r#"http.host < 12:13"#),
                 ComparisonExpr {
                     lhs: IndexExpr {
-                        identifier: IdentifierExpr::Field(field("http.host")),
+                        identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                         indexes: vec![],
                     },
                     op: ComparisonOpExpr::Ordering {
@@ -1057,7 +1065,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.host == "example.org""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1094,7 +1102,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("tcp.port & 1"),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("tcp.port")),
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Int {
@@ -1129,7 +1137,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"tcp.port in { 80 443 2082..2083 }"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("tcp.port")),
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::OneOf(RhsValues::Int(vec![
@@ -1184,7 +1192,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.host in { "example.org" "example.com" }"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::OneOf(RhsValues::Bytes(
@@ -1231,7 +1239,7 @@ mod tests {
                 .lex_as(r#"ip.addr in { 127.0.0.0/8 ::1 10.0.0.0..10.0.255.255 }"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("ip.addr")),
+                    identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::OneOf(RhsValues::Ip(vec![
@@ -1287,7 +1295,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.host contains "abc""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into())
@@ -1321,7 +1329,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.host contains 6F:72:67"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Contains(vec![0x6F, 0x72, 0x67].into()),
@@ -1355,7 +1363,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"tcp.port < 8000"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("tcp.port")),
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1390,7 +1398,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.cookies[0] contains "abc""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.cookies")),
+                    identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into()),
@@ -1417,7 +1425,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.headers["host"] contains "abc""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.headers")),
+                    identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                     indexes: vec![FieldIndex::MapKey("host".to_string())],
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into()),
@@ -1465,9 +1473,9 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("echo").unwrap(),
+                        function: SCHEME.get_function("echo").unwrap().to_owned(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                            identifier: IdentifierExpr::Field(field("http.host")),
+                            identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                             indexes: vec![],
                         })],
                         context: None,
@@ -1521,9 +1529,9 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("lowercase").unwrap(),
+                        function: SCHEME.get_function("lowercase").unwrap().to_owned(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                            identifier: IdentifierExpr::Field(field("http.host")),
+                            identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                             indexes: vec![],
                         })],
                         context: None,
@@ -1576,7 +1584,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.cookies[0] == "example.org""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.cookies")),
+                    identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1612,7 +1620,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.cookies[0] != "example.org""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.cookies")),
+                    identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                     indexes: vec![FieldIndex::ArrayIndex(0)],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1648,7 +1656,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.headers["missing"] == "example.org""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.headers")),
+                    identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1684,7 +1692,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.headers["missing"] != "example.org""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.headers")),
+                    identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                     indexes: vec![FieldIndex::MapKey("missing".into())],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -1721,9 +1729,9 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                            identifier: IdentifierExpr::Field(field("http.host")),
+                            identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                             indexes: vec![],
                         })],
                         context: None,
@@ -1774,10 +1782,10 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.host")),
+                                identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
                             FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
@@ -1839,14 +1847,16 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("filter").unwrap(),
+                        function: SCHEME.get_function("filter").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.cookies")),
+                                identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![],
                             }),
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("array.of.bool")),
+                                identifier: IdentifierExpr::Field(
+                                    field("array.of.bool").to_owned()
+                                ),
                                 indexes: vec![],
                             }),
                         ],
@@ -1912,10 +1922,10 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.cookies")),
+                                identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
                             FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
@@ -1981,10 +1991,10 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.headers")),
+                                identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
                             FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
@@ -2055,7 +2065,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.cookies[*] == "three""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.cookies")),
+                    identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                     indexes: vec![FieldIndex::MapEach],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2089,7 +2099,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.headers[*] == "three""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.headers")),
+                    identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                     indexes: vec![FieldIndex::MapEach],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2147,10 +2157,10 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.cookies")),
+                                identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
                             FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
@@ -2215,9 +2225,9 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("len").unwrap(),
+                        function: SCHEME.get_function("len").unwrap().to_owned(),
                         args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
-                            identifier: IdentifierExpr::Field(field("http.cookies")),
+                            identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                             indexes: vec![FieldIndex::MapEach],
                         }),],
                         context: None,
@@ -2270,7 +2280,7 @@ mod tests {
     #[test]
     fn test_map_each_error() {
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr<'_>>(r#"http.host[*] == "three""#),
+            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"http.host[*] == "three""#),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bytes,
@@ -2279,7 +2289,7 @@ mod tests {
         );
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr<'_>>(r#"ip.addr[*] == 127.0.0.1"#),
+            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"ip.addr[*] == 127.0.0.1"#),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Ip,
@@ -2288,7 +2298,7 @@ mod tests {
         );
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr<'_>>(r#"ssl[*]"#),
+            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"ssl[*]"#),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Bool,
@@ -2297,7 +2307,7 @@ mod tests {
         );
 
         assert_err!(
-            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr<'_>>(r#"tcp.port[*] == 80"#),
+            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"tcp.port[*] == 80"#),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
                 index: FieldIndex::MapEach,
                 actual: Type::Int,
@@ -2351,11 +2361,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"tcp.port in $even"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("tcp.port")),
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::InList {
-                    list,
+                    list: list.to_owned(),
                     name: ListName::from("even".to_string())
                 }
             }
@@ -2385,11 +2395,11 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"tcp.port in $odd"#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("tcp.port")),
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::InList {
-                    list,
+                    list: list.to_owned(),
                     name: ListName::from("odd".to_string()),
                 }
             }
@@ -2415,15 +2425,17 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("any").unwrap(),
+                        function: SCHEME.get_function("any").unwrap().to_owned(),
                         args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Comparison(
                             ComparisonExpr {
                                 lhs: IndexExpr {
-                                    identifier: IdentifierExpr::Field(field("tcp.ports")),
+                                    identifier: IdentifierExpr::Field(
+                                        field("tcp.ports").to_owned()
+                                    ),
                                     indexes: vec![FieldIndex::MapEach],
                                 },
                                 op: ComparisonOpExpr::InList {
-                                    list,
+                                    list: list.to_owned(),
                                     name: ListName::from("even".to_string()),
                                 },
                             }
@@ -2483,7 +2495,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.parts[*][*] == "[5][5]""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.parts")),
+                    identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
                     indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2510,7 +2522,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.parts[5][*] == "[5][5]""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.parts")),
+                    identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
                     indexes: vec![FieldIndex::ArrayIndex(5), FieldIndex::MapEach],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2537,7 +2549,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"http.parts[*][5] == "[5][5]""#),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.parts")),
+                    identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
                     indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(5)],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2614,7 +2626,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("http.host == r###\"ab\"###"),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Ordering {
@@ -2649,7 +2661,7 @@ mod tests {
             parser.lex_as("http.host matches r###\"a.b\"###"),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Matches(r),
@@ -2684,7 +2696,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#####"http.host wildcard r##"foo*\*\\"##"#####),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::Wildcard(wildcard),
@@ -2729,7 +2741,7 @@ mod tests {
                 .lex_as(r#####"http.host strict wildcard r##"foo*\*\\"##"#####),
             ComparisonExpr {
                 lhs: IndexExpr {
-                    identifier: IdentifierExpr::Field(field("http.host")),
+                    identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
                 op: ComparisonOpExpr::StrictWildcard(wildcard),
@@ -2769,10 +2781,10 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("concat").unwrap(),
+                        function: SCHEME.get_function("concat").unwrap().to_owned(),
                         args: vec![
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
-                                identifier: IdentifierExpr::Field(field("http.host")),
+                                identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
                             FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new(
@@ -2866,7 +2878,7 @@ mod tests {
         .concat();
 
         for t @ (op, rhs, value, expected) in testcases {
-            let expr: ComparisonExpr<'_> = FilterParser::new(&SCHEME)
+            let expr: ComparisonExpr = FilterParser::new(&SCHEME)
                 .lex_as(&format!("http.host {op} {rhs}"))
                 .map(|(e, _)| e)
                 .expect("failed to parse expression");

@@ -19,7 +19,6 @@ use std::{
     fmt::{self, Debug, Formatter},
     hash::{Hash, Hasher},
     iter::Iterator,
-    ptr,
 };
 use thiserror::Error;
 
@@ -103,24 +102,24 @@ pub struct IndexAccessError {
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 /// A structure to represent a field inside a [`Scheme`](struct@Scheme).
-pub struct Field<'s> {
+pub struct FieldRef<'s> {
     scheme: &'s Scheme,
     index: usize,
 }
 
-impl Serialize for Field<'_> {
+impl Serialize for FieldRef<'_> {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.name().serialize(ser)
     }
 }
 
-impl Debug for Field<'_> {
+impl Debug for FieldRef<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
+impl<'i, 's> LexWith<'i, &'s Scheme> for FieldRef<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         match Identifier::lex_with(input, scheme) {
             Ok((Identifier::Field(f), rest)) => Ok((f, rest)),
@@ -136,7 +135,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Field<'s> {
     }
 }
 
-impl<'s> Field<'s> {
+impl<'s> FieldRef<'s> {
     /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &'s str {
@@ -154,35 +153,129 @@ impl<'s> Field<'s> {
     pub fn scheme(&self) -> &'s Scheme {
         self.scheme
     }
+
+    /// Converts to an owned [`Field`].
+    #[inline]
+    pub fn to_owned(&self) -> Field {
+        Field {
+            scheme: self.scheme.clone(),
+            index: self.index,
+        }
+    }
+
+    /// Reborrows the field relatively to the specified [`Scheme`] reference.
+    ///
+    /// Useful when you have a [`FieldRef`] borrowed from an owned [`Field`]
+    /// but you need to extend/change it's lifetime.
+    ///
+    /// Panics if the field doesn't belong to the specified scheme.
+    #[inline]
+    pub fn reborrow(self, scheme: &Scheme) -> FieldRef<'_> {
+        assert!(self.scheme == scheme);
+
+        FieldRef {
+            scheme,
+            index: self.index,
+        }
+    }
 }
 
-impl GetType for Field<'_> {
+impl GetType for FieldRef<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         self.scheme.inner.fields[self.index].1
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
-/// A structure to represent a function inside a [`Scheme`](struct@Scheme).
-pub struct Function<'s> {
-    scheme: &'s Scheme,
+impl PartialEq<Field> for FieldRef<'_> {
+    #[inline]
+    fn eq(&self, other: &Field) -> bool {
+        self.eq(&other.as_ref())
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Hash)]
+/// A structure to represent a field inside a [`Scheme`](struct@Scheme).
+pub struct Field {
+    scheme: Scheme,
     index: usize,
 }
 
-impl Serialize for Function<'_> {
+impl Serialize for Field {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.name().serialize(ser)
     }
 }
 
-impl Debug for Function<'_> {
+impl Debug for Field {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
 }
 
-impl<'i, 's> LexWith<'i, &'s Scheme> for Function<'s> {
+impl Field {
+    /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.scheme.inner.fields[self.index].0
+    }
+
+    /// Get the field's index in the [`Scheme`](struct@Scheme) identifier's list.
+    #[inline]
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
+    #[inline]
+    pub fn scheme(&self) -> &Scheme {
+        &self.scheme
+    }
+
+    /// Converts to a borrowed [`Field`].
+    #[inline]
+    pub fn as_ref(&self) -> FieldRef<'_> {
+        FieldRef {
+            scheme: &self.scheme,
+            index: self.index,
+        }
+    }
+}
+
+impl GetType for Field {
+    #[inline]
+    fn get_type(&self) -> Type {
+        self.scheme.inner.fields[self.index].1
+    }
+}
+
+impl PartialEq<FieldRef<'_>> for Field {
+    #[inline]
+    fn eq(&self, other: &FieldRef<'_>) -> bool {
+        self.as_ref().eq(other)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+/// A structure to represent a function inside a [`Scheme`](struct@Scheme).
+pub struct FunctionRef<'s> {
+    scheme: &'s Scheme,
+    index: usize,
+}
+
+impl Serialize for FunctionRef<'_> {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.name().serialize(ser)
+    }
+}
+
+impl Debug for FunctionRef<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl<'i, 's> LexWith<'i, &'s Scheme> for FunctionRef<'s> {
     fn lex_with(input: &'i str, scheme: &'s Scheme) -> LexResult<'i, Self> {
         match Identifier::lex_with(input, scheme) {
             Ok((Identifier::Function(f), rest)) => Ok((f, rest)),
@@ -198,7 +291,7 @@ impl<'i, 's> LexWith<'i, &'s Scheme> for Function<'s> {
     }
 }
 
-impl<'s> Function<'s> {
+impl<'s> FunctionRef<'s> {
     /// Returns the function's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &'s str {
@@ -221,6 +314,98 @@ impl<'s> Function<'s> {
     pub(crate) fn as_definition(&self) -> &'s dyn FunctionDefinition {
         &*self.scheme.inner.functions[self.index].1
     }
+
+    /// Converts to an owned [`Function`].
+    #[inline]
+    pub fn to_owned(&self) -> Function {
+        Function {
+            scheme: self.scheme.clone(),
+            index: self.index,
+        }
+    }
+
+    /// Reborrows the function relatively to the specified [`Scheme`] reference.
+    ///
+    /// Useful when you have a [`FunctionRef`] borrowed from an owned [`Function`]
+    /// but you need to extend/change it's lifetime.
+    ///
+    /// Panics if the function doesn't belong to the specified scheme.
+    #[inline]
+    pub fn reborrow(self, scheme: &Scheme) -> FunctionRef<'_> {
+        assert!(self.scheme == scheme);
+
+        FunctionRef {
+            scheme,
+            index: self.index,
+        }
+    }
+}
+
+impl PartialEq<Function> for FunctionRef<'_> {
+    #[inline]
+    fn eq(&self, other: &Function) -> bool {
+        self.eq(&other.as_ref())
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Hash)]
+/// A structure to represent a function inside a [`Scheme`](struct@Scheme).
+pub struct Function {
+    scheme: Scheme,
+    index: usize,
+}
+
+impl Serialize for Function {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        self.name().serialize(ser)
+    }
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl Function {
+    /// Returns the function's name as recorded in the [`Scheme`](struct@Scheme).
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.scheme.inner.functions[self.index].0
+    }
+
+    /// Get the function's index in the [`Scheme`](struct@Scheme) identifier's list.
+    #[inline]
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Returns the [`Scheme`](struct@Scheme) to which this function belongs to.
+    #[inline]
+    pub fn scheme(&self) -> &Scheme {
+        &self.scheme
+    }
+
+    #[inline]
+    pub(crate) fn as_definition(&self) -> &dyn FunctionDefinition {
+        &*self.scheme.inner.functions[self.index].1
+    }
+
+    /// Converts to a borrowed [`Function`].
+    #[inline]
+    pub fn as_ref(&self) -> FunctionRef<'_> {
+        FunctionRef {
+            scheme: &self.scheme,
+            index: self.index,
+        }
+    }
+}
+
+impl PartialEq<FunctionRef<'_>> for Function {
+    #[inline]
+    fn eq(&self, other: &FunctionRef<'_>) -> bool {
+        self.as_ref().eq(other)
+    }
 }
 
 /// An enum to represent an entry inside a [`Scheme`](struct@Scheme).
@@ -228,9 +413,9 @@ impl<'s> Function<'s> {
 #[derive(Debug)]
 pub(crate) enum Identifier<'s> {
     /// Identifier is a [`Field`](struct@Field)
-    Field(Field<'s>),
+    Field(FieldRef<'s>),
     /// Identifier is a [`Function`](struct@Function)
-    Function(Function<'s>),
+    Function(FunctionRef<'s>),
 }
 
 impl<'i, 's> LexWith<'i, &'s Scheme> for Identifier<'s> {
@@ -303,12 +488,12 @@ enum SchemeItem {
 ///
 /// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct List<'s> {
+pub struct ListRef<'s> {
     scheme: &'s Scheme,
     index: usize,
 }
 
-impl<'s> List<'s> {
+impl<'s> ListRef<'s> {
     pub(crate) fn index(&self) -> usize {
         self.index
     }
@@ -320,18 +505,100 @@ impl<'s> List<'s> {
     pub(crate) fn definition(&self) -> &'s dyn ListDefinition {
         &*self.scheme.inner.lists[self.index].1
     }
+
+    /// Converts to an owned [`List`].
+    #[inline]
+    pub fn to_owned(&self) -> List {
+        List {
+            scheme: self.scheme.clone(),
+            index: self.index,
+        }
+    }
+
+    /// Reborrows the list relatively to the specified [`Scheme`] reference.
+    ///
+    /// Useful when you have a [`ListRef`] borrowed from an owned [`List`]
+    /// but you need to extend/change it's lifetime.
+    ///
+    /// Panics if the list doesn't belong to the specified scheme.
+    #[inline]
+    pub fn reborrow(self, scheme: &Scheme) -> ListRef<'_> {
+        assert!(self.scheme == scheme);
+
+        ListRef {
+            scheme,
+            index: self.index,
+        }
+    }
 }
 
-impl Debug for List<'_> {
+impl Debug for ListRef<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.scheme.inner.lists[self.index])
     }
 }
 
-impl GetType for List<'_> {
+impl GetType for ListRef<'_> {
     #[inline]
     fn get_type(&self) -> Type {
         self.scheme.inner.lists[self.index].0
+    }
+}
+
+impl PartialEq<List> for ListRef<'_> {
+    #[inline]
+    fn eq(&self, other: &List) -> bool {
+        self.eq(&other.as_ref())
+    }
+}
+
+/// A structure to represent a list inside a [`scheme`](struct.Scheme.html).
+///
+/// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
+#[derive(PartialEq, Eq, Clone, Hash)]
+pub struct List {
+    scheme: Scheme,
+    index: usize,
+}
+
+impl List {
+    #[inline]
+    pub(crate) fn index(&self) -> usize {
+        self.index
+    }
+
+    #[inline]
+    pub(crate) fn scheme(&self) -> &Scheme {
+        &self.scheme
+    }
+
+    /// Converts to a borrowed [`ListRef`].
+    #[inline]
+    pub fn as_ref(&self) -> ListRef<'_> {
+        ListRef {
+            scheme: &self.scheme,
+            index: self.index,
+        }
+    }
+}
+
+impl Debug for List {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.scheme.inner.lists[self.index])
+    }
+}
+
+impl GetType for List {
+    #[inline]
+    fn get_type(&self) -> Type {
+        self.scheme.inner.lists[self.index].0
+    }
+}
+
+impl PartialEq<ListRef<'_>> for List {
+    #[inline]
+    fn eq(&self, other: &ListRef<'_>) -> bool {
+        self.as_ref().eq(other)
     }
 }
 
@@ -427,7 +694,9 @@ impl SchemeBuilder {
 
     /// Build a new [`Scheme`] from this builder.
     pub fn build(self) -> Scheme {
-        Scheme { inner: self }
+        Scheme {
+            inner: Arc::new(self),
+        }
     }
 }
 
@@ -449,14 +718,14 @@ impl<N: AsRef<str>> FromIterator<(N, Type)> for SchemeBuilder {
 /// This is necessary to provide typechecking for runtime values provided
 /// to the [`crate::ExecutionContext`] and also to aid parser
 /// in ambiguous contexts.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scheme {
-    inner: SchemeBuilder,
+    inner: Arc<SchemeBuilder>,
 }
 
 impl PartialEq for Scheme {
     fn eq(&self, other: &Self) -> bool {
-        ptr::eq(self, other)
+        Arc::ptr_eq(&self.inner, &other.inner)
     }
 }
 
@@ -464,7 +733,7 @@ impl Eq for Scheme {}
 
 impl Hash for Scheme {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        (self as *const Scheme).hash(state);
+        Arc::as_ptr(&self.inner).hash(state);
     }
 }
 
@@ -501,11 +770,11 @@ impl<'s> Scheme {
     /// Returns the [`identifier`](enum@Identifier) with the specified `name`.
     pub(crate) fn get(&'s self, name: &str) -> Option<Identifier<'s>> {
         self.inner.items.get(name).map(move |item| match *item {
-            SchemeItem::Field(index) => Identifier::Field(Field {
+            SchemeItem::Field(index) => Identifier::Field(FieldRef {
                 scheme: self,
                 index,
             }),
-            SchemeItem::Function(index) => Identifier::Function(Function {
+            SchemeItem::Function(index) => Identifier::Function(FunctionRef {
                 scheme: self,
                 index,
             }),
@@ -513,7 +782,7 @@ impl<'s> Scheme {
     }
 
     /// Returns the [`field`](struct@Field) with the specified `name`.
-    pub fn get_field(&'s self, name: &str) -> Result<Field<'s>, UnknownFieldError> {
+    pub fn get_field(&'s self, name: &str) -> Result<FieldRef<'s>, UnknownFieldError> {
         match self.get(name) {
             Some(Identifier::Field(f)) => Ok(f),
             _ => Err(UnknownFieldError),
@@ -522,8 +791,8 @@ impl<'s> Scheme {
 
     /// Iterates over fields registered in the [`scheme`](struct@Scheme).
     #[inline]
-    pub fn fields(&'s self) -> impl ExactSizeIterator<Item = Field<'s>> + 's {
-        (0..self.inner.fields.len()).map(|index| Field {
+    pub fn fields(&'s self) -> impl ExactSizeIterator<Item = FieldRef<'s>> + 's {
+        (0..self.inner.fields.len()).map(|index| FieldRef {
             scheme: self,
             index,
         })
@@ -542,7 +811,7 @@ impl<'s> Scheme {
     }
 
     /// Returns the [`function`](struct@Function) with the specified `name`.
-    pub fn get_function(&'s self, name: &str) -> Result<Function<'s>, UnknownFunctionError> {
+    pub fn get_function(&'s self, name: &str) -> Result<FunctionRef<'s>, UnknownFunctionError> {
         match self.get(name) {
             Some(Identifier::Function(f)) => Ok(f),
             _ => Err(UnknownFunctionError),
@@ -551,8 +820,8 @@ impl<'s> Scheme {
 
     /// Iterates over functions registered in the [`scheme`](struct@Scheme).
     #[inline]
-    pub fn functions(&'s self) -> impl ExactSizeIterator<Item = Function<'s>> + 's {
-        (0..self.inner.functions.len()).map(|index| Function {
+    pub fn functions(&'s self) -> impl ExactSizeIterator<Item = FunctionRef<'s>> + 's {
+        (0..self.inner.functions.len()).map(|index| FunctionRef {
             scheme: self,
             index,
         })
@@ -569,12 +838,12 @@ impl<'s> Scheme {
     }
 
     /// Parses a filter expression into an AST form.
-    pub fn parse<'i>(&'s self, input: &'i str) -> Result<FilterAst<'s>, ParseError<'i>> {
+    pub fn parse<'i>(&'s self, input: &'i str) -> Result<FilterAst, ParseError<'i>> {
         FilterParser::new(self).parse(input)
     }
 
     /// Parses a value expression into an AST form.
-    pub fn parse_value<'i>(&'s self, input: &'i str) -> Result<FilterValueAst<'s>, ParseError<'i>> {
+    pub fn parse_value<'i>(&'s self, input: &'i str) -> Result<FilterValueAst, ParseError<'i>> {
         FilterParser::new(self).parse_value(input)
     }
 
@@ -585,16 +854,16 @@ impl<'s> Scheme {
     }
 
     /// Returns the [`list`](struct.List.html) for a given [`type`](enum.Type.html).
-    pub fn get_list(&self, ty: &Type) -> Option<List<'_>> {
-        self.inner.list_types.get(ty).map(move |index| List {
+    pub fn get_list(&self, ty: &Type) -> Option<ListRef<'_>> {
+        self.inner.list_types.get(ty).map(move |index| ListRef {
             scheme: self,
             index: *index,
         })
     }
 
     /// Iterates over all registered [`lists`](trait.ListDefinition.html).
-    pub fn lists(&self) -> impl ExactSizeIterator<Item = List<'_>> {
-        (0..self.inner.lists.len()).map(|index| List {
+    pub fn lists(&self) -> impl ExactSizeIterator<Item = ListRef<'_>> {
+        (0..self.inner.lists.len()).map(|index| ListRef {
             scheme: self,
             index,
         })
@@ -1382,37 +1651,37 @@ fn test_field() {
     .build();
 
     assert_ok!(
-        Field::lex_with("x;", scheme),
+        FieldRef::lex_with("x;", scheme),
         scheme.get_field("x").unwrap(),
         ";"
     );
 
     assert_ok!(
-        Field::lex_with("x.y.z0-", scheme),
+        FieldRef::lex_with("x.y.z0-", scheme),
         scheme.get_field("x.y.z0").unwrap(),
         "-"
     );
 
     assert_ok!(
-        Field::lex_with("is_TCP", scheme),
+        FieldRef::lex_with("is_TCP", scheme),
         scheme.get_field("is_TCP").unwrap(),
         ""
     );
 
     assert_err!(
-        Field::lex_with("x..y", scheme),
+        FieldRef::lex_with("x..y", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         ".y"
     );
 
     assert_err!(
-        Field::lex_with("x.#", scheme),
+        FieldRef::lex_with("x.#", scheme),
         LexErrorKind::ExpectedName("identifier character"),
         "#"
     );
 
     assert_err!(
-        Field::lex_with("x.y.z;", scheme),
+        FieldRef::lex_with("x.y.z;", scheme),
         LexErrorKind::UnknownField(UnknownFieldError),
         "x.y.z"
     );
@@ -1426,12 +1695,14 @@ fn test_static_field_type_override() {
 
 #[test]
 fn test_field_type_override() {
-    let mut scheme = Scheme! { foo: Int };
+    let mut builder = Scheme! { foo: Int };
 
     assert_eq!(
-        scheme.add_field("foo", Type::Bytes).unwrap_err(),
-        IdentifierRedefinitionError::Field(FieldRedefinitionError("foo".into()))
-    )
+        builder.add_field("foo", Type::Bytes),
+        Err(IdentifierRedefinitionError::Field(FieldRedefinitionError(
+            "foo".into()
+        )))
+    );
 }
 
 #[test]

@@ -81,7 +81,8 @@ impl FunctionDefinition for ConcatFunction {
         &'s self,
         _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'a> Fn(FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 's> {
+    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>
+    {
         Box::new(|args| {
             while let Some(arg) = args.next() {
                 match arg {

@@ -5,27 +5,27 @@ use super::{
     logical_expr::LogicalExpr,
     Expr, ValueExpr,
 };
-use crate::scheme::{Field, Function};
+use crate::{Field, FieldRef, Function};
 
 /// Trait used to immutably visit all nodes in the AST.
-pub trait Visitor<'s, 'a>: Sized {
+pub trait Visitor<'a>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
     #[inline]
-    fn visit_expr(&mut self, node: &'a impl Expr<'s>) {
+    fn visit_expr(&mut self, node: &'a impl Expr) {
         node.walk(self)
     }
 
     /// Visit [`LogicalExpr`] node.
     #[inline]
-    fn visit_logical_expr(&mut self, node: &'a LogicalExpr<'s>) {
+    fn visit_logical_expr(&mut self, node: &'a LogicalExpr) {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
     #[inline]
-    fn visit_comparison_expr(&mut self, node: &'a ComparisonExpr<'s>) {
+    fn visit_comparison_expr(&mut self, node: &'a ComparisonExpr) {
         self.visit_expr(node)
     }
 
@@ -33,25 +33,25 @@ pub trait Visitor<'s, 'a>: Sized {
 
     /// Visit [`ValueExpr`] node.
     #[inline]
-    fn visit_value_expr(&mut self, node: &'a impl ValueExpr<'s>) {
+    fn visit_value_expr(&mut self, node: &'a impl ValueExpr) {
         node.walk(self)
     }
 
     /// Visit [`IndexExpr`] node.
     #[inline]
-    fn visit_index_expr(&mut self, node: &'a IndexExpr<'s>) {
+    fn visit_index_expr(&mut self, node: &'a IndexExpr) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
     #[inline]
-    fn visit_function_call_expr(&mut self, node: &'a FunctionCallExpr<'s>) {
+    fn visit_function_call_expr(&mut self, node: &'a FunctionCallExpr) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
     #[inline]
-    fn visit_function_call_arg_expr(&mut self, node: &'a FunctionCallArgExpr<'s>) {
+    fn visit_function_call_arg_expr(&mut self, node: &'a FunctionCallArgExpr) {
         self.visit_value_expr(node)
     }
 
@@ -59,11 +59,11 @@ pub trait Visitor<'s, 'a>: Sized {
 
     /// Visit [`Field`] node.
     #[inline]
-    fn visit_field(&mut self, _: &'a Field<'s>) {}
+    fn visit_field(&mut self, _: &'a Field) {}
 
     /// Visit [`Function`] node.
     #[inline]
-    fn visit_function(&mut self, _: &'a Function<'s>) {}
+    fn visit_function(&mut self, _: &'a Function) {}
 
     // TODO: add visitor methods for literals?
 }
@@ -73,24 +73,24 @@ pub trait Visitor<'s, 'a>: Sized {
 /// Note that this trait is dangerous and any modification
 /// to the AST should be done with cautions and respect
 /// some invariants such as keeping type coherency.
-pub trait VisitorMut<'s, 'a>: Sized {
+pub trait VisitorMut<'a>: Sized {
     // `Expr` node visitor methods
 
     /// Visit [`Expr`] node.
     #[inline]
-    fn visit_expr(&mut self, node: &'a mut impl Expr<'s>) {
+    fn visit_expr(&mut self, node: &'a mut impl Expr) {
         node.walk_mut(self)
     }
 
     /// Visit [`LogicalExpr`] node.
     #[inline]
-    fn visit_logical_expr(&mut self, node: &'a mut LogicalExpr<'s>) {
+    fn visit_logical_expr(&mut self, node: &'a mut LogicalExpr) {
         self.visit_expr(node)
     }
 
     /// Visit [`ComparisonExpr`] node.
     #[inline]
-    fn visit_comparison_expr(&mut self, node: &'a mut ComparisonExpr<'s>) {
+    fn visit_comparison_expr(&mut self, node: &'a mut ComparisonExpr) {
         self.visit_expr(node)
     }
 
@@ -98,25 +98,25 @@ pub trait VisitorMut<'s, 'a>: Sized {
 
     /// Visit [`ValueExpr`] node.
     #[inline]
-    fn visit_value_expr(&mut self, node: &'a mut impl ValueExpr<'s>) {
+    fn visit_value_expr(&mut self, node: &'a mut impl ValueExpr) {
         node.walk_mut(self)
     }
 
     /// Visit [`IndexExpr`] node.
     #[inline]
-    fn visit_index_expr(&mut self, node: &'a mut IndexExpr<'s>) {
+    fn visit_index_expr(&mut self, node: &'a mut IndexExpr) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallExpr`] node.
     #[inline]
-    fn visit_function_call_expr(&mut self, node: &'a mut FunctionCallExpr<'s>) {
+    fn visit_function_call_expr(&mut self, node: &'a mut FunctionCallExpr) {
         self.visit_value_expr(node)
     }
 
     /// Visit [`FunctionCallArgExpr`] node.
     #[inline]
-    fn visit_function_call_arg_expr(&mut self, node: &'a mut FunctionCallArgExpr<'s>) {
+    fn visit_function_call_arg_expr(&mut self, node: &'a mut FunctionCallArgExpr) {
         self.visit_value_expr(node)
     }
 
@@ -124,23 +124,23 @@ pub trait VisitorMut<'s, 'a>: Sized {
 
     /// Visit [`Field`] node.
     #[inline]
-    fn visit_field(&mut self, _: &'a Field<'s>) {}
+    fn visit_field(&mut self, _: &'a Field) {}
 
     /// Visit [`Function`] node.
     #[inline]
-    fn visit_function(&mut self, _: &'a Function<'s>) {}
+    fn visit_function(&mut self, _: &'a Function) {}
 
     // TODO: add visitor methods for literals?
 }
 
 /// Recursively check if a [`Field`] is being used.
 pub(crate) struct UsesVisitor<'s> {
-    field: Field<'s>,
+    field: FieldRef<'s>,
     uses: bool,
 }
 
 impl<'s> UsesVisitor<'s> {
-    pub fn new(field: Field<'s>) -> Self {
+    pub fn new(field: FieldRef<'s>) -> Self {
         Self { field, uses: false }
     }
 
@@ -149,22 +149,22 @@ impl<'s> UsesVisitor<'s> {
     }
 }
 
-impl<'s> Visitor<'s, '_> for UsesVisitor<'s> {
-    fn visit_expr(&mut self, node: &impl Expr<'s>) {
+impl Visitor<'_> for UsesVisitor<'_> {
+    fn visit_expr(&mut self, node: &impl Expr) {
         // Stop visiting the AST once we have found one occurence of the field
         if !self.uses {
             node.walk(self)
         }
     }
 
-    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
+    fn visit_value_expr(&mut self, node: &impl ValueExpr) {
         // Stop visiting the AST once we have found one occurence of the field
         if !self.uses {
             node.walk(self)
         }
     }
 
-    fn visit_field(&mut self, f: &Field<'s>) {
+    fn visit_field(&mut self, f: &Field) {
         if self.field == *f {
             self.uses = true;
         }
@@ -173,12 +173,12 @@ impl<'s> Visitor<'s, '_> for UsesVisitor<'s> {
 
 /// Recursively check if a [`Field`] is being used in a list comparison.
 pub(crate) struct UsesListVisitor<'s> {
-    field: Field<'s>,
+    field: FieldRef<'s>,
     uses: bool,
 }
 
 impl<'s> UsesListVisitor<'s> {
-    pub fn new(field: Field<'s>) -> Self {
+    pub fn new(field: FieldRef<'s>) -> Self {
         Self { field, uses: false }
     }
 
@@ -187,22 +187,22 @@ impl<'s> UsesListVisitor<'s> {
     }
 }
 
-impl<'s> Visitor<'s, '_> for UsesListVisitor<'s> {
-    fn visit_expr(&mut self, node: &impl Expr<'s>) {
+impl Visitor<'_> for UsesListVisitor<'_> {
+    fn visit_expr(&mut self, node: &impl Expr) {
         // Stop visiting the AST once we have found one occurence of the field
         if !self.uses {
             node.walk(self)
         }
     }
 
-    fn visit_value_expr(&mut self, node: &impl ValueExpr<'s>) {
+    fn visit_value_expr(&mut self, node: &impl ValueExpr) {
         // Stop visiting the AST once we have found one occurence of the field
         if !self.uses {
             node.walk(self)
         }
     }
 
-    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr<'s>) {
+    fn visit_comparison_expr(&mut self, comparison_expr: &ComparisonExpr) {
         if let ComparisonOpExpr::InList { .. } = comparison_expr.op {
             let mut visitor = UsesVisitor::new(self.field);
             visitor.visit_comparison_expr(comparison_expr);
