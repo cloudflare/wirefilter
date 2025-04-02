@@ -895,9 +895,7 @@ mod tests {
                 },
             )
             .unwrap();
-        builder
-            .add_list(Type::Int, Box::new(NumMListDefinition {}))
-            .unwrap();
+        builder.add_list(Type::Int, NumMListDefinition {}).unwrap();
         builder.build()
     });
 

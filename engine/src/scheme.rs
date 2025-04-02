@@ -299,12 +299,6 @@ enum SchemeItem {
     Function(usize),
 }
 
-impl<T: FunctionDefinition + 'static> From<T> for Box<dyn FunctionDefinition> {
-    fn from(func: T) -> Box<dyn FunctionDefinition> {
-        Box::new(func)
-    }
-}
-
 /// A structure to represent a list inside a [`scheme`](struct.Scheme.html).
 ///
 /// See [`Scheme::get_list`](struct.Scheme.html#method.get_list).
@@ -393,7 +387,7 @@ impl SchemeBuilder {
     pub fn add_function<N: AsRef<str>>(
         &mut self,
         name: N,
-        function: impl Into<Box<dyn FunctionDefinition + 'static>>,
+        function: impl FunctionDefinition + 'static,
     ) -> Result<(), IdentifierRedefinitionError> {
         match self.items.entry(name.as_ref().into()) {
             Entry::Occupied(entry) => match entry.get() {
@@ -406,7 +400,8 @@ impl SchemeBuilder {
             },
             Entry::Vacant(entry) => {
                 let index = self.functions.len();
-                self.functions.push((entry.key().clone(), function.into()));
+                self.functions
+                    .push((entry.key().clone(), Box::new(function)));
                 entry.insert(SchemeItem::Function(index));
                 Ok(())
             }
@@ -417,13 +412,13 @@ impl SchemeBuilder {
     pub fn add_list(
         &mut self,
         ty: Type,
-        definition: Box<dyn ListDefinition>,
+        definition: impl ListDefinition + 'static,
     ) -> Result<(), ListRedefinitionError> {
         match self.list_types.entry(ty) {
             Entry::Occupied(entry) => Err(ListRedefinitionError(*entry.key())),
             Entry::Vacant(entry) => {
                 let index = self.lists.len();
-                self.lists.push((ty, definition));
+                self.lists.push((ty, Box::new(definition)));
                 entry.insert(index);
                 Ok(())
             }

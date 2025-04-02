@@ -17,7 +17,7 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{catch_panic, AlwaysList, LhsValue, ListDefinition, NeverList, Type};
+use wirefilter::{catch_panic, AlwaysList, LhsValue, NeverList, Type};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -322,25 +322,20 @@ pub extern "C" fn wirefilter_add_type_field_to_scheme(
     builder.add_field(name, ty.into()).is_ok()
 }
 
-pub type CListDefinition = Box<dyn ListDefinition>;
-
 #[no_mangle]
-pub extern "C" fn wirefilter_create_always_list() -> Box<CListDefinition> {
-    Box::new(Box::new(AlwaysList {}))
-}
-
-#[no_mangle]
-pub extern "C" fn wirefilter_create_never_list() -> Box<CListDefinition> {
-    Box::new(Box::new(NeverList {}))
-}
-
-#[no_mangle]
-pub extern "C" fn wirefilter_add_type_list_to_scheme(
+pub extern "C" fn wirefilter_add_always_list_to_scheme(
     builder: &mut SchemeBuilder,
     ty: CType,
-    list: Box<CListDefinition>,
 ) -> bool {
-    builder.add_list(ty.into(), *list).is_ok()
+    builder.add_list(ty.into(), AlwaysList {}).is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn wirefilter_add_never_list_to_scheme(
+    builder: &mut SchemeBuilder,
+    ty: CType,
+) -> bool {
+    builder.add_list(ty.into(), NeverList {}).is_ok()
 }
 
 #[no_mangle]
@@ -1109,11 +1104,7 @@ mod ffi_test {
             wirefilter_create_map_type(Type::Bytes.into())
         );
 
-        wirefilter_add_type_list_to_scheme(
-            &mut builder,
-            Type::Int.into(),
-            wirefilter_create_always_list(),
-        );
+        wirefilter_add_always_list_to_scheme(&mut builder, Type::Int.into());
 
         wirefilter_build_scheme(builder)
     }
