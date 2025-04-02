@@ -248,9 +248,7 @@ mod tests {
                 },
             )
             .unwrap();
-        builder
-            .add_list(Type::Bytes, Box::new(AlwaysList {}))
-            .unwrap();
+        builder.add_list(Type::Bytes, AlwaysList {}).unwrap();
         builder.build()
     });
 

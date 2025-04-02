@@ -18,7 +18,6 @@ renaming_overrides_prefixing = false
 "Array" = "array"
 "CompilingResult" = "compiling_result"
 "CPrimitiveType" = "primitive_type"
-"CListDefinition" = "list_definition"
 "CType" = "type"
 "DeserializingResult" = "deserializing_result"
 "ExecutionContext" = "execution_context"

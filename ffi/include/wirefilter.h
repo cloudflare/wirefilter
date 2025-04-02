@@ -49,8 +49,6 @@ enum wirefilter_status {
 
 struct wirefilter_array;
 
-struct wirefilter_list_definition;
-
 struct wirefilter_execution_context;
 
 struct wirefilter_filter;
@@ -141,13 +139,11 @@ bool wirefilter_add_type_field_to_scheme(struct wirefilter_scheme_builder *build
                                          size_t name_len,
                                          struct wirefilter_type ty);
 
-struct wirefilter_list_definition *wirefilter_create_always_list(void);
+bool wirefilter_add_always_list_to_scheme(struct wirefilter_scheme_builder *builder,
+                                          struct wirefilter_type ty);
 
-struct wirefilter_list_definition *wirefilter_create_never_list(void);
-
-bool wirefilter_add_type_list_to_scheme(struct wirefilter_scheme_builder *builder,
-                                        struct wirefilter_type ty,
-                                        struct wirefilter_list_definition *list);
+bool wirefilter_add_never_list_to_scheme(struct wirefilter_scheme_builder *builder,
+                                         struct wirefilter_type ty);
 
 struct wirefilter_scheme *wirefilter_build_scheme(struct wirefilter_scheme_builder *builder);
 
