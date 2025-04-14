@@ -813,6 +813,13 @@ impl<'a> LhsValue<'a> {
         }
     }
 
+    #[inline]
+    pub(crate) fn get_nested(&'a self, indexes: &[FieldIndex]) -> Option<&'a LhsValue<'a>> {
+        indexes
+            .iter()
+            .try_fold(self, |value, idx| value.get(idx).unwrap())
+    }
+
     pub(crate) fn extract(
         self,
         item: &FieldIndex,
@@ -837,6 +844,13 @@ impl<'a> LhsValue<'a> {
                 actual: self.get_type(),
             }),
         }
+    }
+
+    #[inline]
+    pub(crate) fn extract_nested(self, indexes: &[FieldIndex]) -> Option<LhsValue<'a>> {
+        indexes
+            .iter()
+            .try_fold(self, |value, idx| value.extract(idx).unwrap())
     }
 
     /// Set an element in an LhsValue given a path item and a specified value.
