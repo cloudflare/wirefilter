@@ -31,7 +31,7 @@ pub struct IndexExpr {
     pub indexes: Vec<FieldIndex>,
 }
 
-fn index_access_one<'s, 'e, U, F>(
+fn index_access_one<'e, U, F>(
     indexes: &[FieldIndex],
     first: Option<&'e LhsValue<'e>>,
     default: bool,
@@ -39,37 +39,30 @@ fn index_access_one<'s, 'e, U, F>(
     func: F,
 ) -> bool
 where
-    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
 {
-    indexes
-        .iter()
-        .fold(first, |value, idx| {
-            value.and_then(|val| val.get(idx).unwrap())
-        })
-        .map_or_else(
-            || default,
-            #[inline]
-            |val| func(val, ctx),
-        )
+    first.and_then(|val| val.get_nested(indexes)).map_or(
+        default,
+        #[inline]
+        |val| func(val, ctx),
+    )
 }
 
-fn index_access_vec<'s, 'e, U, F>(
+fn index_access_vec<'e, U, F>(
     indexes: &[FieldIndex],
     first: Option<&'e LhsValue<'e>>,
     ctx: &'e ExecutionContext<'e, U>,
     func: F,
 ) -> CompiledVecExprResult
 where
-    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send + 's,
+    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
 {
-    indexes
-        .iter()
-        .fold(first, |value, idx| {
-            value.and_then(|val| val.get(idx).unwrap())
-        })
-        .map_or(const { TypedArray::new() }, move |val: &LhsValue<'_>| {
+    first.and_then(|val| val.get_nested(indexes)).map_or(
+        const { TypedArray::new() },
+        move |val: &LhsValue<'_>| {
             TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
-        })
+        },
+    )
 }
 
 impl ValueExpr for IndexExpr {
@@ -119,23 +112,17 @@ impl ValueExpr for IndexExpr {
             // Average path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    indexes[..last]
-                        .iter()
-                        .try_fold(ctx.get_field_value_unchecked(&f), |value, index| {
-                            value.get(index).unwrap()
-                        })
+                    ctx.get_field_value_unchecked(&f)
+                        .get_nested(&indexes[..last])
                         .map(LhsValue::as_ref)
                         .ok_or(ty)
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
                     CompiledValueExpr::new(move |ctx| {
-                        let result = call.execute(ctx).ok();
-                        indexes[..last]
-                            .iter()
-                            .fold(result, |value, index| {
-                                value.and_then(|val| val.extract(index).unwrap())
-                            })
+                        call.execute(ctx)
+                            .ok()
+                            .and_then(|val| val.extract_nested(&indexes[..last]))
                             .ok_or(ty)
                     })
                 }
