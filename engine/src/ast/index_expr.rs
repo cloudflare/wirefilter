@@ -7,15 +7,15 @@ use super::{
 use crate::{
     compiler::Compiler,
     execution_context::ExecutionContext,
-    filter::{
-        CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr, CompiledVecExprResult,
-    },
+    filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr},
     lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     lhs_types::{Array, Map, TypedArray},
     scheme::{FieldIndex, IndexAccessError},
     types::{GetType, IntoIter, LhsValue, Type},
 };
 use serde::{Serialize, Serializer, ser::SerializeSeq};
+
+const BOOL_ARRAY: TypedArray<'_, bool> = TypedArray::new();
 
 /// IndexExpr is an expr that destructures an index into an IdentifierExpr.
 ///
@@ -31,21 +31,13 @@ pub struct IndexExpr {
     pub indexes: Vec<FieldIndex>,
 }
 
-fn index_access_vec<'e, U, F>(
-    indexes: &[FieldIndex],
-    first: Option<&'e LhsValue<'e>>,
-    ctx: &'e ExecutionContext<'e, U>,
-    func: F,
-) -> CompiledVecExprResult
-where
-    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
-{
-    first.and_then(|val| val.get_nested(indexes)).map_or(
-        const { TypedArray::new() },
-        move |val: &LhsValue<'_>| {
-            TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
-        },
-    )
+#[allow(clippy::manual_ok_err)]
+#[inline]
+pub fn ok_ref<T, E>(result: &Result<T, E>) -> Option<&T> {
+    match result {
+        Ok(x) => Some(x),
+        Err(_) => None,
+    }
 }
 
 impl ValueExpr for IndexExpr {
@@ -162,9 +154,7 @@ impl IndexExpr {
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        call.execute(ctx)
-                            .ok()
-                            .as_ref()
+                        ok_ref(&call.execute(ctx))
                             .and_then(|val| val.get_nested(&indexes))
                             .map_or(
                                 default,
@@ -209,23 +199,21 @@ impl IndexExpr {
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    index_access_vec(
-                        &indexes,
-                        call.execute(ctx).as_ref().ok(),
-                        ctx,
-                        #[inline]
-                        |val, ctx| func(val, ctx),
-                    )
+                    let func = &func;
+                    ok_ref(&call.execute(ctx))
+                        .and_then(|val| val.get_nested(&indexes))
+                        .map_or(BOOL_ARRAY, move |val: &LhsValue<'_>| {
+                            TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
+                        })
                 })
             }
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                index_access_vec(
-                    &indexes,
-                    Some(ctx.get_field_value_unchecked(&f)),
-                    ctx,
-                    #[inline]
-                    |val, ctx| func(val, ctx),
-                )
+                let func = &func;
+                ctx.get_field_value_unchecked(&f)
+                    .get_nested(&indexes)
+                    .map_or(BOOL_ARRAY, move |val: &LhsValue<'_>| {
+                        TypedArray::from_iter(val.iter().unwrap().map(|item| func(item, ctx)))
+                    })
             }),
         }
     }
