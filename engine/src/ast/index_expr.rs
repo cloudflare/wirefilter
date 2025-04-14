@@ -31,23 +31,6 @@ pub struct IndexExpr {
     pub indexes: Vec<FieldIndex>,
 }
 
-fn index_access_one<'e, U, F>(
-    indexes: &[FieldIndex],
-    first: Option<&'e LhsValue<'e>>,
-    default: bool,
-    ctx: &'e ExecutionContext<'e, U>,
-    func: F,
-) -> bool
-where
-    F: Fn(&LhsValue<'_>, &ExecutionContext<'_, U>) -> bool + Sync + Send,
-{
-    first.and_then(|val| val.get_nested(indexes)).map_or(
-        default,
-        #[inline]
-        |val| func(val, ctx),
-    )
-}
-
 fn index_access_vec<'e, U, F>(
     indexes: &[FieldIndex],
     first: Option<&'e LhsValue<'e>>,
@@ -179,14 +162,15 @@ impl IndexExpr {
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one(
-                            &indexes,
-                            call.execute(ctx).as_ref().ok(),
-                            default,
-                            ctx,
-                            #[inline]
-                            |val, ctx| func(val, ctx),
-                        )
+                        call.execute(ctx)
+                            .ok()
+                            .as_ref()
+                            .and_then(|val| val.get_nested(&indexes))
+                            .map_or(
+                                default,
+                                #[inline]
+                                |val| func(val, ctx),
+                            )
                     })
                 }
             }
@@ -195,14 +179,13 @@ impl IndexExpr {
                     CompiledOneExpr::new(move |ctx| func(ctx.get_field_value_unchecked(&f), ctx))
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        index_access_one(
-                            &indexes,
-                            Some(ctx.get_field_value_unchecked(&f)),
-                            default,
-                            ctx,
-                            #[inline]
-                            |val, ctx| func(val, ctx),
-                        )
+                        ctx.get_field_value_unchecked(&f)
+                            .get_nested(&indexes)
+                            .map_or(
+                                default,
+                                #[inline]
+                                |val| func(val, ctx),
+                            )
                     })
                 }
             }
