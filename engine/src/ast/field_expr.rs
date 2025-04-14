@@ -492,7 +492,7 @@ impl Expr for ComparisonExpr {
 
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if *USE_AVX2 {
-                    use rand::{Rng, thread_rng};
+                    use rand::{Rng, rng};
                     use sliceslice::x86::*;
 
                     fn slice_to_array<const N: usize>(slice: &[u8]) -> [u8; N] {
@@ -501,7 +501,7 @@ impl Expr for ComparisonExpr {
                         array
                     }
 
-                    let position = thread_rng().gen_range(1..bytes.len());
+                    let position = rng().random_range(1..bytes.len());
                     return unsafe {
                         match bytes.len() {
                             2 => search!(Avx2Searcher::with_position(
@@ -570,10 +570,10 @@ impl Expr for ComparisonExpr {
                 }
                 #[cfg(target_arch = "wasm32")]
                 if *USE_SIMD128 {
-                    use rand::{Rng, thread_rng};
+                    use rand::{Rng, rng};
                     use sliceslice::wasm32::*;
 
-                    let position = thread_rng().gen_range(1..bytes.len());
+                    let position = rng().random_range(1..bytes.len());
 
                     return unsafe { search!(Wasm32Searcher::with_position(bytes, position)) };
                 }
