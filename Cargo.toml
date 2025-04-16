@@ -21,6 +21,7 @@ cfg-if = "1"
 cidr = { version = "0.2", features = ["serde"] }
 criterion = "0.5"
 fnv = "1.0.6"
+getrandom = { version = "0.3" }
 indoc = "2"
 libc = "0.2.42"
 memmem = "0.1.1"
