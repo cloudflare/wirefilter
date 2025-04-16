@@ -40,3 +40,9 @@ indoc.workspace = true
 [features]
 default = [ "regex" ]
 regex = ["dep:regex-automata"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+# By default, getrandom doesn't have any source of randomness on wasm32-unknown.
+# This optional dependency allows us to build with `--features getrandom/wasm_js`.
+# For more information see: https://docs.rs/getrandom/#webassembly-support
+getrandom.workspace = true

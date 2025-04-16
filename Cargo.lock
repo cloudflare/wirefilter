@@ -1164,6 +1164,7 @@ dependencies = [
  "cidr",
  "criterion",
  "fnv",
+ "getrandom",
  "indoc",
  "memmem",
  "rand",

@@ -655,20 +655,24 @@ impl Expr for ComparisonExpr {
                     use rand::{Rng, rng};
                     use sliceslice::wasm32::*;
 
-                    impl Compare<U> for Wasm32Searcher {
+                    struct WasmSearcher(Wasm32Searcher<Box<[u8]>>);
+
+                    impl<U> Compare<U> for WasmSearcher {
                         #[inline]
                         fn compare<'e>(
                             &self,
                             value: &LhsValue<'e>,
                             _: &'e ExecutionContext<'e, U>,
                         ) -> bool {
-                            self.search_in(cast_value!(value, Bytes))
+                            unsafe { self.0.search_in(cast_value!(value, Bytes)) }
                         }
                     }
 
                     let position = rng().random_range(1..bytes.len());
 
-                    return unsafe { search!(Wasm32Searcher::with_position(bytes, position)) };
+                    return unsafe {
+                        search!(WasmSearcher(Wasm32Searcher::with_position(bytes, position)))
+                    };
                 }
 
                 search!(TwoWaySearcher::new(bytes))
