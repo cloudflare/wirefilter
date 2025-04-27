@@ -134,6 +134,19 @@ struct wirefilter_type wirefilter_create_map_type(struct wirefilter_type ty);
 
 struct wirefilter_type wirefilter_create_array_type(struct wirefilter_type ty);
 
+/**
+ * Adds a function to the scheme by its name.
+ *
+ * @param builder A pointer to the SchemeBuilder.
+ * @param name_ptr A pointer to the start of the UTF-8 encoded name for the function.
+ * @param name_len The length of the name string in bytes.
+ * @return `true` if the function was added successfully, `false` otherwise.
+ *         If `false`, check `wirefilter_get_last_error` for details.
+ */
+bool wirefilter_add_function_to_scheme(struct wirefilter_scheme_builder *builder,
+                                       const char *name_ptr,
+                                       size_t name_len);
+
 bool wirefilter_add_type_field_to_scheme(struct wirefilter_scheme_builder *builder,
                                          const char *name_ptr,
                                          size_t name_len,

@@ -17,7 +17,10 @@ use std::{
     io::{self, Write},
     net::IpAddr,
 };
-use wirefilter::{AlwaysList, LhsValue, NeverList, Type, catch_panic};
+use wirefilter::{
+    AllFunction, AlwaysList, AnyFunction, ConcatFunction, FunctionDefinition, LhsValue, NeverList,
+    Type, catch_panic,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -309,6 +312,59 @@ macro_rules! to_str {
     ($ptr:ident, $len:ident) => {
         to_str!($ptr, $len, false)
     };
+}
+
+/// Adds a function to the scheme by its name.
+///
+/// @param builder A pointer to the SchemeBuilder.
+/// @param name_ptr A pointer to the start of the UTF-8 encoded name for the function.
+/// @param name_len The length of the name string in bytes.
+/// @return `true` if the function was added successfully, `false` otherwise.
+///         If `false`, check `wirefilter_get_last_error` for details.
+#[unsafe(no_mangle)]
+pub extern "C" fn wirefilter_add_function_to_scheme(
+    builder: &mut SchemeBuilder,
+    name_ptr: *const c_char,
+    name_len: usize,
+) -> bool {
+    let name = to_str!(name_ptr, name_len);
+
+    match name {
+        "concat" => {
+            return match builder.add_function(name, ConcatFunction::default()) {
+                Ok(_) => true,
+                Err(err) => {
+                    write_last_error!("{}", err);
+                    false
+                }
+            };
+        }
+        "any" => {
+            return match builder.add_function(name, AnyFunction::default()) {
+                Ok(_) => true,
+                Err(err) => {
+                    write_last_error!("{}", err);
+                    false
+                }
+            };
+        }
+        "all" => {
+            return match builder.add_function(name, AllFunction::default()) {
+                Ok(_) => true,
+                Err(err) => {
+                    write_last_error!("{}", err);
+                    false
+                }
+            };
+        }
+        _ => {
+            // Handle unknown function names
+            write_last_error!("Unknown function name provided: {}", name);
+            return false;
+        }
+    };
+
+    // Call the original Rust method. This should now compile correctly.
 }
 
 #[unsafe(no_mangle)]
