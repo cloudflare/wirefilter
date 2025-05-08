@@ -43,7 +43,7 @@ pub struct InvalidListMatcherError {
 #[derive(Debug, PartialEq)]
 pub struct ExecutionContext<'e, U = ()> {
     scheme: Scheme,
-    values: Box<[Option<LhsValue<'e>>]>,
+    values: Box<[(bool, Option<LhsValue<'e>>)]>,
     list_matchers: Box<[Box<dyn ListMatcher>]>,
     user_data: U,
 }
@@ -65,7 +65,7 @@ impl<'e, U> ExecutionContext<'e, U> {
     pub fn new_with(scheme: &Scheme, f: impl FnOnce() -> U) -> Self {
         ExecutionContext {
             scheme: scheme.clone(),
-            values: vec![None; scheme.field_count()].into(),
+            values: vec![(false, None); scheme.field_count()].into(),
             list_matchers: scheme
                 .lists()
                 .map(|list| list.definition().new_matcher())
@@ -94,7 +94,9 @@ impl<'e, U> ExecutionContext<'e, U> {
         let value_type = value.get_type();
 
         if field_type == value_type {
-            Ok(self.values[field.index()].replace(value))
+            let (marked, old) = &mut self.values[field.index()];
+            *marked = true;
+            Ok(old.replace(value))
         } else {
             Err(SetFieldValueError::TypeMismatch(TypeMismatchError {
                 expected: field_type.into(),
@@ -119,7 +121,9 @@ impl<'e, U> ExecutionContext<'e, U> {
         let value_type = value.get_type();
 
         if field_type == value_type {
-            Ok(self.values[field.index()].replace(value))
+            let (marked, old) = &mut self.values[field.index()];
+            *marked = true;
+            Ok(old.replace(value))
         } else {
             Err(SetFieldValueError::TypeMismatch(TypeMismatchError {
                 expected: field_type.into(),
@@ -128,29 +132,39 @@ impl<'e, U> ExecutionContext<'e, U> {
         }
     }
 
+    /// Mark a field as ready for matching. Only useful for fields without value.
+    pub fn mark_field_value(&mut self, field: FieldRef<'_>) -> Result<bool, SetFieldValueError> {
+        if self.scheme != *field.scheme() {
+            return Err(SetFieldValueError::SchemeMismatch(SchemeMismatchError));
+        }
+
+        let marked = self.values[field.index()].0;
+        self.values[field.index()].0 = true;
+
+        Ok(marked)
+    }
+
     #[inline]
-    pub(crate) fn get_field_value_unchecked(&self, field: &Field) -> &LhsValue<'_> {
+    pub(crate) fn get_marked_field_value(&self, field: &Field) -> Option<&LhsValue<'_>> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.
         debug_assert!(self.scheme() == field.scheme());
 
-        // For now we panic in this, but later we are going to align behaviour
-        // with wireshark: resolve all subexpressions that don't have RHS value
-        // to `false`.
-        self.values[field.index()].as_ref().unwrap_or_else(|| {
-            panic!(
-                "Field {} was registered but not given a value",
-                field.name()
-            );
-        })
+        let (marked, value) = &self.values[field.index()];
+
+        if !*marked {
+            panic!("Field {} was registered but marked as ready", field.name());
+        }
+
+        value.as_ref()
     }
 
     /// Get the value of a field.
     pub fn get_field_value(&self, field: FieldRef<'_>) -> Option<&LhsValue<'_>> {
         assert!(self.scheme() == field.scheme());
 
-        self.values[field.index()].as_ref()
+        self.values[field.index()].1.as_ref()
     }
 
     #[inline]
@@ -221,7 +235,9 @@ impl<'e, U> ExecutionContext<'e, U> {
     /// while retaining the allocated memory.
     #[inline]
     pub fn clear(&mut self) {
-        self.values.iter_mut().for_each(|value| *value = None);
+        self.values
+            .iter_mut()
+            .for_each(|value| *value = (false, None));
         self.list_matchers
             .iter_mut()
             .for_each(|list_matcher| list_matcher.clear());
@@ -356,7 +372,8 @@ impl Serialize for ExecutionContext<'_> {
     {
         let mut map = serializer.serialize_map(Some(self.values.len()))?;
         for field in self.scheme().fields() {
-            if let Some(Some(value)) = self.values.get(field.index()) {
+            // Do we want to serialize null for marked fields without a value?
+            if let (_, Some(value)) = &self.values[field.index()] {
                 map.serialize_entry(field.name(), value)?;
             }
         }
