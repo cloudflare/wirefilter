@@ -79,7 +79,9 @@ impl ValueExpr for IndexExpr {
             // Fast path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    Ok(ctx.get_field_value_unchecked(&f).as_ref())
+                    ctx.get_marked_field_value(&f)
+                        .map(LhsValue::as_ref)
+                        .ok_or(ty)
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
             }
@@ -87,10 +89,14 @@ impl ValueExpr for IndexExpr {
             // Average path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    ctx.get_field_value_unchecked(&f)
-                        .get_nested(&indexes[..last])
-                        .map(LhsValue::as_ref)
-                        .ok_or(ty)
+                    if let Some(value) = ctx.get_marked_field_value(&f) {
+                        value
+                            .get_nested(&indexes[..last])
+                            .map(LhsValue::as_ref)
+                            .ok_or(ty)
+                    } else {
+                        Err(ty)
+                    }
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
@@ -106,9 +112,13 @@ impl ValueExpr for IndexExpr {
             // Slow path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
-                    Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
+                    if let Some(value) = ctx.get_marked_field_value(&f) {
+                        let mut iter = MapEachIterator::from_indexes(&indexes[..]);
+                        iter.reset(value.as_ref());
+                        Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
+                    } else {
+                        Ok(LhsValue::Array(Array::new(ty)))
+                    }
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
@@ -174,17 +184,23 @@ impl IndexExpr {
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
                     CompiledOneExpr::new(move |ctx| {
-                        comp.compare(ctx.get_field_value_unchecked(&f), ctx)
+                        if let Some(value) = ctx.get_marked_field_value(&f) {
+                            comp.compare(value, ctx)
+                        } else {
+                            default
+                        }
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        ctx.get_field_value_unchecked(&f)
-                            .get_nested(&indexes)
-                            .map_or(
+                        if let Some(value) = ctx.get_marked_field_value(&f) {
+                            value.get_nested(&indexes).map_or(
                                 default,
                                 #[inline]
                                 |val| comp.compare(val, ctx),
                             )
+                        } else {
+                            default
+                        }
                     })
                 }
             }
@@ -221,9 +237,8 @@ impl IndexExpr {
             }
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let comp = &comp;
-                ctx.get_field_value_unchecked(&f)
-                    .get_nested(&indexes)
-                    .map_or(
+                if let Some(value) = ctx.get_marked_field_value(&f) {
+                    value.get_nested(&indexes).map_or(
                         BOOL_ARRAY,
                         #[inline]
                         |val: &LhsValue<'_>| {
@@ -232,6 +247,9 @@ impl IndexExpr {
                             )
                         },
                     )
+                } else {
+                    TypedArray::new()
+                }
             }),
         }
     }
@@ -247,9 +265,13 @@ impl IndexExpr {
         } = self;
         match identifier {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
-                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+                if let Some(value) = ctx.get_marked_field_value(&f) {
+                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
+                    iter.reset(value.as_ref());
+                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+                } else {
+                    TypedArray::new()
+                }
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
