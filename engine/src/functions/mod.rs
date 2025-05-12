@@ -1,6 +1,7 @@
 pub(crate) mod all;
 pub(crate) mod any;
 pub(crate) mod concat;
+pub(crate) mod lower;
 
 use crate::{
     ParserSettings,
@@ -10,6 +11,7 @@ use crate::{
 pub use all::AllFunction;
 pub use any::AnyFunction;
 pub use concat::ConcatFunction;
+pub use lower::LowerFunction;
 use std::any::Any;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug};

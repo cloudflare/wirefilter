@@ -98,8 +98,8 @@ pub use self::{
     functions::{
         AllFunction, AnyFunction, ConcatFunction, FunctionArgInvalidConstantError, FunctionArgKind,
         FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
-        FunctionParam, FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl,
-        SimpleFunctionOptParam, SimpleFunctionParam,
+        FunctionParam, FunctionParamError, LowerFunction, SimpleFunctionDefinition,
+        SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map, MapIter, TypedArray, TypedMap},
