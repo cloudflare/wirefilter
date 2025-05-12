@@ -4,6 +4,8 @@ use super::{FunctionArgKind, FunctionArgs, FunctionDefinition};
 use crate::{LhsValue, Type};
 use std::iter;
 
+/// Converts a string field to lowercase. Only uppercase ASCII bytes are converted. All other bytes are unaffected.
+/// For example, if http.host is "WWW.cloudflare.com", then lower(http.host) == "www.cloudflare.com" will return true.
 #[derive(Debug, Default)]
 pub struct LowerFunction {}
 
@@ -25,11 +27,7 @@ fn lower_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     }
 }
 
-impl LowerFunction {
-    fn new() -> Self {
-        Self {}
-    }
-}
+impl LowerFunction {}
 
 impl FunctionDefinition for LowerFunction {
     fn check_param(
