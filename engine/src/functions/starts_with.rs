@@ -38,14 +38,14 @@ impl FunctionDefinition for StartsWithFunction {
         _: Option<&mut super::FunctionDefinitionContext>,
     ) -> Result<(), super::FunctionParamError> {
         match params.len() {
-            1 => {
+            0 => {
                 // first arg
-                next_param.expect_arg_kind(FunctionArgKind::Literal)?;
+                next_param.expect_arg_kind(FunctionArgKind::Field)?;
                 next_param.expect_val_type(iter::once(Type::Bytes.into()))?;
             }
-            0 => {
+            1 => {
                 // second arg
-                next_param.expect_arg_kind(FunctionArgKind::Field)?;
+                next_param.expect_arg_kind(FunctionArgKind::Literal)?;
                 next_param.expect_val_type(iter::once(Type::Bytes.into()))?;
             }
             _ => unreachable!(),
