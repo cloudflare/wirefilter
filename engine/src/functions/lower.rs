@@ -27,8 +27,6 @@ fn lower_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     }
 }
 
-impl LowerFunction {}
-
 impl FunctionDefinition for LowerFunction {
     fn check_param(
         &self,

@@ -18,8 +18,8 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AllFunction, AlwaysList, AnyFunction, ConcatFunction, LhsValue, LowerFunction, NeverList, Type,
-    catch_panic,
+    AllFunction, AlwaysList, AnyFunction, ConcatFunction, LhsValue, LowerFunction, NeverList,
+    StartsWithFunction, Type, catch_panic,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -359,6 +359,15 @@ pub extern "C" fn wirefilter_add_function_to_scheme(
         }
         "lower" => {
             return match builder.add_function(name, LowerFunction::default()) {
+                Ok(_) => true,
+                Err(err) => {
+                    write_last_error!("{}", err);
+                    false
+                }
+            };
+        }
+        "starts_with" => {
+            return match builder.add_function(name, StartsWithFunction::default()) {
                 Ok(_) => true,
                 Err(err) => {
                     write_last_error!("{}", err);

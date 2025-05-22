@@ -99,7 +99,7 @@ pub use self::{
         AllFunction, AnyFunction, ConcatFunction, FunctionArgInvalidConstantError, FunctionArgKind,
         FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
         FunctionParam, FunctionParamError, LowerFunction, SimpleFunctionDefinition,
-        SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
+        SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam, StartsWithFunction,
     },
     lex::LexErrorKind,
     lhs_types::{Array, ArrayMut, Map, MapIter, MapMut, TypedArray, TypedMap},
