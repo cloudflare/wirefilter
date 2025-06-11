@@ -47,15 +47,11 @@ enum wirefilter_status {
   WIREFILTER_STATUS_PANIC,
 };
 
-struct wirefilter_array;
-
 struct wirefilter_execution_context;
 
 struct wirefilter_filter;
 
 struct wirefilter_filter_ast;
-
-struct wirefilter_map;
 
 struct wirefilter_scheme;
 
@@ -175,6 +171,12 @@ bool wirefilter_deserialize_json_to_execution_context(struct wirefilter_executio
 
 void wirefilter_free_execution_context(struct wirefilter_execution_context *exec_context);
 
+bool wirefilter_add_json_value_to_execution_context(struct wirefilter_execution_context *exec_context,
+                                                    const char *name_ptr,
+                                                    size_t name_len,
+                                                    const uint8_t *json_ptr,
+                                                    size_t json_len);
+
 bool wirefilter_add_int_value_to_execution_context(struct wirefilter_execution_context *exec_context,
                                                    const char *name_ptr,
                                                    size_t name_len,
@@ -200,87 +202,6 @@ bool wirefilter_add_bool_value_to_execution_context(struct wirefilter_execution_
                                                     const char *name_ptr,
                                                     size_t name_len,
                                                     bool value);
-
-bool wirefilter_add_map_value_to_execution_context(struct wirefilter_execution_context *exec_context,
-                                                   const char *name_ptr,
-                                                   size_t name_len,
-                                                   struct wirefilter_map *value);
-
-bool wirefilter_add_array_value_to_execution_context(struct wirefilter_execution_context *exec_context,
-                                                     const char *name_ptr,
-                                                     size_t name_len,
-                                                     struct wirefilter_array *value);
-
-struct wirefilter_map *wirefilter_create_map(struct wirefilter_type ty);
-
-bool wirefilter_add_int_value_to_map(struct wirefilter_map *map,
-                                     const uint8_t *name_ptr,
-                                     size_t name_len,
-                                     int64_t value);
-
-bool wirefilter_add_bytes_value_to_map(struct wirefilter_map *map,
-                                       const uint8_t *name_ptr,
-                                       size_t name_len,
-                                       const uint8_t *value_ptr,
-                                       size_t value_len);
-
-bool wirefilter_add_ipv6_value_to_map(struct wirefilter_map *map,
-                                      const uint8_t *name_ptr,
-                                      size_t name_len,
-                                      const uint8_t (*value)[16]);
-
-bool wirefilter_add_ipv4_value_to_map(struct wirefilter_map *map,
-                                      const uint8_t *name_ptr,
-                                      size_t name_len,
-                                      const uint8_t (*value)[4]);
-
-bool wirefilter_add_bool_value_to_map(struct wirefilter_map *map,
-                                      const uint8_t *name_ptr,
-                                      size_t name_len,
-                                      bool value);
-
-bool wirefilter_add_map_value_to_map(struct wirefilter_map *map,
-                                     const uint8_t *name_ptr,
-                                     size_t name_len,
-                                     struct wirefilter_map *value);
-
-bool wirefilter_add_array_value_to_map(struct wirefilter_map *map,
-                                       const uint8_t *name_ptr,
-                                       size_t name_len,
-                                       struct wirefilter_array *value);
-
-void wirefilter_free_map(struct wirefilter_map *map);
-
-struct wirefilter_array *wirefilter_create_array(struct wirefilter_type ty);
-
-bool wirefilter_add_int_value_to_array(struct wirefilter_array *array,
-                                       uint32_t index,
-                                       int64_t value);
-
-bool wirefilter_add_bytes_value_to_array(struct wirefilter_array *array,
-                                         uint32_t index,
-                                         const uint8_t *value_ptr,
-                                         size_t value_len);
-
-bool wirefilter_add_ipv6_value_to_array(struct wirefilter_array *array,
-                                        uint32_t index,
-                                        const uint8_t (*value)[16]);
-
-bool wirefilter_add_ipv4_value_to_array(struct wirefilter_array *array,
-                                        uint32_t index,
-                                        const uint8_t (*value)[4]);
-
-bool wirefilter_add_bool_value_to_array(struct wirefilter_array *array, uint32_t index, bool value);
-
-bool wirefilter_add_map_value_to_array(struct wirefilter_array *array,
-                                       uint32_t index,
-                                       struct wirefilter_map *value);
-
-bool wirefilter_add_array_value_to_array(struct wirefilter_array *array,
-                                         uint32_t index,
-                                         struct wirefilter_array *value);
-
-void wirefilter_free_array(struct wirefilter_array *array);
 
 struct wirefilter_compiling_result wirefilter_compile_filter(struct wirefilter_filter_ast *filter_ast);
 

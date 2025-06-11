@@ -4,8 +4,8 @@ mod map;
 use crate::types::LhsValue;
 
 pub use self::{
-    array::{Array, ArrayIterator, ArrayMut, TypedArray},
-    map::{Map, MapIter, MapMut, MapValuesIntoIter, TypedMap},
+    array::{Array, ArrayIterator, TypedArray},
+    map::{Map, MapIter, MapValuesIntoIter, TypedMap},
 };
 
 pub struct AsRefIterator<'a, T: Iterator<Item = &'a LhsValue<'a>>>(T);

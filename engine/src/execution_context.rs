@@ -425,8 +425,7 @@ fn test_scheme_mismatch() {
 
 #[test]
 fn test_serde() {
-    use crate::lhs_types::{Array, Map};
-    use crate::types::Type;
+    use crate::lhs_types::{Array, TypedMap};
     use std::net::IpAddr;
     use std::str::FromStr;
 
@@ -491,9 +490,9 @@ fn test_serde() {
 
     assert_eq!(
         ctx.set_field_value(scheme.get_field("map").unwrap(), {
-            let mut map = Map::new(Type::Int);
-            map.insert(b"leet", 1337).unwrap();
-            map.insert(b"tabs", 25).unwrap();
+            let mut map = TypedMap::<i64>::new();
+            map.insert(b"leet".to_vec().into(), 1337);
+            map.insert(b"tabs".to_vec().into(), 25);
             map
         }),
         Ok(None),
@@ -535,16 +534,16 @@ fn test_serde() {
 
     assert_eq!(
         ctx.set_field_value(scheme.get_field("map").unwrap(), {
-            let mut map = Map::new(Type::Int);
-            map.insert(b"leet", 1337).unwrap();
-            map.insert(b"tabs", 25).unwrap();
-            map.insert(b"a\xFF\xFFb", 17).unwrap();
+            let mut map = TypedMap::<i64>::new();
+            map.insert(b"leet".to_vec().into(), 1337);
+            map.insert(b"tabs".to_vec().into(), 25);
+            map.insert(b"a\xFF\xFFb".to_vec().into(), 17);
             map
         }),
         Ok(Some({
-            let mut map = Map::new(Type::Int);
-            map.insert(b"leet", 1337).unwrap();
-            map.insert(b"tabs", 25).unwrap();
+            let mut map = TypedMap::<i64>::new();
+            map.insert(b"leet".to_vec().into(), 1337);
+            map.insert(b"tabs".to_vec().into(), 25);
             map.into()
         })),
     );

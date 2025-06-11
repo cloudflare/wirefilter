@@ -1,9 +1,7 @@
 use crate::{
+    TypeMismatchError,
     lhs_types::AsRefIterator,
-    types::{
-        BytesOrString, CompoundType, GetType, IntoValue, LhsValue, LhsValueMut, LhsValueSeed, Type,
-        TypeMismatchError,
-    },
+    types::{BytesOrString, CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type},
 };
 use serde::{
     Serialize, Serializer,
@@ -102,46 +100,6 @@ impl<'a> Map<'a> {
         self.data.get(key.as_ref())
     }
 
-    /// Get a mutable reference to an element if it exists
-    pub fn get_mut<K: AsRef<[u8]>>(&mut self, key: K) -> Option<LhsValueMut<'_, 'a>> {
-        self.data.get_mut(key.as_ref()).map(LhsValueMut::from)
-    }
-
-    /// Inserts an element, overwriting if one already exists
-    pub fn insert(
-        &mut self,
-        key: &[u8],
-        value: impl Into<LhsValue<'a>>,
-    ) -> Result<(), TypeMismatchError> {
-        let value = value.into();
-        let value_type = value.get_type();
-        if value_type != self.val_type.into() {
-            return Err(TypeMismatchError {
-                expected: Type::from(self.val_type).into(),
-                actual: value_type,
-            });
-        }
-        self.data.insert(key.into(), value);
-        Ok(())
-    }
-
-    /// Inserts `value` if `key` is missing, then returns a mutable reference to the contained value.
-    pub fn get_or_insert(
-        &mut self,
-        key: Box<[u8]>,
-        value: impl Into<LhsValue<'a>>,
-    ) -> Result<LhsValueMut<'_, 'a>, TypeMismatchError> {
-        let value = value.into();
-        let value_type = value.get_type();
-        if value_type != self.val_type.into() {
-            return Err(TypeMismatchError {
-                expected: Type::from(self.val_type).into(),
-                actual: value_type,
-            });
-        }
-        Ok(LhsValueMut::from(self.data.get_or_insert(key, value)))
-    }
-
     pub(crate) fn as_ref(&'a self) -> Map<'a> {
         Map {
             val_type: self.val_type,
@@ -209,6 +167,34 @@ impl<'a> Map<'a> {
     #[inline]
     pub fn iter(&self) -> MapIter<'a, '_> {
         MapIter(self.data.iter())
+    }
+
+    /// Creates a new map from the specified iterator.
+    pub fn try_from_iter<E: From<TypeMismatchError>, V: Into<LhsValue<'a>>>(
+        val_type: impl Into<CompoundType>,
+        iter: impl IntoIterator<Item = Result<(Box<[u8]>, V), E>>,
+    ) -> Result<Self, E> {
+        let val_type = val_type.into();
+        iter.into_iter()
+            .map(|key_val| {
+                key_val.and_then(|(key, val)| {
+                    let elem = val.into();
+                    let elem_type = elem.get_type();
+                    if val_type != elem_type.into() {
+                        Err(E::from(TypeMismatchError {
+                            expected: Type::from(val_type).into(),
+                            actual: elem_type,
+                        }))
+                    } else {
+                        Ok((key, elem))
+                    }
+                })
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()
+            .map(|map| Map {
+                val_type,
+                data: InnerMap::Owned(map),
+            })
     }
 }
 
@@ -402,14 +388,19 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
             where
                 M: MapAccess<'de>,
             {
+                let value_type = self.0.value_type();
                 while let Some(key) = access.next_key::<Cow<'_, str>>()? {
-                    let value = access.next_value_seed(LhsValueSeed(&self.0.value_type()))?;
-                    self.0.insert(key.as_bytes(), value).map_err(|e| {
-                        de::Error::custom(format!(
+                    let value = access.next_value_seed(LhsValueSeed(&value_type))?;
+                    if value.get_type() != value_type {
+                        return Err(de::Error::custom(format!(
                             "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        ))
-                    })?;
+                            value.get_type(),
+                            value_type
+                        )));
+                    }
+                    self.0
+                        .data
+                        .insert(key.into_owned().into_bytes().into(), value);
                 }
 
                 Ok(())
@@ -419,68 +410,22 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
             where
                 V: SeqAccess<'de>,
             {
-                while let Some(entry) = seq.next_element_seed(MapEntrySeed(&self.0.value_type()))? {
-                    self.0.insert(&entry.0, entry.1).map_err(|e| {
-                        de::Error::custom(format!(
+                let value_type = self.0.value_type();
+                while let Some((key, value)) = seq.next_element_seed(MapEntrySeed(&value_type))? {
+                    if value.get_type() != value_type {
+                        return Err(de::Error::custom(format!(
                             "invalid type: {:?}, expected {:?}",
-                            e.actual, e.expected
-                        ))
-                    })?;
+                            value.get_type(),
+                            value_type
+                        )));
+                    }
+                    self.0.data.insert(key.into_owned().into(), value);
                 }
                 Ok(())
             }
         }
 
         deserializer.deserialize_struct("", &[], MapVisitor(self))
-    }
-}
-
-/// Wrapper type around mutable `Map` to prevent
-/// illegal operations like changing the type of
-/// its values.
-pub struct MapMut<'a, 'b>(&'a mut Map<'b>);
-
-impl<'a, 'b> MapMut<'a, 'b> {
-    /// Get a mutable reference to an element if it exists
-    #[inline]
-    pub fn get_mut(&'a mut self, key: &[u8]) -> Option<LhsValueMut<'a, 'b>> {
-        self.0.get_mut(key)
-    }
-
-    /// Inserts an element, overwriting if one already exists
-    #[inline]
-    pub fn insert(
-        &mut self,
-        key: &[u8],
-        value: impl Into<LhsValue<'b>>,
-    ) -> Result<(), TypeMismatchError> {
-        self.0.insert(key, value)
-    }
-
-    /// Inserts `value` if `key` is missing, then returns a mutable reference to the contained value.
-    #[inline]
-    pub fn get_or_insert(
-        &'a mut self,
-        key: Box<[u8]>,
-        value: impl Into<LhsValue<'b>>,
-    ) -> Result<LhsValueMut<'a, 'b>, TypeMismatchError> {
-        self.0.get_or_insert(key, value)
-    }
-}
-
-impl<'b> Deref for MapMut<'_, 'b> {
-    type Target = Map<'b>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
-impl<'a, 'b> From<&'a mut Map<'b>> for MapMut<'a, 'b> {
-    #[inline]
-    fn from(map: &'a mut Map<'b>) -> Self {
-        Self(map)
     }
 }
 
@@ -711,11 +656,11 @@ mod tests {
 
     #[test]
     fn test_borrowed_eq_owned() {
-        let mut owned = Map::new(Type::Bytes);
+        let mut map = TypedMap::new();
 
-        owned
-            .insert(b"key", LhsValue::Bytes("borrowed".as_bytes().into()))
-            .unwrap();
+        map.insert("key".as_bytes().to_vec().into(), "borrowed");
+
+        let owned = Map::from(map);
 
         let borrowed = owned.as_ref();
 

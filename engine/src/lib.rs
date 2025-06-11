@@ -102,7 +102,7 @@ pub use self::{
         SimpleFunctionOptParam, SimpleFunctionParam,
     },
     lex::LexErrorKind,
-    lhs_types::{Array, ArrayMut, Map, MapIter, MapMut, TypedArray, TypedMap},
+    lhs_types::{Array, Map, MapIter, TypedArray, TypedMap},
     list_matcher::{
         AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
     },
@@ -120,7 +120,7 @@ pub use self::{
         SchemeBuilder, SchemeMismatchError, UnknownFieldError,
     },
     types::{
-        CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LhsValueMut, RhsValue,
-        RhsValues, Type, TypeMismatchError,
+        CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, RhsValue, RhsValues, Type,
+        TypeMismatchError,
     },
 };

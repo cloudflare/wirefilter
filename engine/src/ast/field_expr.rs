@@ -788,7 +788,7 @@ impl Expr for ComparisonExpr {
 mod tests {
     use super::*;
     use crate::{
-        BytesFormat, FieldRef, LhsValue, ParserSettings,
+        BytesFormat, FieldRef, LhsValue, ParserSettings, TypedMap,
         ast::{
             function_expr::{FunctionCallArgExpr, FunctionCallExpr},
             logical_expr::LogicalExpr,
@@ -1586,18 +1586,18 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"host", "example.org").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"host".to_vec().into(), "example.org");
             map
         });
 
         ctx.set_field_value(field("http.headers"), headers).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"host", "abc.net.au").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"host".to_vec().into(), "abc.net.au");
             map
         });
 
@@ -2186,11 +2186,11 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"0", "one").unwrap();
-            map.insert(b"1", "two").unwrap();
-            map.insert(b"2", "three").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"0".to_vec().into(), "one");
+            map.insert(b"1".to_vec().into(), "two");
+            map.insert(b"2".to_vec().into(), "three");
             map
         });
         ctx.set_field_value(field("http.headers"), headers).unwrap();
@@ -2267,11 +2267,11 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"0", "one").unwrap();
-            map.insert(b"1", "two").unwrap();
-            map.insert(b"2", "three").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"0".to_vec().into(), "one");
+            map.insert(b"1".to_vec().into(), "two");
+            map.insert(b"2".to_vec().into(), "three");
             map
         });
         ctx.set_field_value(field("http.headers"), headers).unwrap();
