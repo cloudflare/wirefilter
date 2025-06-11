@@ -1,9 +1,6 @@
 use crate::{
     lhs_types::AsRefIterator,
-    types::{
-        CompoundType, GetType, IntoValue, LhsValue, LhsValueMut, LhsValueSeed, Type,
-        TypeMismatchError,
-    },
+    types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type, TypeMismatchError},
 };
 use serde::{
     Serialize, Serializer,
@@ -51,11 +48,6 @@ impl<'a> InnerArray<'a> {
     #[inline]
     fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
         self.as_vec().get_mut(idx)
-    }
-
-    #[inline]
-    fn insert(&mut self, idx: usize, value: LhsValue<'a>) {
-        self.as_vec().insert(idx, value)
     }
 
     #[inline]
@@ -119,43 +111,6 @@ impl<'a> Array<'a> {
     /// Get a reference to an element if it exists
     pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
         self.data.get(idx)
-    }
-
-    /// Get a mutable reference to an element if it exists
-    pub fn get_mut(&mut self, idx: usize) -> Option<LhsValueMut<'_, 'a>> {
-        self.data.get_mut(idx).map(LhsValueMut::from)
-    }
-
-    /// Inserts an element at index `idx`
-    pub fn insert(
-        &mut self,
-        idx: usize,
-        value: impl Into<LhsValue<'a>>,
-    ) -> Result<(), TypeMismatchError> {
-        let value = value.into();
-        let value_type = value.get_type();
-        if value_type != self.val_type.into() {
-            return Err(TypeMismatchError {
-                expected: Type::from(self.val_type).into(),
-                actual: value_type,
-            });
-        }
-        self.data.insert(idx, value);
-        Ok(())
-    }
-
-    /// Push an element to the back of the array
-    pub fn push(&mut self, value: impl Into<LhsValue<'a>>) -> Result<(), TypeMismatchError> {
-        let value = value.into();
-        let value_type = value.get_type();
-        if value_type != self.val_type.into() {
-            return Err(TypeMismatchError {
-                expected: Type::from(self.val_type).into(),
-                actual: value_type,
-            });
-        }
-        self.data.push(value);
-        Ok(())
     }
 
     pub(crate) fn as_ref(&'a self) -> Array<'a> {
@@ -445,51 +400,6 @@ impl<'de> DeserializeSeed<'de> for &mut Array<'de> {
     }
 }
 
-/// Wrapper type around mutable `Array` to prevent
-/// illegal operations like changing the type of
-/// its values.
-pub struct ArrayMut<'a, 'b>(&'a mut Array<'b>);
-
-impl<'a, 'b> ArrayMut<'a, 'b> {
-    /// Push an element to the back of the array
-    #[inline]
-    pub fn push(&mut self, value: impl Into<LhsValue<'b>>) -> Result<(), TypeMismatchError> {
-        self.0.push(value)
-    }
-
-    /// Inserts an element at index `idx`
-    #[inline]
-    pub fn insert(
-        &mut self,
-        idx: usize,
-        value: impl Into<LhsValue<'b>>,
-    ) -> Result<(), TypeMismatchError> {
-        self.0.insert(idx, value)
-    }
-
-    /// Get a mutable reference to an element if it exists
-    #[inline]
-    pub fn get_mut(&'a mut self, idx: usize) -> Option<LhsValueMut<'a, 'b>> {
-        self.0.get_mut(idx)
-    }
-}
-
-impl<'b> Deref for ArrayMut<'_, 'b> {
-    type Target = Array<'b>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
-impl<'a, 'b> From<&'a mut Array<'b>> for ArrayMut<'a, 'b> {
-    #[inline]
-    fn from(arr: &'a mut Array<'b>) -> Self {
-        Self(arr)
-    }
-}
-
 /// Typed wrapper over an `Array` which provides
 /// infaillible operations.
 #[repr(transparent)]
@@ -703,11 +613,11 @@ mod tests {
 
     #[test]
     fn test_borrowed_eq_owned() {
-        let mut owned = Array::new(Type::Bytes);
+        let mut arr = TypedArray::new();
 
-        owned
-            .push(LhsValue::Bytes("borrowed".as_bytes().into()))
-            .unwrap();
+        arr.push("borrowed");
+
+        let owned = Array::from(arr);
 
         let borrowed = owned.as_ref();
 
