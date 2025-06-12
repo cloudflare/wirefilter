@@ -79,7 +79,9 @@ impl ValueExpr for IndexExpr {
             // Fast path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    Ok(ctx.get_field_value_unchecked(&f).as_ref())
+                    ctx.get_field_value_unchecked(&f)
+                        .map(LhsValue::as_ref)
+                        .ok_or(ty)
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
             }
@@ -88,7 +90,7 @@ impl ValueExpr for IndexExpr {
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     ctx.get_field_value_unchecked(&f)
-                        .get_nested(&indexes[..last])
+                        .and_then(|value| value.get_nested(&indexes[..last]))
                         .map(LhsValue::as_ref)
                         .ok_or(ty)
                 }),
@@ -103,18 +105,23 @@ impl ValueExpr for IndexExpr {
                 }
             }
         } else {
+            let return_type = Type::Array(ty.into());
             // Slow path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
+                    iter.reset(
+                        ctx.get_field_value_unchecked(&f)
+                            .map(LhsValue::as_ref)
+                            .ok_or(return_type)?,
+                    );
                     Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
                     let call = compiler.compile_function_call_expr(call);
                     CompiledValueExpr::new(move |ctx| {
                         let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                        iter.reset(call.execute(ctx).map_err(|_| Type::Array(ty.into()))?);
+                        iter.reset(call.execute(ctx).map_err(|_| return_type)?);
                         Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
                     })
                 }
@@ -174,12 +181,14 @@ impl IndexExpr {
             IdentifierExpr::Field(f) => {
                 if indexes.is_empty() {
                     CompiledOneExpr::new(move |ctx| {
-                        comp.compare(ctx.get_field_value_unchecked(&f), ctx)
+                        ctx.get_field_value_unchecked(&f)
+                            .map(|value| comp.compare(value, ctx))
+                            .unwrap_or(default)
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         ctx.get_field_value_unchecked(&f)
-                            .get_nested(&indexes)
+                            .and_then(|value| value.get_nested(&indexes))
                             .map_or(
                                 default,
                                 #[inline]
@@ -222,7 +231,7 @@ impl IndexExpr {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let comp = &comp;
                 ctx.get_field_value_unchecked(&f)
-                    .get_nested(&indexes)
+                    .and_then(|value| value.get_nested(&indexes))
                     .map_or(
                         BOOL_ARRAY,
                         #[inline]
@@ -248,7 +257,10 @@ impl IndexExpr {
         match identifier {
             IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
                 let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                iter.reset(ctx.get_field_value_unchecked(&f).as_ref());
+                match ctx.get_field_value_unchecked(&f) {
+                    Some(value) => iter.reset(value.as_ref()),
+                    None => return TypedArray::default(),
+                };
                 TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
             }),
             IdentifierExpr::FunctionCallExpr(call) => {
