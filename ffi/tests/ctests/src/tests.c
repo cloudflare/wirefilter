@@ -305,7 +305,7 @@ void wirefilter_ffi_ctest_scheme_serialize() {
     rust_assert(json.ptr != NULL && json.len > 0, "could not serialize scheme to JSON");
 
     rust_assert(
-        strncmp(json.ptr, "{\"http.host\":{\"type\":\"Bytes\"},\"ip.src\":{\"type\":\"Ip\"},\"ip.dst\":{\"type\":\"Ip\"},\"ssl\":{\"type\":\"Bool\"},\"tcp.port\":{\"type\":\"Int\"},\"http.headers\":{\"type\":{\"Map\":\"Bytes\"}},\"http.cookies\":{\"type\":{\"Array\":\"Bytes\"}}}", json.len) == 0,
+        strncmp(json.ptr, "{\"http.host\":{\"type\":\"Bytes\",\"optional\":false},\"ip.src\":{\"type\":\"Ip\",\"optional\":false},\"ip.dst\":{\"type\":\"Ip\",\"optional\":false},\"ssl\":{\"type\":\"Bool\",\"optional\":false},\"tcp.port\":{\"type\":\"Int\",\"optional\":false},\"http.headers\":{\"type\":{\"Map\":\"Bytes\"},\"optional\":false},\"http.cookies\":{\"type\":{\"Array\":\"Bytes\"},\"optional\":false}}", json.len) == 0,
         "invalid JSON serialization"
     );
 

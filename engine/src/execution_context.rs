@@ -129,7 +129,7 @@ impl<'e, U> ExecutionContext<'e, U> {
     }
 
     #[inline]
-    pub(crate) fn get_field_value_unchecked(&self, field: &Field) -> &LhsValue<'_> {
+    pub(crate) fn get_field_value_unchecked(&self, field: &Field) -> Option<&LhsValue<'_>> {
         // This is safe because this code is reachable only from Filter::execute
         // which already performs the scheme compatibility check, but check that
         // invariant holds in the future at least in the debug mode.
@@ -138,12 +138,19 @@ impl<'e, U> ExecutionContext<'e, U> {
         // For now we panic in this, but later we are going to align behaviour
         // with wireshark: resolve all subexpressions that don't have RHS value
         // to `false`.
-        self.values[field.index()].as_ref().unwrap_or_else(|| {
-            panic!(
-                "Field {} was registered but not given a value",
-                field.name()
-            );
-        })
+        match self.values[field.index()].as_ref() {
+            Some(value) => Some(value),
+            None => {
+                if field.optional() {
+                    None
+                } else {
+                    panic!(
+                        "Field {} was registered as mandatory but not given a value",
+                        field.name()
+                    );
+                }
+            }
+        }
     }
 
     /// Get the value of a field.

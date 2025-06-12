@@ -149,6 +149,12 @@ impl<'s> FieldRef<'s> {
         self.index
     }
 
+    /// Returns whether the field value is optional.
+    #[inline]
+    pub fn optional(&self) -> bool {
+        self.scheme.inner.fields[self.index].optional
+    }
+
     /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
     #[inline]
     pub fn scheme(&self) -> &'s Scheme {
@@ -225,6 +231,12 @@ impl Field {
     #[inline]
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    /// Returns whether the field value is optional.
+    #[inline]
+    pub fn optional(&self) -> bool {
+        self.scheme.inner.fields[self.index].optional
     }
 
     /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
@@ -614,6 +626,7 @@ type IdentifierName = Arc<str>;
 struct FieldDefinition {
     name: IdentifierName,
     ty: Type,
+    optional: bool,
 }
 
 /// A builder for a [`Scheme`].
@@ -635,13 +648,13 @@ impl SchemeBuilder {
         Default::default()
     }
 
-    /// Registers a field and its corresponding type.
-    pub fn add_field<N: AsRef<str>>(
+    fn add_field_full(
         &mut self,
-        name: N,
+        name: Arc<str>,
         ty: Type,
+        optional: bool,
     ) -> Result<(), IdentifierRedefinitionError> {
-        match self.items.entry(name.as_ref().into()) {
+        match self.items.entry(name) {
             Entry::Occupied(entry) => match entry.get() {
                 SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
                     FieldRedefinitionError(entry.key().to_string()),
@@ -655,11 +668,30 @@ impl SchemeBuilder {
                 self.fields.push(FieldDefinition {
                     name: entry.key().clone(),
                     ty,
+                    optional,
                 });
                 entry.insert(SchemeItem::Field(index));
                 Ok(())
             }
         }
+    }
+
+    /// Registers a field and its corresponding type.
+    pub fn add_field<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        ty: Type,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        self.add_field_full(name.as_ref().into(), ty, false)
+    }
+
+    /// Registers an optional field and its corresponding type.
+    pub fn add_optional_field<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        ty: Type,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        self.add_field_full(name.as_ref().into(), ty, true)
     }
 
     /// Registers a function
@@ -762,6 +794,7 @@ impl Hash for Scheme {
 struct SerdeField {
     #[serde(rename = "type")]
     ty: Type,
+    optional: bool,
 }
 
 impl Serialize for Scheme {
@@ -772,7 +805,13 @@ impl Serialize for Scheme {
         let fields = self.fields();
         let mut map = serializer.serialize_map(Some(fields.len()))?;
         for f in fields {
-            map.serialize_entry(f.name(), &SerdeField { ty: f.get_type() })?;
+            map.serialize_entry(
+                f.name(),
+                &SerdeField {
+                    ty: f.get_type(),
+                    optional: f.optional(),
+                },
+            )?;
         }
         map.end()
     }
@@ -799,8 +838,12 @@ impl<'de> Deserialize<'de> for Scheme {
                 A: serde::de::MapAccess<'de>,
             {
                 let mut builder = SchemeBuilder::new();
-                while let Some((name, SerdeField { ty })) = map.next_entry::<&str, SerdeField>()? {
-                    builder.add_field(name, ty).map_err(A::Error::custom)?;
+                while let Some((name, SerdeField { ty, optional })) =
+                    map.next_entry::<&str, SerdeField>()?
+                {
+                    builder
+                        .add_field_full(name.into(), ty, optional)
+                        .map_err(A::Error::custom)?;
                 }
 
                 Ok(builder)
