@@ -305,7 +305,7 @@ void wirefilter_ffi_ctest_scheme_serialize() {
     rust_assert(json.ptr != NULL && json.len > 0, "could not serialize scheme to JSON");
 
     rust_assert(
-        strncmp(json.ptr, "{\"http.host\":\"Bytes\",\"ip.src\":\"Ip\",\"ip.dst\":\"Ip\",\"ssl\":\"Bool\",\"tcp.port\":\"Int\",\"http.headers\":{\"Map\":\"Bytes\"},\"http.cookies\":{\"Array\":\"Bytes\"}}", json.len) == 0,
+        strncmp(json.ptr, "{\"http.host\":{\"type\":\"Bytes\"},\"ip.src\":{\"type\":\"Ip\"},\"ip.dst\":{\"type\":\"Ip\"},\"ssl\":{\"type\":\"Bool\"},\"tcp.port\":{\"type\":\"Int\"},\"http.headers\":{\"type\":{\"Map\":\"Bytes\"}},\"http.cookies\":{\"type\":{\"Array\":\"Bytes\"}}}", json.len) == 0,
         "invalid JSON serialization"
     );
 
