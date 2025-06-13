@@ -98,7 +98,7 @@ pub use self::{
     functions::{
         AllFunction, AnyFunction, CIDRFunction, ConcatFunction, FunctionArgInvalidConstantError,
         FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition,
-        FunctionDefinitionContext, FunctionParam, FunctionParamError, LowerFunction,
+        FunctionDefinitionContext, FunctionParam, FunctionParamError, LenFunction, LowerFunction,
         SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         StartsWithFunction,
     },

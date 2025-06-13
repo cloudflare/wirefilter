@@ -18,8 +18,8 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, LhsValue, LowerFunction,
-    NeverList, StartsWithFunction, Type, catch_panic,
+    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, LenFunction, LhsValue,
+    LowerFunction, NeverList, StartsWithFunction, Type, catch_panic,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -377,6 +377,15 @@ pub extern "C" fn wirefilter_add_function_to_scheme(
         }
         "cidr" => {
             return match builder.add_function(name, CIDRFunction::default()) {
+                Ok(_) => true,
+                Err(err) => {
+                    write_last_error!("{}", err);
+                    false
+                }
+            };
+        }
+        "len" => {
+            return match builder.add_function(name, LenFunction::default()) {
                 Ok(_) => true,
                 Err(err) => {
                     write_last_error!("{}", err);
