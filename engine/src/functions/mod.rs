@@ -5,6 +5,7 @@ pub(crate) mod concat;
 pub(crate) mod len;
 pub(crate) mod lower;
 pub(crate) mod starts_with;
+pub(crate) mod wildcard_replace;
 
 use crate::{
     ParserSettings,

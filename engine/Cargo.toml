@@ -6,8 +6,8 @@ description = "An execution engine for Wireshark-like filters"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/cloudflare/wirefilter"
-keywords = [ "wireshark", "filter", "engine", "parser", "runtime" ]
-categories = [ "config", "parser-implementations" ]
+keywords = ["wireshark", "filter", "engine", "parser", "runtime"]
+categories = ["config", "parser-implementations"]
 publish.workspace = true
 edition.workspace = true
 
@@ -26,6 +26,7 @@ cidr.workspace = true
 fnv.workspace = true
 memmem.workspace = true
 rand.workspace = true
+outer-regex.workspace = true
 regex-automata = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
@@ -38,7 +39,7 @@ criterion.workspace = true
 indoc.workspace = true
 
 [features]
-default = [ "regex" ]
+default = ["regex"]
 regex = ["dep:regex-automata"]
 
 [target.'cfg(target_family = "wasm")'.dependencies]

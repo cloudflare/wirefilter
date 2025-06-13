@@ -1,5 +1,3 @@
-use std::iter;
-
 use crate::{ExpectedType, FunctionArgs, FunctionDefinition, LhsValue, Type};
 
 /// Returns the byte length of a String or Bytes value, or the number of elements in an array.
