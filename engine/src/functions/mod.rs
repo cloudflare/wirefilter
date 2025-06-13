@@ -2,6 +2,7 @@ pub(crate) mod all;
 pub(crate) mod any;
 pub(crate) mod cidr;
 pub(crate) mod concat;
+pub(crate) mod len;
 pub(crate) mod lower;
 pub(crate) mod starts_with;
 
@@ -14,6 +15,7 @@ pub use all::AllFunction;
 pub use any::AnyFunction;
 pub use cidr::CIDRFunction;
 pub use concat::ConcatFunction;
+pub use len::LenFunction;
 pub use lower::LowerFunction;
 pub use starts_with::StartsWithFunction;
 use std::any::Any;
