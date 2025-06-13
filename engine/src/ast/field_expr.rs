@@ -5,7 +5,7 @@ use super::{
     visitor::{Visitor, VisitorMut},
 };
 use crate::{
-    ExecutionContext,
+    ExecutionContext, Scheme,
     ast::index_expr::{Compare, IndexExpr},
     compiler::Compiler,
     filter::CompiledExpr,
@@ -243,6 +243,16 @@ pub enum IdentifierExpr {
     FunctionCallExpr(FunctionCallExpr),
 }
 
+impl IdentifierExpr {
+    #[inline]
+    fn scheme(&self) -> &Scheme {
+        match self {
+            Self::Field(f) => f.scheme(),
+            Self::FunctionCallExpr(call) => call.function.scheme(),
+        }
+    }
+}
+
 impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         let (item, input) = Identifier::lex_with(input, parser.scheme)?;
@@ -430,6 +440,7 @@ impl Expr for ComparisonExpr {
 
     fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
         let lhs = self.lhs;
+        let nil_not_equal_behavior = lhs.identifier.scheme().nil_not_equal_behavior();
 
         match self.op {
             ComparisonOpExpr::IsTrue => {
@@ -458,7 +469,7 @@ impl Expr for ComparisonExpr {
             }
             ComparisonOpExpr::Ordering { op, rhs } => {
                 macro_rules! gen_ordering {
-                    ($op:tt, $def:literal) => {
+                    ($op:tt, $def:ident) => {
                         match rhs {
                             RhsValue::Bytes(bytes) => {
                                 struct BytesOp(Bytes);
@@ -505,7 +516,7 @@ impl Expr for ComparisonExpr {
                 }
 
                 match op {
-                    OrderingOp::NotEqual => gen_ordering!(!=, true),
+                    OrderingOp::NotEqual => gen_ordering!(!=, nil_not_equal_behavior),
                     OrderingOp::Equal => gen_ordering!(==, false),
                     OrderingOp::GreaterThanEqual => gen_ordering!(>=, false),
                     OrderingOp::LessThanEqual => gen_ordering!(<=, false),
