@@ -126,6 +126,12 @@ void wirefilter_ffi_ctest_add_malloced_type_field_to_scheme()
     rust_assert(byte_type != NULL, "could not allocate type");
     *byte_type = WIREFILTER_TYPE_BYTES;
 
+    rust_assert(wirefilter_add_type_field_to_scheme(
+                    builder,
+                    STRING("http.host"),
+                    *byte_type),
+                "could not add field http.host of type \"Bytes\" to scheme");
+
     free(byte_type);
 
     wirefilter_free_scheme_builder(builder);
@@ -668,6 +674,14 @@ void wirefilter_ffi_ctest_match_map()
         STRING("tcp.port"),
         80);
 
+    const char *json = "{\"host\":\"www.cloudflare.com\"}";
+    rust_assert(
+        wirefilter_add_json_value_to_execution_context(
+            exec_ctx,
+            STRING("http.headers"),
+            BYTES(json)) == true,
+        "could not set value for map field http.headers");
+
     struct wirefilter_matching_result matching_result = wirefilter_match(filter, exec_ctx);
     rust_assert(matching_result.status == WIREFILTER_STATUS_SUCCESS, "could not match filter");
 
@@ -720,6 +734,14 @@ void wirefilter_ffi_ctest_match_array()
         STRING("tcp.port"),
         80);
 
+    const char *json = "[\"one\", \"two\", \"www.cloudflare.com\"]";
+    rust_assert(
+        wirefilter_add_json_value_to_execution_context(
+            exec_ctx,
+            STRING("http.cookies"),
+            BYTES(json)) == true,
+        "could not set value for map field http.cookies");
+
     struct wirefilter_matching_result matching_result = wirefilter_match(filter, exec_ctx);
     rust_assert(matching_result.status == WIREFILTER_STATUS_SUCCESS, "could not match filter");
 
@@ -730,18 +752,4 @@ void wirefilter_ffi_ctest_match_array()
     wirefilter_free_compiled_filter(filter);
 
     wirefilter_free_scheme(scheme);
-}
-
-void wirefilter_ffi_ctest_add_function()
-{
-    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
-    const char *function_name = "any";
-
-    rust_assert(wirefilter_add_function_to_scheme(
-                    builder,
-                    function_name,
-                    strlen(function_name)) == true,
-                "Could not add function to scheme");
-
-    wirefilter_free_scheme_builder(builder);
 }

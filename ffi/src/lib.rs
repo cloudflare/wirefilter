@@ -18,8 +18,7 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, GetType, LenFunction,
-    LhsValue, LowerFunction, NeverList, StartsWithFunction, Type, WildcardReplaceFunction,
+    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, GetType, LenFunction, LowerFunction, NeverList, StartsWithFunction, Type, WildcardReplaceFunction,
     catch_panic,
 };
 
