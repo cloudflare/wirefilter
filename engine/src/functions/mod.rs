@@ -24,6 +24,7 @@ use std::convert::TryFrom;
 use std::fmt::{self, Debug};
 use std::iter::once;
 use thiserror::Error;
+pub use wildcard_replace::WildcardReplaceFunction;
 
 pub(crate) struct ExactSizeChain<A, B>
 where
