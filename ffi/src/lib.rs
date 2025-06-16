@@ -18,8 +18,9 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, LenFunction, LhsValue,
-    LowerFunction, NeverList, StartsWithFunction, Type, WildcardReplaceFunction, catch_panic,
+    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, GetType, LenFunction,
+    LhsValue, LowerFunction, NeverList, StartsWithFunction, Type, WildcardReplaceFunction,
+    catch_panic,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
