@@ -19,15 +19,28 @@ impl ConcatFunction {
     }
 }
 
-fn concat_array<'a>(mut accumulator: Array<'a>, args: FunctionArgs<'_, 'a>) -> Array<'a> {
+fn concat_array<'a>(accumulator: Array<'a>, args: FunctionArgs<'_, 'a>) -> Array<'a> {
+    let mut args = args.flat_map(|arg| arg.ok());
+    let Some(first) = args.next() else {
+        return accumulator;
+    };
+    let val_type = accumulator.value_type();
+    let mut vec = accumulator.into_vec();
+    match first {
+        LhsValue::Array(value) => {
+            vec.extend(value);
+        }
+        _ => unreachable!(),
+    }
     for arg in args {
         match arg {
-            Ok(LhsValue::Array(value)) => accumulator.try_extend(value).unwrap(),
-            Err(Type::Array(_)) => (),
-            _ => (),
-        };
+            LhsValue::Array(value) => {
+                vec.extend(value);
+            }
+            _ => unreachable!(),
+        }
     }
-    accumulator
+    Array::try_from_vec(val_type, vec).unwrap()
 }
 
 fn concat_bytes<'a>(mut accumulator: Cow<'a, [u8]>, args: FunctionArgs<'_, 'a>) -> Cow<'a, [u8]> {
