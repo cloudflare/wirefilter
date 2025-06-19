@@ -16,6 +16,8 @@ pub use self::{
     ip::{ExplicitIpRange, IpCidr, IpRange},
     list::ListName,
     map::UninhabitedMap,
-    regex::{Error as RegexError, Regex, RegexFormat},
+    regex::{
+        DefaultRegexProvider, Error as RegexError, Regex, RegexFormat, RegexProvider, RegexSettings,
+    },
     wildcard::{Wildcard, WildcardError},
 };

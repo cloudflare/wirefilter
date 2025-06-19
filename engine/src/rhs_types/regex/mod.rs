@@ -5,6 +5,7 @@ use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use thiserror::Error;
 
 cfg_if! {
@@ -62,7 +63,11 @@ fn lex_regex_from_raw_string<'i>(
     parser: &FilterParser<'_>,
 ) -> LexResult<'i, Regex> {
     let ((lexed, hashes), input) = lex_raw_string_as_str(input)?;
-    match Regex::new(lexed, RegexFormat::Raw(hashes), parser.settings()) {
+    match Regex::new(
+        lexed,
+        RegexFormat::Raw(hashes),
+        &parser.settings().regex_provider,
+    ) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), input)),
     }
@@ -104,7 +109,11 @@ fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexR
             };
         }
     };
-    match Regex::new(&regex_buf, RegexFormat::Literal, parser.settings()) {
+    match Regex::new(
+        &regex_buf,
+        RegexFormat::Literal,
+        &parser.settings().regex_provider,
+    ) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
     }
@@ -156,10 +165,97 @@ impl<U> Compare<U> for Regex {
     }
 }
 
+/// Regex settings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegexSettings {
+    /// Approximate size of the cache used by the DFA of a regex.
+    /// Default: 10MB
+    pub dfa_size_limit: usize,
+    /// Approximate size limit of the compiled regular expression.
+    /// Default: 2MB
+    pub compiled_size_limit: usize,
+}
+
+impl Default for RegexSettings {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            // Default value extracted from the regex crate.
+            compiled_size_limit: 10 * (1 << 20),
+            // Default value extracted from the regex crate.
+            dfa_size_limit: 2 * (1 << 20),
+        }
+    }
+}
+
+/// Regex provider.
+pub trait RegexProvider: Debug + Send + Sync {
+    /// Attempts to retrieve a regex from the provider.
+    fn lookup(&self, pattern: &str) -> Result<regex_automata::meta::Regex, Error>;
+}
+
+/// Default regex provider.
+#[derive(Debug, Default)]
+pub struct DefaultRegexProvider {
+    settings: RegexSettings,
+}
+
+impl DefaultRegexProvider {
+    /// Creates a new default regex provider.
+    pub const fn new(settings: RegexSettings) -> Self {
+        Self { settings }
+    }
+
+    /// Retrieves the syntax configuration that will be used to build the regex.
+    #[inline]
+    fn syntax_config() -> regex_automata::util::syntax::Config {
+        regex_automata::util::syntax::Config::new()
+            .unicode(false)
+            .utf8(false)
+    }
+
+    /// Retrieves the meta configuration that will be used to build the regex.
+    #[inline]
+    fn meta_config(settings: &RegexSettings) -> regex_automata::meta::Config {
+        regex_automata::meta::Config::new()
+            .match_kind(regex_automata::MatchKind::LeftmostFirst)
+            .utf8_empty(false)
+            .dfa(false)
+            .nfa_size_limit(Some(settings.compiled_size_limit))
+            .onepass_size_limit(Some(settings.compiled_size_limit))
+            .dfa_size_limit(Some(settings.compiled_size_limit))
+            .hybrid_cache_capacity(settings.dfa_size_limit)
+    }
+}
+
+impl RegexProvider for DefaultRegexProvider {
+    fn lookup(&self, pattern: &str) -> Result<regex_automata::meta::Regex, Error> {
+        ::regex_automata::meta::Builder::new()
+            .configure(Self::meta_config(&self.settings))
+            .syntax(Self::syntax_config())
+            .build(pattern)
+            .map_err(|err| {
+                if let Some(limit) = err.size_limit() {
+                    Error::CompiledTooBig(limit)
+                } else if let Some(syntax) = err.syntax_error() {
+                    Error::Syntax(syntax.to_string())
+                } else {
+                    Error::Other(err.to_string())
+                }
+            })
+    }
+}
+
+impl RegexProvider for Arc<dyn RegexProvider> {
+    fn lookup(&self, pattern: &str) -> Result<regex_automata::meta::Regex, Error> {
+        (&**self).lookup(pattern)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ParserSettings, SchemeBuilder};
+    use crate::SchemeBuilder;
 
     #[test]
     fn test() {
@@ -171,7 +267,7 @@ mod test {
             Regex::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Literal,
-                &ParserSettings::default(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ";"
@@ -199,7 +295,7 @@ mod test {
             Regex::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Raw(1),
-                parser.settings(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ";"
@@ -215,7 +311,7 @@ mod test {
             Regex::new(
                 r#"(?u)\*\a\f\t\n\r\v\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#,
                 RegexFormat::Raw(1),
-                parser.settings(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ""

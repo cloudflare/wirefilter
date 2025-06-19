@@ -2806,7 +2806,12 @@ mod tests {
 
         // Matches operator
         let parser = FilterParser::new(&SCHEME);
-        let r = Regex::new("a.b", RegexFormat::Literal, parser.settings()).unwrap();
+        let r = Regex::new(
+            "a.b",
+            RegexFormat::Literal,
+            &parser.settings().regex_provider,
+        )
+        .unwrap();
         let expr = assert_ok!(
             parser.lex_as("http.host matches r###\"a.b\"###"),
             ComparisonExpr {
