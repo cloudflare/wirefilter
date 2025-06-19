@@ -100,14 +100,6 @@ impl<'a> Array<'a> {
         }
     }
 
-    /// Creates a new array with the specified capacity
-    pub fn with_capacity(val_type: impl Into<CompoundType>, capacity: usize) -> Self {
-        Self {
-            val_type: val_type.into(),
-            data: InnerArray::Owned(Vec::with_capacity(capacity)),
-        }
-    }
-
     /// Get a reference to an element if it exists
     pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
         self.data.get(idx)
