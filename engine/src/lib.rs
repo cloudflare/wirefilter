@@ -112,8 +112,8 @@ pub use self::{
         panic_catcher_get_backtrace, panic_catcher_set_fallback_mode, panic_catcher_set_hook,
     },
     rhs_types::{
-        Bytes, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,
-        RegexFormat,
+        Bytes, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex,
+        RegexDefaultProvider, RegexError, RegexExpr, RegexFormat, RegexProvider,
     },
     scheme::{
         Field, FieldIndex, FieldRedefinitionError, FieldRef, Function, FunctionRedefinitionError,
@@ -125,3 +125,6 @@ pub use self::{
         TypeMismatchError,
     },
 };
+
+#[cfg(feature = "regex")]
+pub use self::rhs_types::RegexSettings;

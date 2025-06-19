@@ -1,11 +1,14 @@
 use super::{FilterAst, FilterValueAst};
 use crate::{
+    RegexProvider,
     lex::{LexErrorKind, LexResult, LexWith, complete},
+    rhs_types::RegexDefaultProvider,
     scheme::Scheme,
 };
 use std::cmp::{max, min};
 use std::error::Error;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::sync::{Arc, LazyLock};
 
 /// An opaque filter parsing error associated with the original input.
 ///
@@ -96,28 +99,37 @@ impl Display for ParseError<'_> {
     }
 }
 
+static DEFAULT_REGEX_PROVIDER: LazyLock<Arc<dyn RegexProvider>> =
+    LazyLock::new(|| Arc::new(RegexDefaultProvider::default()));
+
 /// Parser settings.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct ParserSettings {
-    /// Approximate size of the cache used by the DFA of a regex.
-    /// Default: 10MB
-    pub regex_dfa_size_limit: usize,
-    /// Approximate size limit of the compiled regular expression.
-    /// Default: 2MB
-    pub regex_compiled_size_limit: usize,
+    /// Regex provider.
+    pub regex_provider: Arc<dyn RegexProvider>,
     /// Maximum number of star metacharacters allowed in a wildcard.
     /// Default: unlimited
     pub wildcard_star_limit: usize,
 }
 
+impl PartialEq for ParserSettings {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            regex_provider,
+            wildcard_star_limit,
+        } = self;
+        Arc::ptr_eq(regex_provider, &other.regex_provider)
+            && *wildcard_star_limit == other.wildcard_star_limit
+    }
+}
+
+impl Eq for ParserSettings {}
+
 impl Default for ParserSettings {
     #[inline]
     fn default() -> Self {
         Self {
-            // Default value extracted from the regex crate.
-            regex_compiled_size_limit: 10 * (1 << 20),
-            // Default value extracted from the regex crate.
-            regex_dfa_size_limit: 2 * (1 << 20),
+            regex_provider: DEFAULT_REGEX_PROVIDER.clone(),
             wildcard_star_limit: usize::MAX,
         }
     }
@@ -174,30 +186,6 @@ impl<'s> FilterParser<'s> {
     #[inline]
     pub fn settings(&self) -> &ParserSettings {
         &self.settings
-    }
-
-    /// Set the approximate size limit of the compiled regular expression.
-    #[inline]
-    pub fn regex_set_compiled_size_limit(&mut self, regex_compiled_size_limit: usize) {
-        self.settings.regex_compiled_size_limit = regex_compiled_size_limit;
-    }
-
-    /// Get the approximate size limit of the compiled regular expression.
-    #[inline]
-    pub fn regex_get_compiled_size_limit(&self) -> usize {
-        self.settings.regex_compiled_size_limit
-    }
-
-    /// Set the approximate size of the cache used by the DFA of a regex.
-    #[inline]
-    pub fn regex_set_dfa_size_limit(&mut self, regex_dfa_size_limit: usize) {
-        self.settings.regex_dfa_size_limit = regex_dfa_size_limit;
-    }
-
-    /// Get the approximate size of the cache used by the DFA of a regex.
-    #[inline]
-    pub fn regex_get_dfa_size_limit(&self) -> usize {
-        self.settings.regex_dfa_size_limit
     }
 
     /// Set the maximum number of star metacharacters allowed in a wildcard.
