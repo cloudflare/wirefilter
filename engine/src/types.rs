@@ -793,7 +793,10 @@ impl<'a> LhsValue<'a> {
     /// nested element.
     ///
     /// Both LhsValue::Array and LhsValue::Map support nested elements.
-    pub fn get(&'a self, item: &FieldIndex) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
+    pub(crate) fn get(
+        &'a self,
+        item: &FieldIndex,
+    ) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
         match (self, item) {
             (LhsValue::Array(arr), FieldIndex::ArrayIndex(idx)) => Ok(arr.get(*idx as usize)),
             (_, FieldIndex::ArrayIndex(_)) => Err(IndexAccessError {
@@ -853,7 +856,7 @@ impl<'a> LhsValue<'a> {
     }
 
     /// Returns an iterator over the Map or Array
-    pub fn iter(&'a self) -> Option<Iter<'a>> {
+    pub(crate) fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
             LhsValue::Array(array) => Some(Iter::IterArray(array.as_slice().iter())),
             LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
@@ -955,7 +958,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
     }
 }
 
-pub enum Iter<'a> {
+pub(crate) enum Iter<'a> {
     IterArray(std::slice::Iter<'a, LhsValue<'a>>),
     IterMap(MapIter<'a, 'a>),
 }
