@@ -753,3 +753,17 @@ void wirefilter_ffi_ctest_match_array()
 
     wirefilter_free_scheme(scheme);
 }
+
+void wirefilter_ffi_ctest_add_function()
+{
+    struct wirefilter_scheme_builder *builder = wirefilter_create_scheme_builder();
+    const char *function_name = "any";
+
+    rust_assert(wirefilter_add_function_to_scheme(
+                    builder,
+                    function_name,
+                    strlen(function_name)) == true,
+                "Could not add function to scheme");
+
+    wirefilter_free_scheme_builder(builder);
+}
