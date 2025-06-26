@@ -61,7 +61,7 @@ impl std::fmt::Display for ExpectedType {
         match self {
             ExpectedType::Array => write!(f, "Array<_>"),
             ExpectedType::Map => write!(f, "Map<_>"),
-            ExpectedType::Type(ty) => write!(f, "{}", ty),
+            ExpectedType::Type(ty) => write!(f, "{ty}"),
         }
     }
 }
@@ -118,9 +118,9 @@ impl std::fmt::Display for ExpectedTypeList {
             _ => {
                 let mut iter = self.0.iter();
                 let first = iter.next().unwrap();
-                write!(f, "{{{}", first)?;
+                write!(f, "{{{first}")?;
                 for expected_type in iter {
-                    write!(f, ", {}", expected_type)?;
+                    write!(f, ", {expected_type}")?;
                 }
                 write!(f, "}}")
             }
