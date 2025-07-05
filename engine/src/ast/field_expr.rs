@@ -5,7 +5,7 @@ use super::{
     visitor::{Visitor, VisitorMut},
 };
 use crate::{
-    ExecutionContext,
+    ExecutionContext, Scheme,
     ast::index_expr::{Compare, IndexExpr},
     compiler::Compiler,
     filter::CompiledExpr,
@@ -243,6 +243,16 @@ pub enum IdentifierExpr {
     FunctionCallExpr(FunctionCallExpr),
 }
 
+impl IdentifierExpr {
+    #[inline]
+    fn scheme(&self) -> &Scheme {
+        match self {
+            Self::Field(f) => f.scheme(),
+            Self::FunctionCallExpr(call) => call.function.scheme(),
+        }
+    }
+}
+
 impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         let (item, input) = Identifier::lex_with(input, parser.scheme)?;
@@ -430,6 +440,7 @@ impl Expr for ComparisonExpr {
 
     fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
         let lhs = self.lhs;
+        let nil_not_equal_behavior = lhs.identifier.scheme().nil_not_equal_behavior();
 
         match self.op {
             ComparisonOpExpr::IsTrue => {
@@ -458,7 +469,7 @@ impl Expr for ComparisonExpr {
             }
             ComparisonOpExpr::Ordering { op, rhs } => {
                 macro_rules! gen_ordering {
-                    ($op:tt, $def:literal) => {
+                    ($op:tt, $def:ident) => {
                         match rhs {
                             RhsValue::Bytes(bytes) => {
                                 struct BytesOp(Bytes);
@@ -505,7 +516,7 @@ impl Expr for ComparisonExpr {
                 }
 
                 match op {
-                    OrderingOp::NotEqual => gen_ordering!(!=, true),
+                    OrderingOp::NotEqual => gen_ordering!(!=, nil_not_equal_behavior),
                     OrderingOp::Equal => gen_ordering!(==, false),
                     OrderingOp::GreaterThanEqual => gen_ordering!(>=, false),
                     OrderingOp::LessThanEqual => gen_ordering!(<=, false),
@@ -788,7 +799,7 @@ impl Expr for ComparisonExpr {
 mod tests {
     use super::*;
     use crate::{
-        BytesFormat, FieldRef, LhsValue, ParserSettings,
+        BytesFormat, FieldRef, LhsValue, ParserSettings, SchemeBuilder, TypedMap,
         ast::{
             function_expr::{FunctionCallArgExpr, FunctionCallExpr},
             logical_expr::LogicalExpr,
@@ -1586,18 +1597,18 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"host", "example.org").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"host".to_vec().into(), "example.org");
             map
         });
 
         ctx.set_field_value(field("http.headers"), headers).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"host", "abc.net.au").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"host".to_vec().into(), "abc.net.au");
             map
         });
 
@@ -2186,11 +2197,11 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"0", "one").unwrap();
-            map.insert(b"1", "two").unwrap();
-            map.insert(b"2", "three").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"0".to_vec().into(), "one");
+            map.insert(b"1".to_vec().into(), "two");
+            map.insert(b"2".to_vec().into(), "three");
             map
         });
         ctx.set_field_value(field("http.headers"), headers).unwrap();
@@ -2267,11 +2278,11 @@ mod tests {
         let expr = expr.compile();
         let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        let headers = LhsValue::Map({
-            let mut map = Map::new(Type::Bytes);
-            map.insert(b"0", "one").unwrap();
-            map.insert(b"1", "two").unwrap();
-            map.insert(b"2", "three").unwrap();
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"0".to_vec().into(), "one");
+            map.insert(b"1".to_vec().into(), "two");
+            map.insert(b"2".to_vec().into(), "three");
             map
         });
         ctx.set_field_value(field("http.headers"), headers).unwrap();
@@ -3028,5 +3039,212 @@ mod tests {
 
             assert_eq!(expr.execute_one(ctx), expected, "failed test case {t:?}");
         }
+    }
+
+    #[test]
+    fn test_optional_fields() {
+        let mut builder = SchemeBuilder::new();
+        builder
+            .add_optional_field("tcp.srcport", Type::Int)
+            .unwrap();
+        builder
+            .add_optional_field("tcp.dstport", Type::Int)
+            .unwrap();
+        builder
+            .add_optional_field("tcp.flags.syn", Type::Bool)
+            .unwrap();
+        builder
+            .add_optional_field("udp.srcport", Type::Int)
+            .unwrap();
+        builder
+            .add_optional_field("udp.dstport", Type::Int)
+            .unwrap();
+        builder.set_nil_not_equal_behavior(false);
+        let scheme = builder.build();
+
+        macro_rules! test_case {
+            ($filter:ident {$($name:ident $(. $suffix:ident)*: $value:literal),*} => $outcome:literal) => {{
+                #[allow(unused_mut)]
+                let mut ctx = ExecutionContext::<()>::new(&scheme);
+                $(
+                    ctx.set_field_value(scheme.get_field(stringify!($name $(. $suffix)*)).unwrap(), $value).unwrap();
+                )*
+
+                assert_eq!($filter.execute(&ctx), Ok($outcome));
+            }};
+        }
+
+        let filter = scheme
+            .parse("(tcp.dstport != 80) or (udp.dstport != 80)")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.dstport: 443 } => true);
+
+        test_case!(filter { tcp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 53 } => true);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.dstport != 80) and (udp.dstport != 80)")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.dstport: 443 } => false);
+
+        test_case!(filter { tcp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 53 } => false);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.srcport == 1337) or ((tcp.dstport != 80) or (udp.dstport != 80))")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80 } => true);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443 } => true);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443 } => true);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 444 } => true);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.srcport == 1337) and ((tcp.dstport != 80) or (udp.dstport != 80))")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443 } => true);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443 } => false);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 444 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.srcport == 1337) or ((tcp.dstport != 80) and (udp.dstport != 80))")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80 } => true);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443 } => true);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443 } => false);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 444 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.srcport == 1337) and ((tcp.dstport != 80) and (udp.dstport != 80))")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443 } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443 } => false);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 444 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme
+            .parse("(tcp.srcport == 1337) and ((tcp.dstport != 80) and ((tcp.flags.syn) or (udp.dstport != 80)))")
+            .unwrap()
+            .compile();
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80, tcp.flags.syn: true } => false);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443, tcp.flags.syn: true } => true);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80, tcp.flags.syn: true } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443, tcp.flags.syn: true } => false);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 80, tcp.flags.syn: false } => false);
+
+        test_case!(filter { tcp.srcport: 1337, tcp.dstport: 443, tcp.flags.syn: false } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 80, tcp.flags.syn: false } => false);
+
+        test_case!(filter { tcp.srcport: 1234, tcp.dstport: 443, tcp.flags.syn: false } => false);
+
+        test_case!(filter { udp.dstport: 80 } => false);
+
+        test_case!(filter { udp.dstport: 444 } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme.parse("tcp.flags.syn").unwrap().compile();
+
+        test_case!(filter { tcp.flags.syn: true } => true);
+
+        test_case!(filter { tcp.flags.syn: false } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme.parse("not tcp.flags.syn").unwrap().compile();
+
+        test_case!(filter { tcp.flags.syn: true } => false);
+
+        test_case!(filter { tcp.flags.syn: false } => true);
+
+        test_case!(filter {} => true);
+
+        let filter = scheme.parse("not (not tcp.flags.syn)").unwrap().compile();
+
+        test_case!(filter { tcp.flags.syn: true } => true);
+
+        test_case!(filter { tcp.flags.syn: false } => false);
+
+        test_case!(filter {} => false);
+
+        let filter = scheme.parse("not (tcp.dstport eq 80)").unwrap().compile();
+
+        test_case!(filter { tcp.dstport: 80 } => false);
+
+        test_case!(filter { tcp.dstport: 443 } => true);
+
+        test_case!(filter {} => true);
+
+        let filter = scheme.parse("not (tcp.dstport ne 80)").unwrap().compile();
+
+        test_case!(filter { tcp.dstport: 80 } => true);
+
+        test_case!(filter { tcp.dstport: 443 } => false);
+
+        test_case!(filter {} => true);
     }
 }

@@ -18,7 +18,7 @@ use std::{
     net::IpAddr,
 };
 use wirefilter::{
-    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, LenFunction, LhsValue,
+    AllFunction, AlwaysList, AnyFunction, CIDRFunction, ConcatFunction, GetType, LenFunction,
     LowerFunction, NeverList, StartsWithFunction, Type, WildcardReplaceFunction, catch_panic,
 };
 
@@ -194,30 +194,6 @@ wrap_type!(Scheme);
 pub struct ExecutionContext<'s>(wirefilter::ExecutionContext<'s>);
 
 wrap_type!(ExecutionContext<'s>);
-
-#[derive(Debug, PartialEq)]
-#[repr(Rust)]
-pub struct Array<'s>(wirefilter::Array<'s>);
-
-wrap_type!(Array<'s>);
-
-impl<'s> From<Array<'s>> for LhsValue<'s> {
-    fn from(array: Array<'s>) -> Self {
-        Self::Array(array.into())
-    }
-}
-
-#[derive(Debug, PartialEq)]
-#[repr(Rust)]
-pub struct Map<'s>(wirefilter::Map<'s>);
-
-wrap_type!(Map<'s>);
-
-impl<'s> From<Map<'s>> for LhsValue<'s> {
-    fn from(map: Map<'s>) -> Self {
-        Self::Map(map.into())
-    }
-}
 
 #[derive(Debug, PartialEq)]
 #[repr(Rust)]
@@ -648,7 +624,7 @@ pub extern "C" fn wirefilter_deserialize_json_to_execution_context(
 ) -> bool {
     assert!(!json_ptr.is_null());
     let json = unsafe { std::slice::from_raw_parts(json_ptr, json_len) };
-    let mut deserializer = serde_json::Deserializer::from_slice(json);
+    let mut deserializer = serde_json::Deserializer::from_reader(json);
     match exec_context.deserialize(&mut deserializer) {
         Ok(_) => true,
         Err(err) => {
@@ -661,6 +637,39 @@ pub extern "C" fn wirefilter_deserialize_json_to_execution_context(
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_free_execution_context(exec_context: Box<ExecutionContext<'_>>) {
     drop(exec_context);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn wirefilter_add_json_value_to_execution_context(
+    exec_context: &mut ExecutionContext<'_>,
+    name_ptr: *const c_char,
+    name_len: usize,
+    json_ptr: *const u8,
+    json_len: usize,
+) -> bool {
+    let name = to_str!(name_ptr, name_len);
+    let json = unsafe { std::slice::from_raw_parts(json_ptr, json_len) };
+    let ty = match exec_context.scheme().get_field(name) {
+        Ok(field) => field.get_type(),
+        Err(err) => {
+            write_last_error!("{}", err);
+            return false;
+        }
+    };
+    let value = match ty.deserialize_value(&mut serde_json::Deserializer::from_reader(json)) {
+        Ok(value) => value,
+        Err(err) => {
+            write_last_error!("{}", err);
+            return false;
+        }
+    };
+    match exec_context.set_field_value_from_name(name, value) {
+        Ok(_) => true,
+        Err(err) => {
+            write_last_error!("{}", err);
+            false
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -723,205 +732,6 @@ pub extern "C" fn wirefilter_add_bool_value_to_execution_context(
 ) -> bool {
     let name = to_str!(name_ptr, name_len);
     exec_context.set_field_value_from_name(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_map_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name_ptr: *const c_char,
-    name_len: usize,
-    value: Box<Map<'a>>,
-) -> bool {
-    let name = to_str!(name_ptr, name_len);
-    exec_context.set_field_value_from_name(name, *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_array_value_to_execution_context<'a>(
-    exec_context: &mut ExecutionContext<'a>,
-    name_ptr: *const c_char,
-    name_len: usize,
-    value: Box<Array<'a>>,
-) -> bool {
-    let name = to_str!(name_ptr, name_len);
-    exec_context.set_field_value_from_name(name, *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_create_map<'a>(ty: CType) -> Box<Map<'a>> {
-    Box::new(Map(wirefilter::Map::new(Type::from(ty))))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_int_value_to_map(
-    map: &mut Map<'_>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: i64,
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_bytes_value_to_map(
-    map: &mut Map<'_>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value_ptr: *const u8,
-    value_len: usize,
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    assert!(!value_ptr.is_null());
-    let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len) };
-    map.insert(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_ipv6_value_to_map(
-    map: &mut Map<'_>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: &[u8; 16],
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    let value = IpAddr::from(*value);
-    map.insert(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_ipv4_value_to_map(
-    map: &mut Map<'_>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: &[u8; 4],
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    let value = IpAddr::from(*value);
-    map.insert(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_bool_value_to_map(
-    map: &mut Map<'_>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: bool,
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_map_value_to_map<'a>(
-    map: &mut Map<'a>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: Box<Map<'a>>,
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_array_value_to_map<'a>(
-    map: &mut Map<'a>,
-    name_ptr: *const u8,
-    name_len: usize,
-    value: Box<Array<'a>>,
-) -> bool {
-    assert!(!name_ptr.is_null());
-    let name = unsafe { std::slice::from_raw_parts(name_ptr, name_len) };
-    map.insert(name, *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_free_map(map: Box<Map<'_>>) {
-    drop(map)
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_create_array<'a>(ty: CType) -> Box<Array<'a>> {
-    Box::new(Array(wirefilter::Array::new(Type::from(ty))))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_int_value_to_array(
-    array: &mut Array<'_>,
-    index: u32,
-    value: i64,
-) -> bool {
-    array.insert(index.try_into().unwrap(), value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_bytes_value_to_array(
-    array: &mut Array<'_>,
-    index: u32,
-    value_ptr: *const u8,
-    value_len: usize,
-) -> bool {
-    assert!(!value_ptr.is_null());
-    let value = unsafe { std::slice::from_raw_parts(value_ptr, value_len) };
-    array.insert(index.try_into().unwrap(), value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_ipv6_value_to_array(
-    array: &mut Array<'_>,
-    index: u32,
-    value: &[u8; 16],
-) -> bool {
-    let value = IpAddr::from(*value);
-    array.insert(index.try_into().unwrap(), value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_ipv4_value_to_array(
-    array: &mut Array<'_>,
-    index: u32,
-    value: &[u8; 4],
-) -> bool {
-    let value = IpAddr::from(*value);
-    array.insert(index.try_into().unwrap(), value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_bool_value_to_array(
-    array: &mut Array<'_>,
-    index: u32,
-    value: bool,
-) -> bool {
-    array.insert(index.try_into().unwrap(), value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_map_value_to_array<'a>(
-    array: &mut Array<'a>,
-    index: u32,
-    value: Box<Map<'a>>,
-) -> bool {
-    array.insert(index.try_into().unwrap(), *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_add_array_value_to_array<'a>(
-    array: &mut Array<'a>,
-    index: u32,
-    value: Box<Array<'a>>,
-) -> bool {
-    array.insert(index.try_into().unwrap(), *value).is_ok()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_free_array(array: Box<Array<'_>>) {
-    drop(array)
 }
 
 #[derive(Debug)]
@@ -1121,6 +931,7 @@ pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
 mod ffi_test {
     use super::*;
     use regex_automata::meta::Regex;
+    use serde_json::json;
     use std::ffi::CStr;
 
     impl RustAllocatedString {
@@ -1237,49 +1048,27 @@ mod ffi_test {
             1337,
         ));
 
-        let mut map1 = wirefilter_create_map(Type::Int.into());
-
-        let key = b"key";
-        wirefilter_add_int_value_to_map(&mut map1, key.as_ptr(), key.len(), 42);
-
-        wirefilter_add_int_value_to_map(&mut map1, invalid_key.as_ptr(), invalid_key.len(), 42);
+        let json = json!([["key", 42], [invalid_key, 42]]).to_string();
 
         let field = "map1";
-        wirefilter_add_map_value_to_execution_context(
+        assert!(wirefilter_add_json_value_to_execution_context(
             &mut exec_context,
             field.as_ptr().cast(),
             field.len(),
-            map1,
-        );
+            json.as_bytes().as_ptr(),
+            json.len(),
+        ));
 
-        let mut map2 = wirefilter_create_map(Type::Bytes.into());
-
-        let key = b"key";
-        let value = "value";
-        wirefilter_add_bytes_value_to_map(
-            &mut map2,
-            key.as_ptr(),
-            key.len(),
-            value.as_ptr(),
-            value.len(),
-        );
-
-        let value = "value";
-        wirefilter_add_bytes_value_to_map(
-            &mut map2,
-            invalid_key.as_ptr(),
-            invalid_key.len(),
-            value.as_ptr(),
-            value.len(),
-        );
+        let json = json!([["key", "value"], [invalid_key, "value"]]).to_string();
 
         let field = "map2";
-        wirefilter_add_map_value_to_execution_context(
+        assert!(wirefilter_add_json_value_to_execution_context(
             &mut exec_context,
             field.as_ptr().cast(),
             field.len(),
-            map2,
-        );
+            json.as_ptr().cast(),
+            json.len(),
+        ));
 
         exec_context
     }

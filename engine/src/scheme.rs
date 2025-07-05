@@ -9,6 +9,7 @@ use crate::{
     types::{GetType, RhsValue, Type},
 };
 use fnv::FnvBuildHasher;
+use serde::de::Visitor;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::hash_map::Entry;
@@ -139,13 +140,19 @@ impl<'s> FieldRef<'s> {
     /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &'s str {
-        &self.scheme.inner.fields[self.index].0
+        &self.scheme.inner.fields[self.index].name
     }
 
     /// Get the field's index in the [`Scheme`](struct@Scheme) identifier's list.
     #[inline]
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    /// Returns whether the field value is optional.
+    #[inline]
+    pub fn optional(&self) -> bool {
+        self.scheme.inner.fields[self.index].optional
     }
 
     /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
@@ -183,7 +190,7 @@ impl<'s> FieldRef<'s> {
 impl GetType for FieldRef<'_> {
     #[inline]
     fn get_type(&self) -> Type {
-        self.scheme.inner.fields[self.index].1
+        self.scheme.inner.fields[self.index].ty
     }
 }
 
@@ -217,13 +224,19 @@ impl Field {
     /// Returns the field's name as recorded in the [`Scheme`](struct@Scheme).
     #[inline]
     pub fn name(&self) -> &str {
-        &self.scheme.inner.fields[self.index].0
+        &self.scheme.inner.fields[self.index].name
     }
 
     /// Get the field's index in the [`Scheme`](struct@Scheme) identifier's list.
     #[inline]
     pub fn index(&self) -> usize {
         self.index
+    }
+
+    /// Returns whether the field value is optional.
+    #[inline]
+    pub fn optional(&self) -> bool {
+        self.scheme.inner.fields[self.index].optional
     }
 
     /// Returns the [`Scheme`](struct@Scheme) to which this field belongs to.
@@ -245,7 +258,7 @@ impl Field {
 impl GetType for Field {
     #[inline]
     fn get_type(&self) -> Type {
-        self.scheme.inner.fields[self.index].1
+        self.scheme.inner.fields[self.index].ty
     }
 }
 
@@ -609,15 +622,24 @@ pub struct ListRedefinitionError(Type);
 
 type IdentifierName = Arc<str>;
 
+#[derive(Debug, PartialEq)]
+struct FieldDefinition {
+    name: IdentifierName,
+    ty: Type,
+    optional: bool,
+}
+
 /// A builder for a [`Scheme`].
 #[derive(Default, Debug)]
 pub struct SchemeBuilder {
-    fields: Vec<(IdentifierName, Type)>,
+    fields: Vec<FieldDefinition>,
     functions: Vec<(IdentifierName, Box<dyn FunctionDefinition>)>,
     items: HashMap<IdentifierName, SchemeItem, FnvBuildHasher>,
 
     list_types: HashMap<Type, usize, FnvBuildHasher>,
     lists: Vec<(Type, Box<dyn ListDefinition>)>,
+
+    nil_not_equal_is_false: bool,
 }
 
 impl SchemeBuilder {
@@ -626,13 +648,13 @@ impl SchemeBuilder {
         Default::default()
     }
 
-    /// Registers a field and its corresponding type.
-    pub fn add_field<N: AsRef<str>>(
+    fn add_field_full(
         &mut self,
-        name: N,
+        name: Arc<str>,
         ty: Type,
+        optional: bool,
     ) -> Result<(), IdentifierRedefinitionError> {
-        match self.items.entry(name.as_ref().into()) {
+        match self.items.entry(name) {
             Entry::Occupied(entry) => match entry.get() {
                 SchemeItem::Field(_) => Err(IdentifierRedefinitionError::Field(
                     FieldRedefinitionError(entry.key().to_string()),
@@ -643,11 +665,33 @@ impl SchemeBuilder {
             },
             Entry::Vacant(entry) => {
                 let index = self.fields.len();
-                self.fields.push((entry.key().clone(), ty));
+                self.fields.push(FieldDefinition {
+                    name: entry.key().clone(),
+                    ty,
+                    optional,
+                });
                 entry.insert(SchemeItem::Field(index));
                 Ok(())
             }
         }
+    }
+
+    /// Registers a field and its corresponding type.
+    pub fn add_field<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        ty: Type,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        self.add_field_full(name.as_ref().into(), ty, false)
+    }
+
+    /// Registers an optional field and its corresponding type.
+    pub fn add_optional_field<N: AsRef<str>>(
+        &mut self,
+        name: N,
+        ty: Type,
+    ) -> Result<(), IdentifierRedefinitionError> {
+        self.add_field_full(name.as_ref().into(), ty, true)
     }
 
     /// Registers a function
@@ -690,6 +734,15 @@ impl SchemeBuilder {
                 Ok(())
             }
         }
+    }
+
+    /// Configures the behavior of not equal comparison against a nil value.
+    ///
+    /// Default behavior is to return `true` for `nil != <value>`.
+    /// By calling this method with `false`, this behavior can be
+    /// changed so that `nil != <value>` returns `false` instead.
+    pub fn set_nil_not_equal_behavior(&mut self, behavior: bool) {
+        self.nil_not_equal_is_false = !behavior;
     }
 
     /// Build a new [`Scheme`] from this builder.
@@ -737,14 +790,28 @@ impl Hash for Scheme {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+struct SerdeField {
+    #[serde(rename = "type")]
+    ty: Type,
+    optional: bool,
+}
+
 impl Serialize for Scheme {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(self.field_count()))?;
-        for f in self.fields() {
-            map.serialize_entry(f.name(), &f.get_type())?;
+        let fields = self.fields();
+        let mut map = serializer.serialize_map(Some(fields.len()))?;
+        for f in fields {
+            map.serialize_entry(
+                f.name(),
+                &SerdeField {
+                    ty: f.get_type(),
+                    optional: f.optional(),
+                },
+            )?;
         }
         map.end()
     }
@@ -757,12 +824,35 @@ impl<'de> Deserialize<'de> for Scheme {
     {
         use serde::de::Error;
 
-        let mut builder = SchemeBuilder::new();
-        let map: HashMap<String, Type> = HashMap::<String, Type>::deserialize(deserializer)?;
-        for (name, ty) in map {
-            builder.add_field(&name, ty).map_err(D::Error::custom)?;
+        struct FieldMapVisitor;
+
+        impl<'de> Visitor<'de> for FieldMapVisitor {
+            type Value = SchemeBuilder;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a wirefilter scheme")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut builder = SchemeBuilder::new();
+                while let Some((name, SerdeField { ty, optional })) =
+                    map.next_entry::<&str, SerdeField>()?
+                {
+                    builder
+                        .add_field_full(name.into(), ty, optional)
+                        .map_err(A::Error::custom)?;
+                }
+
+                Ok(builder)
+            }
         }
-        Ok(builder.build())
+
+        deserializer
+            .deserialize_map(FieldMapVisitor)
+            .map(|builder| builder.build())
     }
 }
 
@@ -867,6 +957,11 @@ impl<'s> Scheme {
             scheme: self,
             index,
         })
+    }
+
+    #[inline]
+    pub(crate) fn nil_not_equal_behavior(&self) -> bool {
+        !self.inner.nil_not_equal_is_false
     }
 }
 
@@ -1742,4 +1837,105 @@ fn test_scheme_iter_fields() {
             scheme.get_field("x.y.z0").unwrap(),
         ]
     );
+}
+
+#[test]
+fn test_scheme_json_serialization() {
+    let scheme = Scheme! {
+        bytes: Bytes,
+        int: Int,
+        bool: Bool,
+        ip: Ip,
+        map_of_bytes: Map(Bytes),
+        map_of_array_of_bytes: Map(Array(Bytes)),
+        array_of_bytes: Array(Bytes),
+        array_of_map_of_bytes: Array(Map(Bytes)),
+    }
+    .build();
+
+    let json = serde_json::to_string(&scheme).unwrap();
+
+    let new_scheme = serde_json::from_str::<Scheme>(&json).unwrap();
+
+    assert_eq!(scheme.inner.fields, new_scheme.inner.fields);
+}
+
+#[test]
+fn test_nil_not_equal_behavior_true() {
+    use crate::{Array, ExecutionContext, Map};
+
+    let scheme = Scheme! {
+        arr: Array(Bytes),
+        map: Map(Bytes)
+    }
+    .build();
+
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
+
+    ctx.set_field_value(scheme.get_field("arr").unwrap(), Array::new(Type::Bytes))
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("map").unwrap(), Map::new(Type::Bytes))
+        .unwrap();
+
+    let filter = scheme.parse("arr[0] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(true));
+
+    let filter = scheme.parse("map[\"\"] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(true));
+
+    let mut builder = Scheme! {
+        arr: Array(Bytes),
+        map: Map(Bytes)
+    };
+
+    // Set `nil_not_equal_behavior` to default value of `true`.
+    builder.set_nil_not_equal_behavior(true);
+
+    let scheme = builder.build();
+
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
+
+    ctx.set_field_value(scheme.get_field("arr").unwrap(), Array::new(Type::Bytes))
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("map").unwrap(), Map::new(Type::Bytes))
+        .unwrap();
+
+    let filter = scheme.parse("arr[0] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(true));
+
+    let filter = scheme.parse("map[\"\"] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(true));
+}
+
+#[test]
+fn test_nil_not_equal_behavior_false() {
+    use crate::{Array, ExecutionContext, Map};
+
+    let mut builder = Scheme! {
+        arr: Array(Bytes),
+        map: Map(Bytes)
+    };
+
+    builder.set_nil_not_equal_behavior(false);
+
+    let scheme = builder.build();
+
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
+
+    ctx.set_field_value(scheme.get_field("arr").unwrap(), Array::new(Type::Bytes))
+        .unwrap();
+    ctx.set_field_value(scheme.get_field("map").unwrap(), Map::new(Type::Bytes))
+        .unwrap();
+
+    let filter = scheme.parse("arr[0] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(false));
+
+    let filter = scheme.parse("map[\"\"] != \"\"").unwrap().compile();
+
+    assert_eq!(filter.execute(&ctx), Ok(false));
 }

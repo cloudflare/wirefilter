@@ -1,6 +1,6 @@
 use crate::{
     lex::{Lex, LexResult, LexWith, expect, skip_space},
-    lhs_types::{Array, ArrayIterator, ArrayMut, Map, MapIter, MapMut, MapValuesIntoIter},
+    lhs_types::{Array, ArrayIterator, Map, MapIter, MapValuesIntoIter},
     rhs_types::{Bytes, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
@@ -136,15 +136,6 @@ pub struct TypeMismatchError {
     pub expected: ExpectedTypeList,
     /// Provided value type.
     pub actual: Type,
-}
-
-/// An error that occurs on a type mismatch.
-#[derive(Debug, PartialEq, Eq, Error)]
-pub enum SetValueError {
-    #[error("{0}")]
-    TypeMismatch(#[source] TypeMismatchError),
-    #[error("{0}")]
-    IndexAccess(#[source] IndexAccessError),
 }
 
 macro_rules! replace_underscore {
@@ -417,6 +408,14 @@ impl Type {
     /// Creates a new map type.
     pub fn map(ty: impl Into<CompoundType>) -> Self {
         Self::Map(ty.into())
+    }
+
+    /// Deserializes a value based on its type.
+    pub fn deserialize_value<'de, D>(&self, deserializer: D) -> Result<LhsValue<'de>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        LhsValueSeed(self).deserialize(deserializer)
     }
 }
 
@@ -853,42 +852,6 @@ impl<'a> LhsValue<'a> {
             .try_fold(self, |value, idx| value.extract(idx).unwrap())
     }
 
-    /// Set an element in an LhsValue given a path item and a specified value.
-    /// Returns a TypeMismatchError error if current type does not support
-    /// nested element or if value type is invalid.
-    /// Only LhsValyue::Map supports nested elements for now.
-    pub fn set<V: Into<LhsValue<'a>>>(
-        &mut self,
-        item: FieldIndex,
-        value: V,
-    ) -> Result<(), SetValueError> {
-        let value = value.into();
-        match item {
-            FieldIndex::ArrayIndex(idx) => match self {
-                LhsValue::Array(arr) => arr
-                    .insert(idx as usize, value)
-                    .map_err(SetValueError::TypeMismatch),
-                _ => Err(SetValueError::IndexAccess(IndexAccessError {
-                    index: item,
-                    actual: self.get_type(),
-                })),
-            },
-            FieldIndex::MapKey(name) => match self {
-                LhsValue::Map(map) => map
-                    .insert(name.as_bytes(), value)
-                    .map_err(SetValueError::TypeMismatch),
-                _ => Err(SetValueError::IndexAccess(IndexAccessError {
-                    index: FieldIndex::MapKey(name),
-                    actual: self.get_type(),
-                })),
-            },
-            FieldIndex::MapEach => Err(SetValueError::IndexAccess(IndexAccessError {
-                index: item,
-                actual: self.get_type(),
-            })),
-        }
-    }
-
     /// Returns an iterator over the Map or Array
     pub fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
@@ -1184,38 +1147,6 @@ declare_types!(
     /// A Map of string to [`Type`].
     Map[CompoundType](#[serde(skip_deserializing)] Map<'a> | UninhabitedMap | UninhabitedMap),
 );
-
-/// Wrapper type around mutable `LhsValue` to prevent
-/// illegal operations like changing the type of values
-/// in an `Array` or a `Map`.
-pub enum LhsValueMut<'a, 'b> {
-    /// A mutable boolean.
-    Bool(&'a mut bool),
-    /// A mutable 32-bit integer number.
-    Int(&'a mut i64),
-    /// A mutable IPv4 or IPv6 address.
-    Ip(&'a mut IpAddr),
-    /// A mutable byte string.
-    Bytes(&'a mut Cow<'b, [u8]>),
-    /// A mutable array.
-    Array(ArrayMut<'a, 'b>),
-    /// A mutable map.
-    Map(MapMut<'a, 'b>),
-}
-
-impl<'a, 'b> From<&'a mut LhsValue<'b>> for LhsValueMut<'a, 'b> {
-    #[inline]
-    fn from(value: &'a mut LhsValue<'b>) -> Self {
-        match value {
-            LhsValue::Bool(b) => LhsValueMut::Bool(b),
-            LhsValue::Int(i) => LhsValueMut::Int(i),
-            LhsValue::Ip(ip) => LhsValueMut::Ip(ip),
-            LhsValue::Bytes(b) => LhsValueMut::Bytes(b),
-            LhsValue::Array(arr) => LhsValueMut::Array(arr.into()),
-            LhsValue::Map(map) => LhsValueMut::Map(map.into()),
-        }
-    }
-}
 
 #[test]
 fn test_lhs_value_deserialize() {
