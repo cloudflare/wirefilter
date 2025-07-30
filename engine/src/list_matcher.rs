@@ -1,5 +1,6 @@
 use crate::LhsValue;
 use crate::Type;
+use dyn_clone::DynClone;
 use serde_json::Value;
 use std::any::Any;
 use std::fmt::Debug;
@@ -58,7 +59,7 @@ impl<T: PartialEq + Any> DynPartialEq for T {
 }
 
 /// Implement this Trait to match a given `LhsValue` against a list.
-pub trait ListMatcher: AsAny + Debug + DynPartialEq + Send + Sync + 'static {
+pub trait ListMatcher: AsAny + Debug + DynClone + DynPartialEq + Send + Sync + 'static {
     /// Returns true if `val` is in the given list.
     fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool;
 
@@ -68,6 +69,8 @@ pub trait ListMatcher: AsAny + Debug + DynPartialEq + Send + Sync + 'static {
     /// Clears the list matcher, removing all its content.
     fn clear(&mut self);
 }
+
+dyn_clone::clone_trait_object!(ListMatcher);
 
 impl PartialEq for dyn ListMatcher {
     #[inline]

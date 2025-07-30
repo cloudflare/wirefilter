@@ -23,6 +23,7 @@ harness = false
 backtrace.workspace = true
 cfg-if.workspace = true
 cidr.workspace = true
+dyn-clone.workspace = true
 fnv.workspace = true
 memmem.workspace = true
 rand.workspace = true
