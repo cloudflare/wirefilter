@@ -224,6 +224,17 @@ impl<'e, U> ExecutionContext<'e, U> {
         ExecutionContextGuard::new(self, user_data)
     }
 
+    /// Clone the current [`ExecutionContext`] into a new one.
+    #[inline]
+    pub fn clone_with<T>(&self, user_data: T) -> ExecutionContext<'e, T> {
+        ExecutionContext {
+            scheme: self.scheme.clone(),
+            values: self.values.clone(),
+            list_matchers: self.list_matchers.clone(),
+            user_data,
+        }
+    }
+
     /// Clears the execution context, removing all values and lists
     /// while retaining the allocated memory.
     #[inline]
