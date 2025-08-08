@@ -12,7 +12,7 @@ an executable IR and, finally, executing filters against provided values.
 ## Example
 
 ```rust
-use wirefilter::{ExecutionContext, Scheme, Type};
+use wirefilter::{ExecutionContext, Scheme};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a map of possible filter fields.
@@ -20,14 +20,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         http.method: Bytes,
         http.ua: Bytes,
         port: Int,
-    };
+    }
+    .build();
 
     // Parse a Wireshark-like expression into an AST.
-    let ast = scheme.parse(r#"
-        http.method != "POST" &&
-        not http.ua matches "(googlebot|facebook)" &&
-        port in {80 443}
-    "#)?;
+    let ast = scheme.parse(
+        r#"
+            http.method != "POST" &&
+            not http.ua matches "(googlebot|facebook)" &&
+            port in {80 443}
+        "#,
+    )?;
 
     println!("Parsed filter representation: {:?}", ast);
 
