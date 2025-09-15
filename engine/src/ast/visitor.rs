@@ -219,7 +219,7 @@ impl Visitor<'_> for UsesListVisitor<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        AlwaysList, FunctionArgKind, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl,
+        AlwaysList, Scheme, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
         SimpleFunctionParam, Type,
     };
     use std::sync::LazyLock;
@@ -239,7 +239,7 @@ mod tests {
                 "echo",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],

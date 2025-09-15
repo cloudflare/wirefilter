@@ -8,8 +8,8 @@ static A: System = System;
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
 use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, FunctionArgKind, FunctionArgs, GetType, LhsValue, SchemeBuilder,
-    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
+    ExecutionContext, FilterAst, FunctionArgs, GetType, LhsValue, SchemeBuilder,
+    SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
 };
 
 fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
@@ -209,7 +209,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                 "lowercase",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],
@@ -221,7 +221,7 @@ fn bench_string_function_comparison(c: &mut Criterion) {
                 "uppercase",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],

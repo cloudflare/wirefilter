@@ -90,6 +90,23 @@ pub enum FunctionArgKind {
     Field,
 }
 
+impl FunctionArgKind {
+    /// Check if the current argument kind matches the expected one.
+    pub fn expect(
+        &self,
+        expected_arg_kind: FunctionArgKind,
+    ) -> Result<(), FunctionArgKindMismatchError> {
+        if self == &expected_arg_kind {
+            Ok(())
+        } else {
+            Err(FunctionArgKindMismatchError {
+                expected: expected_arg_kind,
+                actual: *self,
+            })
+        }
+    }
+}
+
 /// An error that occurs on a kind mismatch.
 #[derive(Debug, PartialEq, Eq, Error)]
 #[error("expected argument of kind {expected:?}, but got {actual:?}")]
@@ -167,11 +184,8 @@ pub enum FunctionParam<'a> {
 }
 
 impl From<&FunctionParam<'_>> for FunctionArgKind {
-    fn from(arg: &FunctionParam<'_>) -> Self {
-        match arg {
-            FunctionParam::Constant(_) => FunctionArgKind::Literal,
-            FunctionParam::Variable(_) => FunctionArgKind::Field,
-        }
+    fn from(param: &FunctionParam<'_>) -> Self {
+        param.arg_kind()
     }
 }
 
@@ -207,21 +221,11 @@ impl<'a> FunctionParam<'a> {
         }
     }
 
-    /// Check if the arg_kind of current paramater matches the expected_arg_kind
-    pub fn expect_arg_kind(
-        &self,
-        expected_arg_kind: FunctionArgKind,
-    ) -> Result<(), FunctionParamError> {
-        let kind = self.into();
-        if kind == expected_arg_kind {
-            Ok(())
-        } else {
-            Err(FunctionParamError::KindMismatch(
-                FunctionArgKindMismatchError {
-                    expected: expected_arg_kind,
-                    actual: kind,
-                },
-            ))
+    /// Returns the associated argument kind.
+    pub fn arg_kind(&self) -> FunctionArgKind {
+        match self {
+            FunctionParam::Constant(_) => FunctionArgKind::Literal,
+            FunctionParam::Variable(_) => FunctionArgKind::Field,
         }
     }
 
@@ -434,11 +438,32 @@ impl PartialEq for SimpleFunctionImpl {
 
 impl Eq for SimpleFunctionImpl {}
 
+/// Kind of argument the function parameter expects.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SimpleFunctionArgKind {
+    /// The parameter is expecting a literal value.
+    Literal,
+    /// The parameter is expecting a field / dynamic value.
+    Field,
+    /// The parameter is expecting either a literal or a field / dynamic value.
+    Both,
+}
+
+impl SimpleFunctionArgKind {
+    fn expect(&self, arg_kind: FunctionArgKind) -> Result<(), FunctionArgKindMismatchError> {
+        match self {
+            SimpleFunctionArgKind::Literal => arg_kind.expect(FunctionArgKind::Literal),
+            SimpleFunctionArgKind::Field => arg_kind.expect(FunctionArgKind::Field),
+            SimpleFunctionArgKind::Both => Ok(()),
+        }
+    }
+}
+
 /// Defines a mandatory function argument.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SimpleFunctionParam {
     /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
+    pub arg_kind: SimpleFunctionArgKind,
     /// The type of its associated value.
     pub val_type: Type,
 }
@@ -447,7 +472,7 @@ pub struct SimpleFunctionParam {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SimpleFunctionOptParam {
     /// How the argument can be specified when calling a function.
-    pub arg_kind: FunctionArgKind,
+    pub arg_kind: SimpleFunctionArgKind,
     /// The default value if the argument is missing.
     pub default_value: LhsValue<'static>,
 }
@@ -476,11 +501,11 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         let index = params.len();
         if index < self.params.len() {
             let param = &self.params[index];
-            next_param.expect_arg_kind(param.arg_kind)?;
+            param.arg_kind.expect(next_param.arg_kind())?;
             next_param.expect_val_type(once(ExpectedType::Type(param.val_type)))?;
         } else if index < self.params.len() + self.opt_params.len() {
             let opt_param = &self.opt_params[index - self.params.len()];
-            next_param.expect_arg_kind(opt_param.arg_kind)?;
+            opt_param.arg_kind.expect(next_param.arg_kind())?;
             next_param
                 .expect_val_type(once(ExpectedType::Type(opt_param.default_value.get_type())))?;
         } else {

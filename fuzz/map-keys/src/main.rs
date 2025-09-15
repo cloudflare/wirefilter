@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 
 use wirefilter::{
-    FunctionArgKind, FunctionArgs, LhsValue, SimpleFunctionDefinition, SimpleFunctionImpl,
+    FunctionArgs, LhsValue, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
     SimpleFunctionParam, Type,
 };
 
@@ -58,7 +58,7 @@ fn first_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
 pub static FIRST_FN: LazyLock<SimpleFunctionDefinition> =
     LazyLock::new(|| SimpleFunctionDefinition {
         params: vec![SimpleFunctionParam {
-            arg_kind: FunctionArgKind::Field,
+            arg_kind: SimpleFunctionArgKind::Field,
             val_type: Type::Map(Type::Bytes.into()),
         }],
         opt_params: vec![],

@@ -529,8 +529,8 @@ impl<'a> Iterator for MapEachIterator<'a, '_> {
 mod tests {
     use super::*;
     use crate::{
-        Array, FieldIndex, FilterParser, FunctionArgKind, FunctionArgs, FunctionCallArgExpr,
-        FunctionCallExpr, Scheme, SchemeBuilder, SimpleFunctionDefinition, SimpleFunctionImpl,
+        Array, FieldIndex, FilterParser, FunctionArgs, FunctionCallArgExpr, FunctionCallExpr,
+        Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
         SimpleFunctionParam, ast::field_expr::IdentifierExpr,
     };
     use std::sync::LazyLock;
@@ -571,7 +571,7 @@ mod tests {
                 "array",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],
@@ -585,7 +585,7 @@ mod tests {
                 "array2",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],

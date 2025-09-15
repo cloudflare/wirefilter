@@ -527,6 +527,7 @@ impl<'i> LexWith<'i, &FilterParser<'_>> for FunctionCallExpr {
 mod tests {
     use super::*;
     use crate::{
+        SimpleFunctionArgKind,
         ast::{
             field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, OrderingOp},
             logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr},
@@ -602,7 +603,7 @@ mod tests {
                 "any",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Array(Type::Bool.into()),
                     }],
                     opt_params: vec![],
@@ -616,16 +617,16 @@ mod tests {
                 "echo",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![
                         SimpleFunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
+                            arg_kind: SimpleFunctionArgKind::Literal,
                             default_value: LhsValue::Int(10),
                         },
                         SimpleFunctionOptParam {
-                            arg_kind: FunctionArgKind::Literal,
+                            arg_kind: SimpleFunctionArgKind::Literal,
                             default_value: LhsValue::Int(1),
                         },
                     ],
@@ -639,7 +640,7 @@ mod tests {
                 "lower",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],
@@ -654,15 +655,15 @@ mod tests {
                 SimpleFunctionDefinition {
                     params: vec![
                         SimpleFunctionParam {
-                            arg_kind: FunctionArgKind::Field,
+                            arg_kind: SimpleFunctionArgKind::Field,
                             val_type: Type::Bytes,
                         },
                         SimpleFunctionParam {
-                            arg_kind: FunctionArgKind::Literal,
+                            arg_kind: SimpleFunctionArgKind::Literal,
                             val_type: Type::Bytes,
                         },
                         SimpleFunctionParam {
-                            arg_kind: FunctionArgKind::Literal,
+                            arg_kind: SimpleFunctionArgKind::Literal,
                             val_type: Type::Bytes,
                         },
                     ],
@@ -677,7 +678,7 @@ mod tests {
                 "len",
                 SimpleFunctionDefinition {
                     params: vec![SimpleFunctionParam {
-                        arg_kind: FunctionArgKind::Field,
+                        arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
                     }],
                     opt_params: vec![],

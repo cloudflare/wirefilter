@@ -1,7 +1,7 @@
 use std::env::args;
 use wirefilter::{
-    FunctionArgKind, FunctionArgs, LhsValue, Scheme, SimpleFunctionDefinition, SimpleFunctionImpl,
-    SimpleFunctionOptParam, SimpleFunctionParam, Type,
+    FunctionArgs, LhsValue, Scheme, SimpleFunctionArgKind, SimpleFunctionDefinition,
+    SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam, Type,
 };
 
 fn panic_function<'a>(_: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
@@ -28,11 +28,11 @@ fn main() {
             "panic",
             SimpleFunctionDefinition {
                 params: vec![SimpleFunctionParam {
-                    arg_kind: FunctionArgKind::Field,
+                    arg_kind: SimpleFunctionArgKind::Field,
                     val_type: Type::Bytes,
                 }],
                 opt_params: vec![SimpleFunctionOptParam {
-                    arg_kind: FunctionArgKind::Literal,
+                    arg_kind: SimpleFunctionArgKind::Literal,
                     default_value: "".into(),
                 }],
                 return_type: Type::Bytes,
