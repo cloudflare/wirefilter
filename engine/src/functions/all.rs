@@ -37,7 +37,7 @@ impl FunctionDefinition for AllFunction {
     ) -> Result<(), FunctionParamError> {
         match params.len() {
             0 => {
-                next_param.expect_arg_kind(FunctionArgKind::Field)?;
+                next_param.arg_kind().expect(FunctionArgKind::Field)?;
                 next_param.expect_val_type(once(Type::Array(Type::Bool.into()).into()))?;
             }
             _ => unreachable!(),
