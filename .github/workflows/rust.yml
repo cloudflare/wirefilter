@@ -89,4 +89,4 @@ jobs:
         # about some small leaks if backtraces are captured,
         # so ensure they're not
         RUST_BACKTRACE: 0
-      run: cargo test -Zbuild-std --verbose --target=x86_64-unknown-linux-gnu
+      run: cargo test -Zbuild-std --verbose --target=x86_64-unknown-linux-gnu --lib --bins --tests
