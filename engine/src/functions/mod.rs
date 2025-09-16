@@ -5,6 +5,7 @@ pub(crate) mod concat;
 pub(crate) mod len;
 pub(crate) mod lower;
 pub(crate) mod starts_with;
+pub(crate) mod url_decode;
 pub(crate) mod wildcard_replace;
 
 use crate::{
@@ -24,6 +25,7 @@ use std::convert::TryFrom;
 use std::fmt::{self, Debug};
 use std::iter::once;
 use thiserror::Error;
+pub use url_decode::UrlDecodeFunction;
 pub use wildcard_replace::WildcardReplaceFunction;
 
 pub(crate) struct ExactSizeChain<A, B>
