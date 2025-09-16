@@ -11,7 +11,7 @@ use crate::{
     filter::CompiledExpr,
     lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     range_set::RangeSet,
-    rhs_types::{Bytes, ExplicitIpRange, ListName, Regex, Wildcard},
+    rhs_types::{Bytes, ExplicitIpRange, ListName, RegexExpr, Wildcard},
     scheme::{Field, Identifier, List},
     searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
@@ -152,7 +152,7 @@ pub enum ComparisonOpExpr {
 
     /// "matches / ~" comparison
     #[serde(serialize_with = "serialize_matches")]
-    Matches(Regex),
+    Matches(RegexExpr),
 
     /// "wildcard" comparison
     #[serde(serialize_with = "serialize_wildcard")]
@@ -205,7 +205,7 @@ fn serialize_contains<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Er
     serialize_op_rhs("Contains", rhs, ser)
 }
 
-fn serialize_matches<S: Serializer>(rhs: &Regex, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_matches<S: Serializer>(rhs: &RegexExpr, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Matches", rhs, ser)
 }
 
@@ -376,7 +376,7 @@ impl ComparisonExpr {
                         (ComparisonOpExpr::Contains(bytes), input)
                     }
                     BytesOp::Matches => {
-                        let (regex, input) = Regex::lex_with(input, parser)?;
+                        let (regex, input) = RegexExpr::lex_with(input, parser)?;
                         (ComparisonOpExpr::Matches(regex), input)
                     }
                     BytesOp::Wildcard => {
@@ -688,7 +688,9 @@ impl Expr for ComparisonExpr {
 
                 search!(TwoWaySearcher::new(bytes))
             }
-            ComparisonOpExpr::Matches(regex) => lhs.compile_with(compiler, false, regex),
+            ComparisonOpExpr::Matches(regex) => {
+                lhs.compile_with(compiler, false, regex.into_regex())
+            }
             ComparisonOpExpr::Wildcard(wildcard) => lhs.compile_with(compiler, false, wildcard),
             ComparisonOpExpr::StrictWildcard(wildcard) => {
                 lhs.compile_with(compiler, false, wildcard)
@@ -2807,7 +2809,12 @@ mod tests {
 
         // Matches operator
         let parser = FilterParser::new(&SCHEME);
-        let r = Regex::new("a.b", RegexFormat::Literal, parser.settings()).unwrap();
+        let r = RegexExpr::new(
+            "a.b",
+            RegexFormat::Literal,
+            &parser.settings().regex_provider,
+        )
+        .unwrap();
         let expr = assert_ok!(
             parser.lex_as("http.host matches r###\"a.b\"###"),
             ComparisonExpr {

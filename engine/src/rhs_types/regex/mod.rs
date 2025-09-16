@@ -5,6 +5,7 @@ use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use thiserror::Error;
 
 cfg_if! {
@@ -26,28 +27,74 @@ pub enum RegexFormat {
     Raw(u8),
 }
 
-impl PartialEq for Regex {
-    fn eq(&self, other: &Regex) -> bool {
+/// Regex expression.
+#[derive(Clone)]
+pub struct RegexExpr {
+    pattern: Arc<str>,
+    format: RegexFormat,
+    regex: Arc<dyn Regex>,
+}
+
+impl RegexExpr {
+    /// Create a new regex expression.
+    pub fn new(
+        pattern: &str,
+        format: RegexFormat,
+        provider: &impl RegexProvider,
+    ) -> Result<Self, Error> {
+        provider.lookup_regex(pattern).map(|regex| Self {
+            pattern: pattern.to_owned().into(),
+            format,
+            regex,
+        })
+    }
+    /// Returns the pattern of this regex.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.pattern
+    }
+
+    /// Returns the format used by the pattern.
+    #[inline]
+    pub fn format(&self) -> RegexFormat {
+        self.format
+    }
+
+    /// Returns the associated regex object.
+    #[inline]
+    pub fn as_regex(&self) -> &Arc<dyn Regex> {
+        &self.regex
+    }
+
+    /// Converts the regex expression into its underlying regex object.
+    #[inline]
+    pub fn into_regex(self) -> Arc<dyn Regex> {
+        self.regex
+    }
+}
+
+impl PartialEq for RegexExpr {
+    fn eq(&self, other: &RegexExpr) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
-impl Eq for Regex {}
+impl Eq for RegexExpr {}
 
-impl Hash for Regex {
+impl Hash for RegexExpr {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_str().hash(state);
     }
 }
 
-impl Display for Regex {
+impl Display for RegexExpr {
     /// Shows the original regular expression.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        Display::fmt(self.as_str(), f)
     }
 }
 
-impl Debug for Regex {
+impl Debug for RegexExpr {
     /// Shows the original regular expression.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Regex")
@@ -60,15 +107,22 @@ impl Debug for Regex {
 fn lex_regex_from_raw_string<'i>(
     input: &'i str,
     parser: &FilterParser<'_>,
-) -> LexResult<'i, Regex> {
+) -> LexResult<'i, RegexExpr> {
     let ((lexed, hashes), input) = lex_raw_string_as_str(input)?;
-    match Regex::new(lexed, RegexFormat::Raw(hashes), parser.settings()) {
+    match RegexExpr::new(
+        lexed,
+        RegexFormat::Raw(hashes),
+        &parser.settings().regex_provider,
+    ) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), input)),
     }
 }
 
-fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Regex> {
+fn lex_regex_from_literal<'i>(
+    input: &'i str,
+    parser: &FilterParser<'_>,
+) -> LexResult<'i, RegexExpr> {
     let mut regex_buf = String::new();
     let mut in_char_class = false;
     let (regex_str, input) = {
@@ -104,13 +158,17 @@ fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexR
             };
         }
     };
-    match Regex::new(&regex_buf, RegexFormat::Literal, parser.settings()) {
+    match RegexExpr::new(
+        &regex_buf,
+        RegexFormat::Literal,
+        &parser.settings().regex_provider,
+    ) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
+impl<'i, 's> LexWith<'i, &FilterParser<'s>> for RegexExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
         if let Some(c) = input.as_bytes().first() {
             match c {
@@ -124,7 +182,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
     }
 }
 
-impl Serialize for Regex {
+impl Serialize for RegexExpr {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         self.as_str().serialize(ser)
     }
@@ -146,7 +204,13 @@ pub enum Error {
     Other(String),
 }
 
-impl<U> Compare<U> for Regex {
+/// Trait representing a compiled regex object.
+pub trait Regex: Send + Sync {
+    /// Matches the regex against some input.
+    fn is_match(&self, input: &[u8]) -> bool;
+}
+
+impl<U> Compare<U> for Arc<dyn Regex> {
     #[inline]
     fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
         self.is_match(match value {
@@ -156,10 +220,23 @@ impl<U> Compare<U> for Regex {
     }
 }
 
+/// Regex provider.
+pub trait RegexProvider: Debug + Send + Sync {
+    /// Attempts to retrieve a regex from the provider.
+    fn lookup_regex(&self, pattern: &str) -> Result<Arc<dyn Regex>, Error>;
+}
+
+impl RegexProvider for Arc<dyn RegexProvider> {
+    #[inline]
+    fn lookup_regex(&self, pattern: &str) -> Result<Arc<dyn Regex>, Error> {
+        (**self).lookup_regex(pattern)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{ParserSettings, SchemeBuilder};
+    use crate::SchemeBuilder;
 
     #[test]
     fn test() {
@@ -167,11 +244,11 @@ mod test {
         let parser = FilterParser::new(&scheme);
 
         let expr = assert_ok!(
-            Regex::lex_with(r#""[a-z"\]]+\d{1,10}\"";"#, &parser),
-            Regex::new(
+            RegexExpr::lex_with(r#""[a-z"\]]+\d{1,10}\"";"#, &parser),
+            RegexExpr::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Literal,
-                &ParserSettings::default(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ";"
@@ -180,7 +257,7 @@ mod test {
         assert_json!(expr, r#"[a-z"\]]+\d{1,10}""#);
 
         assert_err!(
-            Regex::lex_with(r#""abcd\"#, &parser),
+            RegexExpr::lex_with(r#""abcd\"#, &parser),
             LexErrorKind::MissingEndingQuote,
             "abcd\\"
         );
@@ -192,14 +269,14 @@ mod test {
         let parser = FilterParser::new(&scheme);
 
         let expr = assert_ok!(
-            Regex::lex_with(
+            RegexExpr::lex_with(
                 r###"r#"[a-z"\]]+\d{1,10}""#;"###,
                 &FilterParser::new(&scheme)
             ),
-            Regex::new(
+            RegexExpr::new(
                 r#"[a-z"\]]+\d{1,10}""#,
                 RegexFormat::Raw(1),
-                parser.settings(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ";"
@@ -208,14 +285,14 @@ mod test {
         assert_json!(expr, r#"[a-z"\]]+\d{1,10}""#);
 
         let expr = assert_ok!(
-            Regex::lex_with(
+            RegexExpr::lex_with(
                 r##"r#"(?u)\*\a\f\t\n\r\v\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#"##,
                 &parser,
             ),
-            Regex::new(
+            RegexExpr::new(
                 r#"(?u)\*\a\f\t\n\r\v\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#,
                 RegexFormat::Raw(1),
-                parser.settings(),
+                &parser.settings().regex_provider,
             )
             .unwrap(),
             ""
@@ -227,7 +304,7 @@ mod test {
         );
 
         assert_err!(
-            Regex::lex_with("x", &FilterParser::new(&scheme)),
+            RegexExpr::lex_with("x", &FilterParser::new(&scheme)),
             LexErrorKind::ExpectedName("\" or r"),
             "x"
         );
