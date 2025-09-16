@@ -100,7 +100,7 @@ pub use self::{
         FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition,
         FunctionDefinitionContext, FunctionParam, FunctionParamError, LenFunction, LowerFunction,
         SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
-        StartsWithFunction, WildcardReplaceFunction,
+        StartsWithFunction, UrlDecodeFunction, WildcardReplaceFunction,
     },
     lex::LexErrorKind,
     lhs_types::{Array, Map, MapIter, TypedArray, TypedMap},

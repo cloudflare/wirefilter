@@ -2,6 +2,33 @@ use std::{borrow::Cow, iter};
 
 use crate::{FunctionArgs, FunctionDefinition, LhsValue, Type};
 
+/// Decodes a URL-formatted string defined in source.
+///
+/// Behavior summary:
+/// - `%20` and `+` decode to a space character (` `).
+/// - `%HH` decodes to the corresponding byte value.
+/// - `%uXXXX` (when the `u` option is provided) decodes to the Unicode
+///   code point U+XXXX and is emitted as UTF-8 bytes.
+/// - The source must be a field (not a literal string).
+///
+/// Options (passed as a single literal string, e.g. "r" or "ur"):
+/// - `r`: Recursive decoding. For example `%2520` decoded with `r` becomes a space
+///        (`%2520` -> `%20` -> ` `).
+/// - `u`: Enable Unicode percent decoding using `%uXXXX` sequences. The output
+///        will be UTF-8 encoded.
+///
+/// Examples:
+///
+/// url_decode("John%20Doe") -> "John Doe"
+/// url_decode("John+Doe")   -> "John Doe"
+/// url_decode("%2520")      -> "%20"
+/// url_decode("%2520", "r") -> " "
+///
+/// Notes:
+/// - If `u` is provided and a `%uXXXX` sequence contains an invalid code point
+///   or invalid hex, the implementation falls back conservatively and leaves
+///   the `%` byte intact for that sequence.
+/// - Recursive decoding is bounded (to avoid pathological loops).
 #[derive(Debug, Default)]
 pub struct UrlDecodeFunction {}
 
@@ -61,7 +88,6 @@ fn decode_once(input: &[u8], unicode_u: bool) -> Vec<u8> {
 
 #[inline]
 fn url_decode<'a>(source: Cow<'_, [u8]>, options: Option<Cow<'_, [u8]>>) -> Cow<'a, [u8]> {
-    // parse options: look for 'r' and 'u' characters
     let mut recursive = false;
     let mut unicode_u = false;
     if let Some(opts) = options {
@@ -76,11 +102,9 @@ fn url_decode<'a>(source: Cow<'_, [u8]>, options: Option<Cow<'_, [u8]>>) -> Cow<
 
     let mut current = source.into_owned();
 
-    // At least one pass
     let mut next = decode_once(&current, unicode_u);
 
     if recursive {
-        // Limit iterations to avoid pathological loops
         for _ in 0..10 {
             if next == current {
                 break;
