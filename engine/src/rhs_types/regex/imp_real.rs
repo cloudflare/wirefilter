@@ -1,4 +1,5 @@
 use regex_automata::MatchKind;
+use regex_automata::nfa::thompson::WhichCaptures;
 
 use super::Error;
 use crate::{ParserSettings, RegexFormat};
@@ -33,6 +34,7 @@ impl Regex {
             .onepass(false)
             .dfa_size_limit(Some(settings.regex_compiled_size_limit))
             .hybrid_cache_capacity(settings.regex_dfa_size_limit)
+            .which_captures(WhichCaptures::Implicit)
     }
 
     /// Compiles a regular expression.
