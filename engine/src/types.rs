@@ -331,7 +331,10 @@ macro_rules! declare_types {
         impl From<RhsValue> for RhsValues {
             fn from(rhs: RhsValue) -> Self {
                 match rhs {
-                    $(RhsValue::$name(rhs) => RhsValues::$name(vec![rhs.into()]),)*
+                    $(RhsValue::$name(rhs) => {
+                        #[allow(unreachable_code)]
+                        RhsValues::$name(vec![rhs.into()])
+                    })*
                 }
             }
         }
@@ -341,7 +344,10 @@ macro_rules! declare_types {
             pub fn push(&mut self, rhs: RhsValue) -> Result<(), TypeMismatchError> {
                 match self {
                     $(RhsValues::$name(vec) => match rhs {
-                        RhsValue::$name(rhs) => Ok(vec.push(rhs.into())),
+                        RhsValue::$name(rhs) => {
+                            #[allow(unreachable_code)]
+                            Ok(vec.push(rhs.into()))
+                        }
                         _ => Err(TypeMismatchError {
                             expected: self.get_type().into(),
                             actual: rhs.get_type(),
