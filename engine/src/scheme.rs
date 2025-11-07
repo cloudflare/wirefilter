@@ -29,11 +29,9 @@ use thiserror::Error;
 #[error("underlying schemes do not match")]
 pub struct SchemeMismatchError;
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
-#[serde(tag = "kind", content = "value")]
-/// FieldIndex is an enum with variants [`ArrayIndex(usize)`],
-/// representing an index into an Array, or `[MapKey(String)`],
-/// representing a key into a Map.
+/// Enum representing either:
+/// * An array index with [`FieldIndex::ArrayIndex`]
+/// * A map key with [`FieldIndex::MapKey`]
 ///
 /// ```
 /// #[allow(dead_code)]
@@ -42,6 +40,8 @@ pub struct SchemeMismatchError;
 ///     MapKey(String),
 /// }
 /// ```
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
+#[serde(tag = "kind", content = "value")]
 pub enum FieldIndex {
     /// Index into an Array
     ArrayIndex(u32),
