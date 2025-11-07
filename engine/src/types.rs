@@ -880,9 +880,9 @@ impl Serialize for LhsValue<'_> {
             LhsValue::Ip(ip) => ip.serialize(serializer),
             LhsValue::Bytes(bytes) => {
                 if let Ok(s) = std::str::from_utf8(bytes) {
-                    s.serialize(serializer)
+                    serializer.serialize_str(s)
                 } else {
-                    bytes.serialize(serializer)
+                    serializer.serialize_bytes(bytes)
                 }
             }
             LhsValue::Int(num) => num.serialize(serializer),
