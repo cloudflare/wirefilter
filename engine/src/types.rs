@@ -1,7 +1,7 @@
 use crate::{
     lex::{Lex, LexResult, LexWith, expect, skip_space},
     lhs_types::{Array, ArrayIterator, Map, MapIter, MapValuesIntoIter},
-    rhs_types::{Bytes, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
+    rhs_types::{BytesExpr, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
 };
@@ -1148,7 +1148,7 @@ declare_types!(
     ///
     /// These are completely interchangeable in runtime and differ only in
     /// syntax representation, so we represent them as a single type.
-    Bytes(#[serde(borrow)] Cow<'a, [u8]> | Bytes | Bytes),
+    Bytes(#[serde(borrow)] Cow<'a, [u8]> | BytesExpr | BytesExpr),
 
     /// An Array of [`Type`].
     Array[CompoundType](#[serde(skip_deserializing)] Array<'a> | UninhabitedArray | UninhabitedArray),

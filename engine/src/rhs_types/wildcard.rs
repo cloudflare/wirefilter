@@ -1,6 +1,6 @@
 use crate::lex::{LexResult, LexWith};
-use crate::rhs_types::bytes::lex_quoted_or_raw_string;
-use crate::{Bytes, FilterParser, LexErrorKind};
+use crate::rhs_types::bytes::{BytesExpr, lex_quoted_or_raw_string};
+use crate::{FilterParser, LexErrorKind};
 use serde::{Serialize, Serializer};
 use std::{
     fmt::{self, Debug, Formatter},
@@ -65,12 +65,12 @@ pub struct Wildcard<const STRICT: bool> {
     compiled_wildcard: wildcard::Wildcard<'static>,
     /// The original pattern. We keep this to allow correct serialization of the wildcard pattern,
     /// since bytes are encoded differently depending on whether they are a valid UTF-8 sequence.
-    pattern: Bytes,
+    pattern: BytesExpr,
 }
 
 impl<const STRICT: bool> Wildcard<STRICT> {
     pub fn new(
-        pattern: Bytes,
+        pattern: BytesExpr,
         wildcard_star_limit: usize,
     ) -> Result<Wildcard<STRICT>, WildcardError> {
         let wildcard = wildcard::WildcardBuilder::from_owned(pattern.to_vec())
@@ -92,7 +92,7 @@ impl<const STRICT: bool> Wildcard<STRICT> {
     }
 
     /// Returns the pattern.
-    pub fn pattern(&self) -> &Bytes {
+    pub fn pattern(&self) -> &BytesExpr {
         &self.pattern
     }
 }
@@ -144,12 +144,12 @@ mod test {
         fn t<const STRICT: bool>() {
             assert_eq!(
                 Wildcard::<STRICT>::new(
-                    Bytes::new("a quoted string".as_bytes(), BytesFormat::Quoted),
+                    BytesExpr::new("a quoted string".as_bytes(), BytesFormat::Quoted),
                     usize::MAX
                 )
                 .unwrap(),
                 Wildcard::<STRICT>::new(
-                    Bytes::new("a quoted string".as_bytes(), BytesFormat::Quoted),
+                    BytesExpr::new("a quoted string".as_bytes(), BytesFormat::Quoted),
                     usize::MAX
                 )
                 .unwrap(),
@@ -159,12 +159,12 @@ mod test {
             // visual representation:
             assert_ne!(
                 Wildcard::<STRICT>::new(
-                    Bytes::new("a quoted string".as_bytes(), BytesFormat::Quoted),
+                    BytesExpr::new("a quoted string".as_bytes(), BytesFormat::Quoted),
                     usize::MAX
                 )
                 .unwrap(),
                 Wildcard::<STRICT>::new(
-                    Bytes::new("a quoted string".as_bytes(), BytesFormat::Raw(0)),
+                    BytesExpr::new("a quoted string".as_bytes(), BytesFormat::Raw(0)),
                     usize::MAX
                 )
                 .unwrap(),
@@ -183,7 +183,7 @@ mod test {
             let expr = assert_ok!(
                 Wildcard::<STRICT>::lex_with(r#""a quoted string";"#, &FilterParser::new(&scheme)),
                 Wildcard::<STRICT>::new(
-                    Bytes::new("a quoted string".as_bytes(), BytesFormat::Quoted),
+                    BytesExpr::new("a quoted string".as_bytes(), BytesFormat::Quoted),
                     usize::MAX
                 )
                 .unwrap(),
@@ -217,7 +217,7 @@ mod test {
                     &FilterParser::new(&scheme)
                 ),
                 Wildcard::<STRICT>::new(
-                    Bytes::new(
+                    BytesExpr::new(
                         r#####"a raw\\xaa r#""# string"#####.as_bytes(),
                         BytesFormat::Raw(2),
                     ),
@@ -258,7 +258,7 @@ mod test {
                     &FilterParser::new(&scheme)
                 ),
                 Wildcard::<STRICT>::new(
-                    Bytes::new(bytes.into_boxed_slice(), BytesFormat::Quoted),
+                    BytesExpr::new(bytes.into_boxed_slice(), BytesFormat::Quoted),
                     usize::MAX
                 )
                 .unwrap(),

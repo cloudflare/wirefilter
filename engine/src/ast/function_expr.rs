@@ -537,7 +537,7 @@ mod tests {
             FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, SimpleFunctionDefinition,
             SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
         },
-        rhs_types::{Bytes, BytesFormat},
+        rhs_types::{BytesExpr, BytesFormat},
         scheme::{FieldIndex, IndexAccessError, Scheme},
         types::{RhsValues, Type, TypeMismatchError},
     };
@@ -1265,8 +1265,8 @@ mod tests {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new("this is a r##raw## string".as_bytes(), BytesFormat::Raw(0)))),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new("this is a new r##raw## string".as_bytes(), BytesFormat::Raw(0))))
+                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a r##raw## string".as_bytes(), BytesFormat::Raw(0)))),
+                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a new r##raw## string".as_bytes(), BytesFormat::Raw(0))))
                 ],
                 context: None,
             },
@@ -1306,8 +1306,8 @@ mod tests {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new("this is a r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3)))),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new("this is a new r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3))))
+                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3)))),
+                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a new r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3))))
                 ],
                 context: None,
             },

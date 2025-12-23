@@ -112,7 +112,7 @@ pub use self::{
         panic_catcher_get_backtrace, panic_catcher_set_fallback_mode, panic_catcher_set_hook,
     },
     rhs_types::{
-        Bytes, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,
+        BytesExpr, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,
         RegexFormat,
     },
     scheme::{

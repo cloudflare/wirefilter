@@ -11,7 +11,7 @@ mod wildcard;
 pub use self::{
     array::UninhabitedArray,
     bool::UninhabitedBool,
-    bytes::{Bytes, BytesFormat},
+    bytes::{BytesExpr, BytesFormat},
     int::IntRange,
     ip::{ExplicitIpRange, IpCidr, IpRange},
     list::ListName,

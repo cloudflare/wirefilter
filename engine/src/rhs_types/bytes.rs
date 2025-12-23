@@ -23,12 +23,12 @@ pub enum BytesFormat {
 
 /// Bytes literal represented either by a string, raw string or raw bytes.
 #[derive(PartialEq, Eq, Clone)]
-pub struct Bytes {
+pub struct BytesExpr {
     format: BytesFormat,
     data: Box<[u8]>,
 }
 
-impl Bytes {
+impl BytesExpr {
     /// Creates a new bytes literal.
     #[inline]
     pub fn new(data: impl Into<Box<[u8]>>, format: BytesFormat) -> Self {
@@ -45,7 +45,7 @@ impl Bytes {
     }
 }
 
-impl Serialize for Bytes {
+impl Serialize for BytesExpr {
     #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -66,48 +66,48 @@ impl Serialize for Bytes {
 // `Bytes == Bytes` to check enum tags but `Bytes == &[u8]` to ignore them, and
 // consistency of the latter is all that matters for `Borrow` consumers.
 #[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for Bytes {
+impl Hash for BytesExpr {
     #[inline]
     fn hash<H: Hasher>(&self, h: &mut H) {
         (self as &[u8]).hash(h);
     }
 }
 
-impl From<Vec<u8>> for Bytes {
+impl From<Vec<u8>> for BytesExpr {
     #[inline]
     fn from(src: Vec<u8>) -> Self {
-        Bytes {
+        Self {
             format: BytesFormat::Byte,
             data: src.into_boxed_slice(),
         }
     }
 }
 
-impl From<String> for Bytes {
+impl From<String> for BytesExpr {
     #[inline]
     fn from(src: String) -> Self {
-        Bytes {
+        Self {
             format: BytesFormat::Quoted,
             data: src.into_boxed_str().into_boxed_bytes(),
         }
     }
 }
 
-impl From<Bytes> for Box<[u8]> {
+impl From<BytesExpr> for Box<[u8]> {
     #[inline]
-    fn from(bytes: Bytes) -> Self {
+    fn from(bytes: BytesExpr) -> Self {
         bytes.data
     }
 }
 
-impl From<Bytes> for Vec<u8> {
+impl From<BytesExpr> for Vec<u8> {
     #[inline]
-    fn from(bytes: Bytes) -> Self {
+    fn from(bytes: BytesExpr) -> Self {
         bytes.data.into_vec()
     }
 }
 
-impl Debug for Bytes {
+impl Debug for BytesExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         fn fmt_raw(data: &[u8], f: &mut Formatter<'_>) -> fmt::Result {
             let mut iter = data.iter();
@@ -130,7 +130,7 @@ impl Debug for Bytes {
     }
 }
 
-impl Deref for Bytes {
+impl Deref for BytesExpr {
     type Target = [u8];
 
     #[inline]
@@ -139,14 +139,14 @@ impl Deref for Bytes {
     }
 }
 
-impl AsRef<[u8]> for Bytes {
+impl AsRef<[u8]> for BytesExpr {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self
     }
 }
 
-impl<'a> IntoIterator for &'a Bytes {
+impl<'a> IntoIterator for &'a BytesExpr {
     type Item = &'a u8;
     type IntoIter = std::slice::Iter<'a, u8>;
 
@@ -236,9 +236,9 @@ pub(crate) fn lex_quoted_string_as_vec(input: &str) -> LexResult<'_, Vec<u8>> {
     }
 }
 
-fn lex_quoted_string(input: &str) -> LexResult<'_, Bytes> {
+fn lex_quoted_string(input: &str) -> LexResult<'_, BytesExpr> {
     lex_quoted_string_as_vec(input).map(|(vec, rest)| {
-        let bytes = Bytes {
+        let bytes = BytesExpr {
             format: BytesFormat::Quoted,
             data: vec.into_boxed_slice(),
         };
@@ -247,7 +247,7 @@ fn lex_quoted_string(input: &str) -> LexResult<'_, Bytes> {
     })
 }
 
-fn lex_byte_string(mut input: &str) -> LexResult<'_, Bytes> {
+fn lex_byte_string(mut input: &str) -> LexResult<'_, BytesExpr> {
     let mut res = Vec::new();
     let (b, rest) = hex_byte(input)?;
     res.push(b);
@@ -309,10 +309,10 @@ pub(crate) fn lex_raw_string_as_str(input: &str) -> LexResult<'_, (&str, u8)> {
 }
 
 #[inline]
-fn lex_raw_string(input: &str) -> LexResult<'_, Bytes> {
+fn lex_raw_string(input: &str) -> LexResult<'_, BytesExpr> {
     let ((lexed, hash_count), rest) = lex_raw_string_as_str(input)?;
     Ok((
-        Bytes {
+        BytesExpr {
             format: BytesFormat::Raw(hash_count),
             data: Box::from(lexed.as_bytes()),
         },
@@ -320,7 +320,7 @@ fn lex_raw_string(input: &str) -> LexResult<'_, Bytes> {
     ))
 }
 
-pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, Bytes> {
+pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, BytesExpr> {
     match input.as_bytes().first() {
         Some(b'"') => lex_quoted_string(&input[1..]),
         Some(b'r') => lex_raw_string(&input[1..]),
@@ -329,7 +329,7 @@ pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, Bytes> {
     }
 }
 
-impl Lex<'_> for Bytes {
+impl Lex<'_> for BytesExpr {
     #[inline]
     fn lex(input: &str) -> LexResult<'_, Self> {
         match input.as_bytes().first() {
@@ -349,18 +349,18 @@ mod test {
     #[test]
     fn test() {
         assert_ok!(
-            Bytes::lex("01:2e:f3-77.12;"),
-            Bytes::from(vec![0x01, 0x2E, 0xF3, 0x77, 0x12]),
+            BytesExpr::lex("01:2e:f3-77.12;"),
+            BytesExpr::from(vec![0x01, 0x2E, 0xF3, 0x77, 0x12]),
             ";"
         );
 
         assert_ok!(
-            Bytes::lex(r#""s\\t\"r\x0A\000t""#),
-            Bytes::from("s\\t\"r\n\0t".to_owned())
+            BytesExpr::lex(r#""s\\t\"r\x0A\000t""#),
+            BytesExpr::from("s\\t\"r\n\0t".to_owned())
         );
 
         assert_err!(
-            Bytes::lex("01:4x;"),
+            BytesExpr::lex("01:4x;"),
             LexErrorKind::ParseInt {
                 err: u8::from_str_radix("4x", 16).unwrap_err(),
                 radix: 16,
@@ -369,13 +369,13 @@ mod test {
         );
 
         assert_err!(
-            Bytes::lex("01;"),
+            BytesExpr::lex("01;"),
             LexErrorKind::ExpectedName("byte separator"),
             ";"
         );
 
         assert_err!(
-            Bytes::lex("01:;"),
+            BytesExpr::lex("01:;"),
             LexErrorKind::CountMismatch {
                 name: "character",
                 actual: 1,
@@ -384,24 +384,27 @@ mod test {
             ";"
         );
 
-        assert_ok!(Bytes::lex("01:2f-34"), Bytes::from(vec![0x01, 0x2F, 0x34]));
+        assert_ok!(
+            BytesExpr::lex("01:2f-34"),
+            BytesExpr::from(vec![0x01, 0x2F, 0x34])
+        );
 
-        assert_err!(Bytes::lex("\"1"), LexErrorKind::MissingEndingQuote, "1");
+        assert_err!(BytesExpr::lex("\"1"), LexErrorKind::MissingEndingQuote, "1");
 
         assert_err!(
-            Bytes::lex(r#""\n""#),
+            BytesExpr::lex(r#""\n""#),
             LexErrorKind::InvalidCharacterEscape,
             "n"
         );
 
         assert_err!(
-            Bytes::lex(r#""abcd\"#),
+            BytesExpr::lex(r#""abcd\"#),
             LexErrorKind::MissingEndingQuote,
             "abcd\\"
         );
 
         assert_err!(
-            Bytes::lex(r#""\01😢""#),
+            BytesExpr::lex(r#""\01😢""#),
             LexErrorKind::ParseInt {
                 err: u8::from_str_radix("01😢", 8).unwrap_err(),
                 radix: 8,
@@ -410,7 +413,7 @@ mod test {
         );
 
         assert_err!(
-            Bytes::lex(r#""\x3😢""#),
+            BytesExpr::lex(r#""\x3😢""#),
             LexErrorKind::ParseInt {
                 err: u8::from_str_radix("3😢", 16).unwrap_err(),
                 radix: 16,
@@ -419,7 +422,7 @@ mod test {
         );
 
         assert_err!(
-            Bytes::lex("12:3😢"),
+            BytesExpr::lex("12:3😢"),
             LexErrorKind::ParseInt {
                 err: u8::from_str_radix("3😢", 16).unwrap_err(),
                 radix: 16,
@@ -427,33 +430,39 @@ mod test {
             "3😢"
         );
 
-        assert_ok!(Bytes::lex(r#""\x7F""#), Bytes::from("\x7F".to_owned()));
-
         assert_ok!(
-            Bytes::lex(r#""\x80""#),
-            Bytes::new(vec![0x80], BytesFormat::Quoted)
+            BytesExpr::lex(r#""\x7F""#),
+            BytesExpr::from("\x7F".to_owned())
         );
 
         assert_ok!(
-            Bytes::lex(r#""\xFF""#),
-            Bytes::new(vec![0xFF], BytesFormat::Quoted)
-        );
-
-        assert_ok!(Bytes::lex(r#""\177""#), Bytes::from("\x7F".to_owned()));
-
-        assert_ok!(
-            Bytes::lex(r#""\200""#),
-            Bytes::new(vec![0x80], BytesFormat::Quoted)
+            BytesExpr::lex(r#""\x80""#),
+            BytesExpr::new(vec![0x80], BytesFormat::Quoted)
         );
 
         assert_ok!(
-            Bytes::lex(r#""\377""#),
-            Bytes::new(vec![0xFF], BytesFormat::Quoted)
+            BytesExpr::lex(r#""\xFF""#),
+            BytesExpr::new(vec![0xFF], BytesFormat::Quoted)
         );
 
         assert_ok!(
-            Bytes::lex("c2:b4710c6888a5d47befe865c8e6fb19"),
-            Bytes::from(vec![0xC2, 0xb4]),
+            BytesExpr::lex(r#""\177""#),
+            BytesExpr::from("\x7F".to_owned())
+        );
+
+        assert_ok!(
+            BytesExpr::lex(r#""\200""#),
+            BytesExpr::new(vec![0x80], BytesFormat::Quoted)
+        );
+
+        assert_ok!(
+            BytesExpr::lex(r#""\377""#),
+            BytesExpr::new(vec![0xFF], BytesFormat::Quoted)
+        );
+
+        assert_ok!(
+            BytesExpr::lex("c2:b4710c6888a5d47befe865c8e6fb19"),
+            BytesExpr::from(vec![0xC2, 0xb4]),
             "710c6888a5d47befe865c8e6fb19"
         );
     }
@@ -462,87 +471,87 @@ mod test {
     fn test_raw_string() {
         // Valid empty strings
         assert_ok!(
-            Bytes::lex("r\"\""),
-            Bytes::new("".as_bytes(), BytesFormat::Raw(0))
+            BytesExpr::lex("r\"\""),
+            BytesExpr::new("".as_bytes(), BytesFormat::Raw(0))
         );
         assert_ok!(
-            Bytes::lex("r#\"\"#"),
-            Bytes::new("".as_bytes(), BytesFormat::Raw(1))
+            BytesExpr::lex("r#\"\"#"),
+            BytesExpr::new("".as_bytes(), BytesFormat::Raw(1))
         );
         assert_ok!(
-            Bytes::lex("r##\"\"##"),
-            Bytes::new("".as_bytes(), BytesFormat::Raw(2))
+            BytesExpr::lex("r##\"\"##"),
+            BytesExpr::new("".as_bytes(), BytesFormat::Raw(2))
         );
         assert_ok!(
-            Bytes::lex("r###\"\"###"),
-            Bytes::new("".as_bytes(), BytesFormat::Raw(3))
+            BytesExpr::lex("r###\"\"###"),
+            BytesExpr::new("".as_bytes(), BytesFormat::Raw(3))
         );
 
         // Valid raw strings
         assert_ok!(
-            Bytes::lex("r\"a\""),
-            Bytes::new("a".as_bytes(), BytesFormat::Raw(0))
+            BytesExpr::lex("r\"a\""),
+            BytesExpr::new("a".as_bytes(), BytesFormat::Raw(0))
         );
         assert_ok!(
-            Bytes::lex("r#\"a\"#"),
-            Bytes::new("a".as_bytes(), BytesFormat::Raw(1))
+            BytesExpr::lex("r#\"a\"#"),
+            BytesExpr::new("a".as_bytes(), BytesFormat::Raw(1))
         );
         assert_ok!(
-            Bytes::lex("r##\"a\"##"),
-            Bytes::new("a".as_bytes(), BytesFormat::Raw(2))
+            BytesExpr::lex("r##\"a\"##"),
+            BytesExpr::new("a".as_bytes(), BytesFormat::Raw(2))
         );
         assert_ok!(
-            Bytes::lex("r###\"a\"###"),
-            Bytes::new("a".as_bytes(), BytesFormat::Raw(3))
+            BytesExpr::lex("r###\"a\"###"),
+            BytesExpr::new("a".as_bytes(), BytesFormat::Raw(3))
         );
 
         // Quotes and hashes can be used inside the raw string
         assert_ok!(
-            Bytes::lex("r\"#\""),
-            Bytes::new("#".as_bytes(), BytesFormat::Raw(0))
+            BytesExpr::lex("r\"#\""),
+            BytesExpr::new("#".as_bytes(), BytesFormat::Raw(0))
         );
         assert_ok!(
-            Bytes::lex("r\"a#\""),
-            Bytes::new("a#".as_bytes(), BytesFormat::Raw(0))
+            BytesExpr::lex("r\"a#\""),
+            BytesExpr::new("a#".as_bytes(), BytesFormat::Raw(0))
         );
         assert_ok!(
-            Bytes::lex("r#\"\"a\"\"\"#"),
-            Bytes::new("\"a\"\"".as_bytes(), BytesFormat::Raw(1))
+            BytesExpr::lex("r#\"\"a\"\"\"#"),
+            BytesExpr::new("\"a\"\"".as_bytes(), BytesFormat::Raw(1))
         );
         assert_ok!(
-            Bytes::lex("r##\"\"a\"#b\"##"),
-            Bytes::new("\"a\"#b".as_bytes(), BytesFormat::Raw(2))
+            BytesExpr::lex("r##\"\"a\"#b\"##"),
+            BytesExpr::new("\"a\"#b".as_bytes(), BytesFormat::Raw(2))
         );
         assert_ok!(
-            Bytes::lex("r###\"a###\"##\"\"###"),
-            Bytes::new("a###\"##\"".as_bytes(), BytesFormat::Raw(3))
+            BytesExpr::lex("r###\"a###\"##\"\"###"),
+            BytesExpr::new("a###\"##\"".as_bytes(), BytesFormat::Raw(3))
         );
         assert_ok!(
-            Bytes::lex("r#\"a\"\"\"#"),
-            Bytes::new("a\"\"".as_bytes(), BytesFormat::Raw(1))
+            BytesExpr::lex("r#\"a\"\"\"#"),
+            BytesExpr::new("a\"\"".as_bytes(), BytesFormat::Raw(1))
         );
         assert_ok!(
-            Bytes::lex("r##\"a\"#\"##"),
-            Bytes::new("a\"#".as_bytes(), BytesFormat::Raw(2))
+            BytesExpr::lex("r##\"a\"#\"##"),
+            BytesExpr::new("a\"#".as_bytes(), BytesFormat::Raw(2))
         );
         assert_ok!(
-            Bytes::lex("r###\"a###\"##\"###"),
-            Bytes::new("a###\"##".as_bytes(), BytesFormat::Raw(3))
+            BytesExpr::lex("r###\"a###\"##\"###"),
+            BytesExpr::new("a###\"##".as_bytes(), BytesFormat::Raw(3))
         );
 
         // Expect an error if the number of '#' doesn't match
         assert_err!(
-            Bytes::lex("r#\"a\""),
+            BytesExpr::lex("r#\"a\""),
             LexErrorKind::MissingEndingQuote,
             "#\"a\""
         );
         assert_err!(
-            Bytes::lex("r##\"a\"#"),
+            BytesExpr::lex("r##\"a\"#"),
             LexErrorKind::MissingEndingQuote,
             "##\"a\"#"
         );
         assert_err!(
-            Bytes::lex("r###\"a\"##"),
+            BytesExpr::lex("r###\"a\"##"),
             LexErrorKind::MissingEndingQuote,
             "###\"a\"##"
         );
@@ -550,54 +559,60 @@ mod test {
         // Expect an error when there are too many hashes being used
         let hashes = format!("r{}\"abc\"{}", "#".repeat(255), "#".repeat(255));
         assert_ok!(
-            Bytes::lex(hashes.as_str()),
-            Bytes::new("abc".as_bytes(), BytesFormat::Raw(255))
+            BytesExpr::lex(hashes.as_str()),
+            BytesExpr::new("abc".as_bytes(), BytesFormat::Raw(255))
         );
         let hashes = format!("r{}\"abc\"{}", "#".repeat(256), "#".repeat(256));
         assert_err!(
-            Bytes::lex(hashes.as_str()),
+            BytesExpr::lex(hashes.as_str()),
             LexErrorKind::InvalidRawStringHashCount,
             &hashes.as_str()[1..]
         );
 
         // Test regex escapes remain the same
         assert_ok!(
-            Bytes::lex(r#"r".\d\D\pA\p{Greek}\PA\P{Greek}[xyz][^xyz][a-z][[:alpha:]][[:^alpha:]][x[^xyz]][a-y&&xyz][0-9&&[^4]][0-9--4][a-g~~b-h][\[\]]""#),
-            Bytes::new(r#".\d\D\pA\p{Greek}\PA\P{Greek}[xyz][^xyz][a-z][[:alpha:]][[:^alpha:]][x[^xyz]][a-y&&xyz][0-9&&[^4]][0-9--4][a-g~~b-h][\[\]]"#.as_bytes(), BytesFormat::Raw(0))
+            BytesExpr::lex(r#"r".\d\D\pA\p{Greek}\PA\P{Greek}[xyz][^xyz][a-z][[:alpha:]][[:^alpha:]][x[^xyz]][a-y&&xyz][0-9&&[^4]][0-9--4][a-g~~b-h][\[\]]""#),
+            BytesExpr::new(r#".\d\D\pA\p{Greek}\PA\P{Greek}[xyz][^xyz][a-z][[:alpha:]][[:^alpha:]][x[^xyz]][a-y&&xyz][0-9&&[^4]][0-9--4][a-g~~b-h][\[\]]"#.as_bytes(), BytesFormat::Raw(0))
         );
         assert_ok!(
-            Bytes::lex(r##"r#"\*\a\f\t\n\r\v\123\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#"##),
-            Bytes::new(
+            BytesExpr::lex(
+                r##"r#"\*\a\f\t\n\r\v\123\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#"##
+            ),
+            BytesExpr::new(
                 r#"\*\a\f\t\n\r\v\123\x7F\x{10FFFF}\u007F\u{7F}\U0000007F\U{7F}"#.as_bytes(),
                 BytesFormat::Raw(1)
             )
         );
 
         // Invalid character after 'r' or '#'
-        assert_err!(Bytes::lex("r"), LexErrorKind::ExpectedName("\" or #"), "");
         assert_err!(
-            Bytes::lex("r#ab"),
+            BytesExpr::lex("r"),
+            LexErrorKind::ExpectedName("\" or #"),
+            ""
+        );
+        assert_err!(
+            BytesExpr::lex("r#ab"),
             LexErrorKind::ExpectedName("\" or #"),
             "ab"
         );
         assert_err!(
-            Bytes::lex("r##ab"),
+            BytesExpr::lex("r##ab"),
             LexErrorKind::ExpectedName("\" or #"),
             "ab"
         );
 
         // Any characters after a raw string should get returned
         assert_eq!(
-            Bytes::lex("r#\"ab\"##"),
-            Ok((Bytes::new("ab".as_bytes(), BytesFormat::Raw(1)), "#"))
+            BytesExpr::lex("r#\"ab\"##"),
+            Ok((BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(1)), "#"))
         );
         assert_eq!(
-            Bytes::lex("r#\"ab\"#\""),
-            Ok((Bytes::new("ab".as_bytes(), BytesFormat::Raw(1)), "\""))
+            BytesExpr::lex("r#\"ab\"#\""),
+            Ok((BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(1)), "\""))
         );
         assert_eq!(
-            Bytes::lex("r#\"ab\"#a"),
-            Ok((Bytes::new("ab".as_bytes(), BytesFormat::Raw(1)), "a"))
+            BytesExpr::lex("r#\"ab\"#a"),
+            Ok((BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(1)), "a"))
         );
     }
 }

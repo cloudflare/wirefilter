@@ -11,7 +11,7 @@ use crate::{
     filter::CompiledExpr,
     lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span},
     range_set::RangeSet,
-    rhs_types::{Bytes, ExplicitIpRange, ListName, Regex, Wildcard},
+    rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard},
     scheme::{Field, Identifier, List},
     searcher::{EmptySearcher, TwoWaySearcher},
     strict_partial_ord::StrictPartialOrd,
@@ -148,7 +148,7 @@ pub enum ComparisonOpExpr {
 
     /// "contains" comparison
     #[serde(serialize_with = "serialize_contains")]
-    Contains(Bytes),
+    Contains(BytesExpr),
 
     /// "matches / ~" comparison
     #[serde(serialize_with = "serialize_matches")]
@@ -168,7 +168,7 @@ pub enum ComparisonOpExpr {
 
     /// "contains {...}" comparison
     #[serde(serialize_with = "serialize_contains_one_of")]
-    ContainsOneOf(Vec<Bytes>),
+    ContainsOneOf(Vec<BytesExpr>),
 
     /// "in $..." comparison
     #[serde(serialize_with = "serialize_list")]
@@ -201,7 +201,7 @@ fn serialize_is_true<S: Serializer>(ser: S) -> Result<S::Ok, S::Error> {
     out.end()
 }
 
-fn serialize_contains<S: Serializer>(rhs: &Bytes, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_contains<S: Serializer>(rhs: &BytesExpr, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("Contains", rhs, ser)
 }
 
@@ -224,7 +224,7 @@ fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::
     serialize_op_rhs("OneOf", rhs, ser)
 }
 
-fn serialize_contains_one_of<S: Serializer>(rhs: &[Bytes], ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_contains_one_of<S: Serializer>(rhs: &[BytesExpr], ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("ContainsOneOf", rhs, ser)
 }
 
@@ -372,7 +372,7 @@ impl ComparisonExpr {
                 }
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
                     BytesOp::Contains => {
-                        let (bytes, input) = Bytes::lex(input)?;
+                        let (bytes, input) = BytesExpr::lex(input)?;
                         (ComparisonOpExpr::Contains(bytes), input)
                     }
                     BytesOp::Matches => {
@@ -472,7 +472,7 @@ impl Expr for ComparisonExpr {
                     ($op:tt, $def:ident) => {
                         match rhs {
                             RhsValue::Bytes(bytes) => {
-                                struct BytesOp(Bytes);
+                                struct BytesOp(BytesExpr);
 
                                 impl<U> Compare<U> for BytesOp {
                                     #[inline]
@@ -1939,7 +1939,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
                                 ".org".to_owned()
                             ))),
                         ],
@@ -2079,7 +2079,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2148,7 +2148,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2314,7 +2314,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::from(
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2782,7 +2782,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes(Bytes::new("ab".as_bytes(), BytesFormat::Raw(3))),
+                    rhs: RhsValue::Bytes(BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(3))),
                 },
             }
         );
@@ -2839,7 +2839,7 @@ mod tests {
 
         // Wildcard operator
         let wildcard = Wildcard::new(
-            Bytes::new(r"foo*\*\\".as_bytes(), BytesFormat::Raw(2)),
+            BytesExpr::new(r"foo*\*\\".as_bytes(), BytesFormat::Raw(2)),
             usize::MAX,
         )
         .unwrap();
@@ -2883,7 +2883,7 @@ mod tests {
 
         // Strict wildcard operator
         let wildcard = Wildcard::new(
-            Bytes::new(r"foo*\*\\".as_bytes(), BytesFormat::Raw(2)),
+            BytesExpr::new(r"foo*\*\\".as_bytes(), BytesFormat::Raw(2)),
             usize::MAX,
         )
         .unwrap();
@@ -2938,7 +2938,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(Bytes::new(
+                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new(
                                 "cd".as_bytes(),
                                 BytesFormat::Raw(1)
                             )))
@@ -2949,7 +2949,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes(Bytes::new("abcd".as_bytes(), BytesFormat::Raw(2)))
+                    rhs: RhsValue::Bytes(BytesExpr::new("abcd".as_bytes(), BytesFormat::Raw(2)))
                 }
             }
         );
