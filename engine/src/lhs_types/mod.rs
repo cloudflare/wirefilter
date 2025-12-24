@@ -1,10 +1,12 @@
 mod array;
+mod bytes;
 mod map;
 
 use crate::types::LhsValue;
 
 pub use self::{
     array::{Array, ArrayIterator, TypedArray},
+    bytes::Bytes,
     map::{Map, MapIter, MapValuesIntoIter, TypedMap},
 };
 

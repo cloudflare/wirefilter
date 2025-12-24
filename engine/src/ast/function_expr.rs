@@ -562,13 +562,10 @@ mod tests {
     }
 
     fn lower_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        use std::borrow::Cow;
-
         match args.next()? {
             Ok(LhsValue::Bytes(mut b)) => {
-                let mut text: Vec<u8> = b.to_mut().to_vec();
-                text.make_ascii_lowercase();
-                Some(LhsValue::Bytes(Cow::Owned(text)))
+                b.to_mut().make_ascii_lowercase();
+                Some(LhsValue::Bytes(b))
             }
             Err(Type::Bytes) => None,
             _ => unreachable!(),

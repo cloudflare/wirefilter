@@ -1,8 +1,8 @@
 use crate::{
-    Array, ExpectedType, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
+    Array, Bytes, ExpectedType, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
     FunctionParam, FunctionParamError, GetType, LhsValue, ParserSettings, Type,
 };
-use std::{borrow::Cow, iter::once};
+use std::iter::once;
 
 /// A function which, given one or more arrays or byte-strings, returns the
 /// concatenation of each of them.
@@ -43,15 +43,15 @@ fn concat_array<'a>(accumulator: Array<'a>, args: FunctionArgs<'_, 'a>) -> Array
     Array::try_from_vec(val_type, vec).unwrap()
 }
 
-fn concat_bytes<'a>(mut accumulator: Cow<'a, [u8]>, args: FunctionArgs<'_, 'a>) -> Cow<'a, [u8]> {
+fn concat_bytes<'a>(mut accumulator: Vec<u8>, args: FunctionArgs<'_, 'a>) -> Bytes<'a> {
     for arg in args {
         match arg {
-            Ok(LhsValue::Bytes(value)) => accumulator.to_mut().extend(value.iter()),
+            Ok(LhsValue::Bytes(value)) => accumulator.extend_from_slice(&value),
             Err(Type::Bytes) => (),
             _ => (),
         }
     }
-    accumulator
+    accumulator.into()
 }
 
 pub(crate) const EXPECTED_TYPES: [ExpectedType; 2] =
@@ -103,7 +103,10 @@ impl FunctionDefinition for ConcatFunction {
                         return Some(LhsValue::Array(concat_array(array, args)));
                     }
                     Ok(LhsValue::Bytes(bytes)) => {
-                        return Some(LhsValue::Bytes(concat_bytes(bytes, args)));
+                        return Some(LhsValue::Bytes(concat_bytes(
+                            bytes.into_owned().into(),
+                            args,
+                        )));
                     }
                     Err(_) => (),
                     _ => unreachable!(),
@@ -124,12 +127,12 @@ mod tests {
     #[test]
     fn test_concat_bytes() {
         let mut args = vec![
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"hello"))),
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"world"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"hello"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"world"))),
         ]
         .into_iter();
         assert_eq!(
-            Some(LhsValue::Bytes(Cow::Borrowed(b"helloworld"))),
+            Some(LhsValue::Bytes(Bytes::Borrowed(b"helloworld"))),
             CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args)
         );
     }
@@ -137,14 +140,14 @@ mod tests {
     #[test]
     fn test_concat_many_bytes() {
         let mut args = vec![
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"hello"))),
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"world"))),
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"hello2"))),
-            Ok(LhsValue::Bytes(Cow::Borrowed(b"world2"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"hello"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"world"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"hello2"))),
+            Ok(LhsValue::Bytes(Bytes::Borrowed(b"world2"))),
         ]
         .into_iter();
         assert_eq!(
-            Some(LhsValue::Bytes(Cow::Borrowed(b"helloworldhello2world2"))),
+            Some(LhsValue::Bytes(Bytes::Borrowed(b"helloworldhello2world2"))),
             CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args)
         );
     }

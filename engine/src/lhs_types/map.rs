@@ -1,7 +1,7 @@
 use crate::{
     TypeMismatchError,
-    lhs_types::AsRefIterator,
-    types::{BytesOrString, CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type},
+    lhs_types::{AsRefIterator, Bytes},
+    types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type},
 };
 use serde::{
     Serialize, Serializer,
@@ -332,7 +332,7 @@ impl Serialize for Map<'_> {
 struct MapEntrySeed<'a>(&'a Type);
 
 impl<'de> DeserializeSeed<'de> for MapEntrySeed<'_> {
-    type Value = (Cow<'de, [u8]>, LhsValue<'de>);
+    type Value = (Bytes<'de>, LhsValue<'de>);
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
@@ -341,7 +341,7 @@ impl<'de> DeserializeSeed<'de> for MapEntrySeed<'_> {
         struct MapEntryVisitor<'a>(&'a Type);
 
         impl<'de> Visitor<'de> for MapEntryVisitor<'_> {
-            type Value = (Cow<'de, [u8]>, LhsValue<'de>);
+            type Value = (Bytes<'de>, LhsValue<'de>);
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(formatter, "a [key, lhs value] pair")
@@ -352,12 +352,12 @@ impl<'de> DeserializeSeed<'de> for MapEntrySeed<'_> {
                 V: SeqAccess<'de>,
             {
                 let key = seq
-                    .next_element::<BytesOrString<'_>>()?
+                    .next_element::<Bytes<'_>>()?
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 let value = seq
                     .next_element_seed(LhsValueSeed(self.0))?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                Ok((key.into_bytes(), value))
+                Ok((key, value))
             }
         }
 
@@ -419,7 +419,7 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                             value_type
                         )));
                     }
-                    self.0.data.insert(key.into_owned().into(), value);
+                    self.0.data.insert(key.into_owned(), value);
                 }
                 Ok(())
             }

@@ -6,9 +6,9 @@ use std::alloc::System;
 static A: System = System;
 
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use std::{borrow::Cow, clone::Clone, fmt::Debug, net::IpAddr};
+use std::{clone::Clone, fmt::Debug, net::IpAddr};
 use wirefilter::{
-    ExecutionContext, FilterAst, FunctionArgs, GetType, LhsValue, SchemeBuilder,
+    Bytes, ExecutionContext, FilterAst, FunctionArgs, GetType, LhsValue, SchemeBuilder,
     SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type,
 };
 
@@ -17,7 +17,7 @@ fn lowercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_lowercase = match bytes {
-                Cow::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_uppercase),
+                Bytes::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_uppercase),
                 _ => true,
             };
             if make_lowercase {
@@ -34,7 +34,7 @@ fn uppercase<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     match input {
         LhsValue::Bytes(mut bytes) => {
             let make_uppercase = match bytes {
-                Cow::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_lowercase),
+                Bytes::Borrowed(bytes) => bytes.iter().any(u8::is_ascii_lowercase),
                 _ => true,
             };
             if make_uppercase {
