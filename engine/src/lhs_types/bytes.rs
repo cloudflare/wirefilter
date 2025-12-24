@@ -41,15 +41,7 @@ impl<'a> Bytes<'a> {
         }
         match self {
             Self::Owned(b) => b,
-            Self::Borrowed(_) => {
-                cfg_if::cfg_if! {
-                    if #[cfg(debug_assertions)] {
-                        unreachable!()
-                    } else {
-                        std::hint::unreachable_unchecked()
-                    }
-                }
-            }
+            Self::Borrowed(_) => unreachable!(),
         }
     }
 
