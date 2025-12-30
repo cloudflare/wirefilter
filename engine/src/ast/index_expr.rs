@@ -31,15 +31,6 @@ pub struct IndexExpr {
     pub indexes: Vec<FieldIndex>,
 }
 
-#[allow(clippy::manual_ok_err)]
-#[inline]
-pub fn ok_ref<T, E>(result: &Result<T, E>) -> Option<&T> {
-    match result {
-        Ok(x) => Some(x),
-        Err(_) => None,
-    }
-}
-
 impl ValueExpr for IndexExpr {
     #[inline]
     fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
@@ -64,7 +55,7 @@ impl ValueExpr for IndexExpr {
         let map_each_count = self.map_each_count();
         let Self {
             identifier,
-            indexes,
+            mut indexes,
         } = self;
 
         let last = match map_each_count {
@@ -86,12 +77,12 @@ impl ValueExpr for IndexExpr {
                 IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
             }
         } else if let Some(last) = last {
+            indexes.truncate(last);
             // Average path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     ctx.get_field_value_unchecked(&f)
-                        .and_then(|value| value.get_nested(&indexes[..last]))
-                        .map(LhsValue::as_ref)
+                        .and_then(|value| value.as_ref().extract_nested(&indexes))
                         .ok_or(ty)
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => {
@@ -99,7 +90,7 @@ impl ValueExpr for IndexExpr {
                     CompiledValueExpr::new(move |ctx| {
                         call.execute(ctx)
                             .ok()
-                            .and_then(|val| val.extract_nested(&indexes[..last]))
+                            .and_then(|val| val.extract_nested(&indexes))
                             .ok_or(ty)
                     })
                 }
@@ -168,12 +159,13 @@ impl IndexExpr {
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        ok_ref(&call.execute(ctx))
-                            .and_then(|val| val.get_nested(&indexes))
+                        call.execute(ctx)
+                            .ok()
+                            .and_then(|val| val.extract_nested(&indexes))
                             .map_or(
                                 default,
                                 #[inline]
-                                |val| comp.compare(val, ctx),
+                                |val| comp.compare(&val, ctx),
                             )
                     })
                 }
@@ -188,11 +180,11 @@ impl IndexExpr {
                 } else {
                     CompiledOneExpr::new(move |ctx| {
                         ctx.get_field_value_unchecked(&f)
-                            .and_then(|value| value.get_nested(&indexes))
+                            .and_then(|value| value.as_ref().extract_nested(&indexes))
                             .map_or(
                                 default,
                                 #[inline]
-                                |val| comp.compare(val, ctx),
+                                |val| comp.compare(&val, ctx),
                             )
                     })
                 }
@@ -213,11 +205,42 @@ impl IndexExpr {
         match identifier {
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
-                CompiledVecExpr::new(move |ctx| {
-                    let comp = &comp;
-                    ok_ref(&call.execute(ctx))
-                        .and_then(|val| val.get_nested(&indexes))
-                        .map_or(
+                if indexes.is_empty() {
+                    CompiledVecExpr::new(move |ctx| {
+                        let comp = &comp;
+                        call.execute(ctx).map_or(
+                            BOOL_ARRAY,
+                            #[inline]
+                            |val: LhsValue<'_>| {
+                                TypedArray::from_iter(
+                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                )
+                            },
+                        )
+                    })
+                } else {
+                    CompiledVecExpr::new(move |ctx| {
+                        let comp = &comp;
+                        call.execute(ctx)
+                            .ok()
+                            .and_then(|val| val.extract_nested(&indexes))
+                            .map_or(
+                                BOOL_ARRAY,
+                                #[inline]
+                                |val: LhsValue<'_>| {
+                                    TypedArray::from_iter(
+                                        val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                    )
+                                },
+                            )
+                    })
+                }
+            }
+            IdentifierExpr::Field(f) => {
+                if indexes.is_empty() {
+                    CompiledVecExpr::new(move |ctx| {
+                        let comp = &comp;
+                        ctx.get_field_value_unchecked(&f).map_or(
                             BOOL_ARRAY,
                             #[inline]
                             |val: &LhsValue<'_>| {
@@ -226,22 +249,24 @@ impl IndexExpr {
                                 )
                             },
                         )
-                })
-            }
-            IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let comp = &comp;
-                ctx.get_field_value_unchecked(&f)
-                    .and_then(|value| value.get_nested(&indexes))
-                    .map_or(
-                        BOOL_ARRAY,
-                        #[inline]
-                        |val: &LhsValue<'_>| {
-                            TypedArray::from_iter(
-                                val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                    })
+                } else {
+                    CompiledVecExpr::new(move |ctx| {
+                        let comp = &comp;
+                        ctx.get_field_value_unchecked(&f)
+                            .and_then(|value| value.as_ref().extract_nested(&indexes))
+                            .map_or(
+                                BOOL_ARRAY,
+                                #[inline]
+                                |val: LhsValue<'_>| {
+                                    TypedArray::from_iter(
+                                        val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                    )
+                                },
                             )
-                        },
-                    )
-            }),
+                    })
+                }
+            }
         }
     }
 
