@@ -780,41 +780,6 @@ impl<'a> LhsValue<'a> {
         }
     }
 
-    /// Retrieve an element from an LhsValue given a path item and a specified
-    /// type.
-    /// Returns a TypeMismatchError error if current type does not support it
-    /// nested element.
-    ///
-    /// Both LhsValue::Array and LhsValue::Map support nested elements.
-    pub(crate) fn get(
-        &'a self,
-        item: &FieldIndex,
-    ) -> Result<Option<&'a LhsValue<'a>>, IndexAccessError> {
-        match (self, item) {
-            (LhsValue::Array(arr), FieldIndex::ArrayIndex(idx)) => Ok(arr.get(*idx as usize)),
-            (_, FieldIndex::ArrayIndex(_)) => Err(IndexAccessError {
-                index: item.clone(),
-                actual: self.get_type(),
-            }),
-            (LhsValue::Map(map), FieldIndex::MapKey(key)) => Ok(map.get(key.as_bytes())),
-            (_, FieldIndex::MapKey(_)) => Err(IndexAccessError {
-                index: item.clone(),
-                actual: self.get_type(),
-            }),
-            (_, FieldIndex::MapEach) => Err(IndexAccessError {
-                index: item.clone(),
-                actual: self.get_type(),
-            }),
-        }
-    }
-
-    #[inline]
-    pub(crate) fn get_nested(&'a self, indexes: &[FieldIndex]) -> Option<&'a LhsValue<'a>> {
-        indexes
-            .iter()
-            .try_fold(self, |value, idx| value.get(idx).unwrap())
-    }
-
     pub(crate) fn extract(
         self,
         item: &FieldIndex,
