@@ -213,7 +213,7 @@ impl IndexExpr {
                             #[inline]
                             |val: LhsValue<'_>| {
                                 TypedArray::from_iter(
-                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                    val.iter().unwrap().map(|item| comp.compare(&item, ctx)),
                                 )
                             },
                         )
@@ -229,7 +229,7 @@ impl IndexExpr {
                                 #[inline]
                                 |val: LhsValue<'_>| {
                                     TypedArray::from_iter(
-                                        val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                        val.iter().unwrap().map(|item| comp.compare(&item, ctx)),
                                     )
                                 },
                             )
@@ -245,7 +245,7 @@ impl IndexExpr {
                             #[inline]
                             |val: &LhsValue<'_>| {
                                 TypedArray::from_iter(
-                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                    val.iter().unwrap().map(|item| comp.compare(&item, ctx)),
                                 )
                             },
                         )
@@ -260,7 +260,7 @@ impl IndexExpr {
                                 #[inline]
                                 |val: LhsValue<'_>| {
                                     TypedArray::from_iter(
-                                        val.iter().unwrap().map(|item| comp.compare(item, ctx)),
+                                        val.iter().unwrap().map(|item| comp.compare(&item, ctx)),
                                     )
                                 },
                             )

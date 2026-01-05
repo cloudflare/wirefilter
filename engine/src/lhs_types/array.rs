@@ -1,20 +1,201 @@
-use crate::{
-    lhs_types::AsRefIterator,
-    types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type, TypeMismatchError},
+use super::{TypedMap, map::InnerMap};
+use crate::types::{
+    CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type, TypeMismatchError,
 };
+use dyn_hash::DynHash;
 use serde::{
     Serialize, Serializer,
     de::{self, DeserializeSeed, Deserializer, SeqAccess, Visitor},
     ser::SerializeSeq,
 };
+use std::marker::PhantomData;
+use std::ptr::NonNull;
+use std::sync::Arc;
 use std::{
     fmt,
     hash::{Hash, Hasher},
     hint::unreachable_unchecked,
-    ops::Deref,
 };
 
-use super::{TypedMap, map::InnerMap};
+type IterFn<'a> = fn(NonNull<u8>) -> Option<LhsValue<'a>>;
+
+pub(crate) struct Iter<'slice> {
+    ptr: NonNull<u8>,
+    size: usize,
+    len: usize,
+    func: IterFn<'slice>,
+    _marker: PhantomData<LhsValue<'slice>>,
+}
+
+impl<'slice> Iter<'slice> {
+    fn new<T>(s: &'slice [T]) -> Iter<'slice>
+    where
+        &'slice T: ArrayIntoValue<'slice>,
+    {
+        let ptr = NonNull::from_ref(s).cast();
+        Self {
+            ptr,
+            size: std::mem::size_of::<T>(),
+            len: s.len(),
+            func: |ptr| {
+                Some({
+                    let val: &'slice T = unsafe { ptr.cast::<T>().as_ref() };
+                    val.into_value()
+                })
+            },
+            _marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = LhsValue<'a>;
+
+    fn next(&mut self) -> Option<LhsValue<'a>> {
+        if self.len == 0 {
+            None
+        } else {
+            let value = (self.func)(self.ptr);
+            self.ptr = unsafe { self.ptr.add(self.size) };
+            self.len -= 1;
+            value
+        }
+    }
+}
+
+pub(crate) trait ArraySlice: std::fmt::Debug + DynHash + Send + Sync {
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool;
+
+    fn get(&self, idx: usize) -> Option<LhsValue<'_>>;
+
+    fn iter(&self) -> Iter<'_>;
+
+    fn eq_slice(&self, slice: &[LhsValue<'_>]) -> bool;
+}
+
+dyn_hash::hash_trait_object!(ArraySlice);
+
+trait ArrayIntoValue<'a> {
+    fn into_value(self) -> LhsValue<'a>;
+}
+
+impl<'a, T: IntoValue<'a>> ArrayIntoValue<'a> for T {
+    #[inline(always)]
+    fn into_value(self) -> LhsValue<'a> {
+        IntoValue::into_value(self)
+    }
+}
+
+impl<'a> ArrayIntoValue<'a> for &'a LhsValue<'a> {
+    #[inline(always)]
+    fn into_value(self) -> LhsValue<'a> {
+        self.as_ref()
+    }
+}
+
+impl<'a> ArraySlice for Vec<LhsValue<'a>> {
+    fn len(&self) -> usize {
+        (*self).len()
+    }
+
+    fn is_empty(&self) -> bool {
+        (*self).is_empty()
+    }
+
+    fn get(&self, idx: usize) -> Option<LhsValue<'_>> {
+        (**self).get(idx).map(LhsValue::as_ref)
+    }
+
+    fn iter(&self) -> Iter<'_> {
+        Iter::new(self)
+    }
+
+    fn eq_slice(&self, slice: &[LhsValue<'_>]) -> bool {
+        self == slice
+    }
+}
+
+impl<T: std::fmt::Debug + Hash + Send + Sync> ArraySlice for Vec<T>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn is_empty(&self) -> bool {
+        (**self).is_empty()
+    }
+
+    fn get(&self, idx: usize) -> Option<LhsValue<'_>> {
+        (**self).get(idx).map(IntoValue::into_value)
+    }
+
+    fn iter(&self) -> Iter<'_> {
+        Iter::new(self)
+    }
+
+    fn eq_slice(&self, slice: &[LhsValue<'_>]) -> bool {
+        (**self).iter().map(IntoValue::into_value).eq(slice.iter())
+    }
+}
+
+impl<T: std::fmt::Debug + Hash + Send + Sync> ArraySlice for Box<[T]>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn is_empty(&self) -> bool {
+        (**self).is_empty()
+    }
+
+    fn get(&self, idx: usize) -> Option<LhsValue<'_>> {
+        (**self).get(idx).map(IntoValue::into_value)
+    }
+
+    fn iter(&self) -> Iter<'_> {
+        Iter::new(self)
+    }
+
+    fn eq_slice(&self, slice: &[LhsValue<'_>]) -> bool {
+        (**self).iter().map(IntoValue::into_value).eq(slice.iter())
+    }
+}
+
+impl<T: std::fmt::Debug + Hash + Send + Sync> ArraySlice for Arc<[T]>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn is_empty(&self) -> bool {
+        (**self).is_empty()
+    }
+
+    fn get(&self, idx: usize) -> Option<LhsValue<'_>> {
+        (**self).get(idx).map(IntoValue::into_value)
+    }
+
+    fn iter(&self) -> Iter<'_> {
+        Iter::new(self)
+    }
+
+    fn eq_slice(&self, slice: &[LhsValue<'_>]) -> bool {
+        (**self).iter().map(IntoValue::into_value).eq(slice.iter())
+    }
+}
 
 // Ideally, we would want to use Cow<'a, LhsValue<'a>> here
 // but it doesnt work for unknown reasons
@@ -22,7 +203,7 @@ use super::{TypedMap, map::InnerMap};
 #[derive(Debug, Clone)]
 pub(crate) enum InnerArray<'a> {
     Owned(Vec<LhsValue<'a>>),
-    Borrowed(&'a [LhsValue<'a>]),
+    Borrowed(&'a (dyn ArraySlice + 'a)),
 }
 
 impl<'a> InnerArray<'a> {
@@ -30,16 +211,28 @@ impl<'a> InnerArray<'a> {
     const fn new() -> Self {
         Self::Owned(Vec::new())
     }
-}
-
-impl<'a> Deref for InnerArray<'a> {
-    type Target = [LhsValue<'a>];
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
+    fn len(&self) -> usize {
         match self {
-            InnerArray::Owned(vec) => &vec[..],
-            InnerArray::Borrowed(slice) => slice,
+            InnerArray::Owned(vec) => vec.len(),
+            InnerArray::Borrowed(slice) => slice.len(),
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        match self {
+            InnerArray::Owned(vec) => vec.is_empty(),
+            InnerArray::Borrowed(slice) => slice.is_empty(),
+        }
+    }
+
+    #[inline]
+    fn get(&'a self, idx: usize) -> Option<LhsValue<'a>> {
+        match self {
+            InnerArray::Owned(vec) => vec.get(idx),
+            InnerArray::Borrowed(slice) => slice.get(idx),
         }
     }
 }
@@ -47,6 +240,16 @@ impl<'a> Deref for InnerArray<'a> {
 impl Default for InnerArray<'_> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Hash for InnerArray<'_> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            InnerArray::Owned(vec) => vec.hash(state),
+            InnerArray::Borrowed(slice) => slice.hash(state),
+        }
     }
 }
 
@@ -67,15 +270,16 @@ impl<'a> Array<'a> {
     }
 
     /// Get a reference to an element if it exists
-    pub fn get(&self, idx: usize) -> Option<&LhsValue<'a>> {
+    #[inline]
+    pub fn get(&'a self, idx: usize) -> Option<LhsValue<'a>> {
         self.data.get(idx)
     }
 
-    pub(crate) fn as_ref(&'a self) -> Array<'a> {
+    pub(crate) fn as_ref<'b: 'a>(&'b self) -> Array<'b> {
         Array {
             val_type: self.val_type,
             data: match self.data {
-                InnerArray::Owned(ref vec) => InnerArray::Borrowed(&vec[..]),
+                InnerArray::Owned(ref vec) => InnerArray::Borrowed(vec as &dyn ArraySlice),
                 InnerArray::Borrowed(slice) => InnerArray::Borrowed(slice),
             },
         }
@@ -89,8 +293,8 @@ impl<'a> Array<'a> {
                 InnerArray::Owned(vec) => {
                     InnerArray::Owned(vec.into_iter().map(LhsValue::into_owned).collect())
                 }
-                InnerArray::Borrowed(slice) => {
-                    InnerArray::Owned(slice.iter().cloned().map(LhsValue::into_owned).collect())
+                InnerArray::Borrowed(arr) => {
+                    InnerArray::Owned(arr.iter().map(LhsValue::into_owned).collect())
                 }
             },
         }
@@ -116,18 +320,16 @@ impl<'a> Array<'a> {
 
     pub(crate) fn extract(self, idx: usize) -> Option<LhsValue<'a>> {
         let Self { data, .. } = self;
-        if idx >= data.len() {
-            None
-        } else {
-            match data {
-                InnerArray::Owned(mut vec) => Some(vec.swap_remove(idx)),
-                InnerArray::Borrowed(slice) => Some(unsafe { slice.get_unchecked(idx) }.as_ref()),
+        match data {
+            InnerArray::Owned(mut vec) => {
+                if idx >= vec.len() {
+                    None
+                } else {
+                    Some(vec.swap_remove(idx))
+                }
             }
+            InnerArray::Borrowed(arr) => arr.get(idx),
         }
-    }
-
-    pub(crate) fn as_slice(&self) -> &[LhsValue<'a>] {
-        &self.data
     }
 
     pub(crate) fn filter_map_to<F>(self, value_type: impl Into<CompoundType>, func: F) -> Self
@@ -137,7 +339,11 @@ impl<'a> Array<'a> {
         let Self { data, .. } = self;
         let mut vec = match data {
             InnerArray::Owned(vec) => vec,
-            InnerArray::Borrowed(slice) => slice.to_vec(),
+            InnerArray::Borrowed(arr) => {
+                let mut vec = Vec::with_capacity(arr.len());
+                vec.extend(arr.iter());
+                vec
+            }
         };
         let val_type = value_type.into();
         let mut write = 0;
@@ -208,7 +414,7 @@ impl<'a> Array<'a> {
     pub fn into_vec(self) -> Vec<LhsValue<'a>> {
         match self.data {
             InnerArray::Owned(vec) => vec,
-            InnerArray::Borrowed(slice) => slice.iter().map(LhsValue::as_ref).collect(),
+            InnerArray::Borrowed(slice) => slice.iter().collect(),
         }
     }
 }
@@ -216,7 +422,52 @@ impl<'a> Array<'a> {
 impl<'a> PartialEq for Array<'a> {
     #[inline]
     fn eq(&self, other: &Array<'a>) -> bool {
-        self.val_type == other.val_type && self.data.deref() == other.data.deref()
+        if self.val_type != other.val_type {
+            return false;
+        }
+
+        match (&self.data, &other.data) {
+            (InnerArray::Owned(vec1), InnerArray::Owned(vec2)) => vec1 == vec2,
+            (InnerArray::Borrowed(arr1), InnerArray::Borrowed(arr2)) => arr1.iter().eq(arr2.iter()),
+            (InnerArray::Owned(vec), InnerArray::Borrowed(arr)) => arr.eq_slice(vec),
+            (InnerArray::Borrowed(arr), InnerArray::Owned(vec)) => arr.eq_slice(vec),
+        }
+    }
+}
+
+impl<'a, T: std::fmt::Debug + Hash + Send + Sync> From<&'a Vec<T>> for Array<'a>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn from(data: &'a Vec<T>) -> Self {
+        Array {
+            val_type: <&T>::TYPE.into(),
+            data: InnerArray::Borrowed(data as &dyn ArraySlice),
+        }
+    }
+}
+
+impl<'a, T: std::fmt::Debug + Hash + Send + Sync> From<&'a Box<[T]>> for Array<'a>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn from(data: &'a Box<[T]>) -> Self {
+        Array {
+            val_type: <&T>::TYPE.into(),
+            data: InnerArray::Borrowed(data as &dyn ArraySlice),
+        }
+    }
+}
+
+impl<'a, T: std::fmt::Debug + Hash + Send + Sync> From<&'a Arc<[T]>> for Array<'a>
+where
+    for<'b> &'b T: IntoValue<'b>,
+{
+    fn from(data: &'a Arc<[T]>) -> Self {
+        Array {
+            val_type: <&T>::TYPE.into(),
+            data: InnerArray::Borrowed(data as &dyn ArraySlice),
+        }
     }
 }
 
@@ -231,7 +482,7 @@ impl GetType for Array<'_> {
 impl Hash for Array<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get_type().hash(state);
-        self.data.deref().hash(state);
+        self.data.hash(state);
     }
 }
 
@@ -248,18 +499,20 @@ impl<'a, V: IntoValue<'a>> FromIterator<V> for Array<'a> {
     }
 }
 
-pub enum ArrayIterator<'a> {
+enum ArrayIntoIterImpl<'a> {
     Owned(std::vec::IntoIter<LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::slice::Iter<'a, LhsValue<'a>>>),
+    Borrowed(Iter<'a>),
 }
 
-impl<'a> Iterator for ArrayIterator<'a> {
+pub struct ArrayIntoIter<'a>(ArrayIntoIterImpl<'a>);
+
+impl<'a> Iterator for ArrayIntoIter<'a> {
     type Item = LhsValue<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ArrayIterator::Owned(vec_iter) => vec_iter.next(),
-            ArrayIterator::Borrowed(slice_iter) => slice_iter.next(),
+            ArrayIntoIter(ArrayIntoIterImpl::Owned(vec_iter)) => vec_iter.next(),
+            ArrayIntoIter(ArrayIntoIterImpl::Borrowed(slice_iter)) => slice_iter.next(),
         }
     }
 
@@ -268,31 +521,65 @@ impl<'a> Iterator for ArrayIterator<'a> {
     }
 }
 
-impl ExactSizeIterator for ArrayIterator<'_> {
+impl ExactSizeIterator for ArrayIntoIter<'_> {
     fn len(&self) -> usize {
         match self {
-            ArrayIterator::Owned(vec_iter) => vec_iter.len(),
-            ArrayIterator::Borrowed(slice_iter) => slice_iter.len(),
+            ArrayIntoIter(ArrayIntoIterImpl::Owned(vec_iter)) => vec_iter.len(),
+            ArrayIntoIter(ArrayIntoIterImpl::Borrowed(arr_iter)) => arr_iter.len(),
         }
     }
 }
 
 impl<'a> IntoIterator for Array<'a> {
     type Item = LhsValue<'a>;
-    type IntoIter = ArrayIterator<'a>;
+    type IntoIter = ArrayIntoIter<'a>;
     fn into_iter(self) -> Self::IntoIter {
         match self.data {
-            InnerArray::Owned(vec) => ArrayIterator::Owned(vec.into_iter()),
-            InnerArray::Borrowed(slice) => ArrayIterator::Borrowed(AsRefIterator(slice.iter())),
+            InnerArray::Owned(vec) => ArrayIntoIter(ArrayIntoIterImpl::Owned(vec.into_iter())),
+            InnerArray::Borrowed(arr) => ArrayIntoIter(ArrayIntoIterImpl::Borrowed(arr.iter())),
         }
     }
 }
 
-impl<'a, 'b> IntoIterator for &'b Array<'a> {
-    type Item = &'b LhsValue<'a>;
-    type IntoIter = std::slice::Iter<'b, LhsValue<'a>>;
+enum ArrayIterImpl<'slice> {
+    Owned(std::slice::Iter<'slice, LhsValue<'slice>>),
+    Borrowed(Iter<'slice>),
+}
+
+pub struct ArrayIter<'slice>(ArrayIterImpl<'slice>);
+
+impl<'slice> Iterator for ArrayIter<'slice> {
+    type Item = LhsValue<'slice>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ArrayIter(ArrayIterImpl::Owned(iter)) => iter.next().map(LhsValue::as_ref),
+            ArrayIter(ArrayIterImpl::Borrowed(iter)) => iter.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+
+impl ExactSizeIterator for ArrayIter<'_> {
+    fn len(&self) -> usize {
+        match self {
+            ArrayIter(ArrayIterImpl::Owned(iter)) => iter.len(),
+            ArrayIter(ArrayIterImpl::Borrowed(iter)) => iter.len(),
+        }
+    }
+}
+
+impl<'slice> IntoIterator for &'slice Array<'slice> {
+    type Item = LhsValue<'slice>;
+    type IntoIter = ArrayIter<'slice>;
     fn into_iter(self) -> Self::IntoIter {
-        self.data.iter()
+        match &self.data {
+            InnerArray::Owned(vec) => ArrayIter(ArrayIterImpl::Owned(vec.as_slice().iter())),
+            InnerArray::Borrowed(arr) => ArrayIter(ArrayIterImpl::Borrowed(arr.iter())),
+        }
     }
 }
 
@@ -302,8 +589,8 @@ impl Serialize for Array<'_> {
         S: Serializer,
     {
         let mut seq = serializer.serialize_seq(Some(self.len()))?;
-        for element in self.data.iter() {
-            seq.serialize_element(element)?;
+        for element in self {
+            seq.serialize_element(&element)?;
         }
         seq.end()
     }
@@ -332,7 +619,11 @@ impl<'de> DeserializeSeed<'de> for &mut Array<'de> {
                 let value_type = self.0.value_type();
                 let mut vec = match &mut self.0.data {
                     InnerArray::Owned(vec) => std::mem::take(vec),
-                    InnerArray::Borrowed(slice) => slice.to_vec(),
+                    InnerArray::Borrowed(arr) => {
+                        let mut vec = Vec::with_capacity(arr.len());
+                        vec.extend(arr.iter());
+                        vec
+                    }
                 };
                 while let Some(elem) = seq.next_element_seed(LhsValueSeed(&value_type))? {
                     let elem_type = elem.get_type();
@@ -376,6 +667,14 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     }
 
     #[inline]
+    fn as_slice(&self) -> &[LhsValue<'a>] {
+        match &self.array {
+            InnerArray::Owned(vec) => vec,
+            InnerArray::Borrowed(_) => unreachable!(),
+        }
+    }
+
+    #[inline]
     fn as_vec(&mut self) -> &mut Vec<LhsValue<'a>> {
         match &mut self.array {
             InnerArray::Owned(vec) => vec,
@@ -407,19 +706,21 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
         self.as_vec().truncate(len);
     }
 
+    /*
     /// Converts the strongly typed array into a borrowed loosely typed array.
     pub fn as_array(&'a self) -> Array<'a> {
         Array {
             val_type: V::TYPE.into(),
-            data: InnerArray::Borrowed(self.array.deref()),
+            data: InnerArray::Borrowed(self.as_slice()),
         }
     }
+    */
 }
 
 impl TypedArray<'static, bool> {
     #[inline]
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = &bool> + '_ {
-        self.array.iter().map(|value| match value {
+        self.as_slice().iter().map(|value| match value {
             LhsValue::Bool(b) => b,
             _ => unsafe { unreachable_unchecked() },
         })
@@ -436,13 +737,13 @@ impl TypedArray<'static, bool> {
 
 impl<'a, V: IntoValue<'a>> fmt::Debug for TypedArray<'a, V> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_list().entries(self.array.iter()).finish()
+        fmt.debug_list().entries(self.as_slice().iter()).finish()
     }
 }
 
 impl<'a, V: IntoValue<'a>> PartialEq for TypedArray<'a, V> {
     fn eq(&self, other: &Self) -> bool {
-        self.array.deref() == other.array.deref()
+        self.as_slice() == other.as_slice()
     }
 }
 
@@ -453,7 +754,7 @@ impl<'a, V: Copy + IntoValue<'a>, S: AsRef<[V]>> PartialEq<S> for TypedArray<'a,
             .iter()
             .copied()
             .map(IntoValue::into_value)
-            .eq(self.array.iter())
+            .eq(self.as_slice().iter())
     }
 }
 
@@ -506,7 +807,7 @@ impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedArray<'a, V> {
 impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedArray<'a, V>> {
     /// Returns a reference to an element or None if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<&TypedArray<'a, V>> {
-        self.array.get(index).map(|val| match val {
+        self.as_slice().get(index).map(|val| match val {
             LhsValue::Array(array) => {
                 // Safety: this is safe because `TypedArray` is a repr(transparent)
                 // newtype over `InnerArray`.
@@ -536,7 +837,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedArray<'a, V>> {
 impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedMap<'a, V>> {
     /// Returns a reference to an element or None if the index is out of bounds.
     pub fn get(&self, index: usize) -> Option<&TypedMap<'a, V>> {
-        self.array.get(index).map(|val| match val {
+        self.as_slice().get(index).map(|val| match val {
             LhsValue::Map(map) => {
                 // Safety: this is safe because `TypedMap` is a repr(transparent)
                 // newtype over `InnerMap`.
@@ -629,5 +930,24 @@ mod tests {
             array.get(1).unwrap(),
             &[(b"d" as &[u8], 7), (b"e", 3), (b"f", 99)]
         );
+    }
+
+    #[test]
+    fn test_array_interface() {
+        let vec = vec![
+            String::from("one"),
+            String::from("two"),
+            String::from("three"),
+        ];
+
+        let arr = Array::from(&vec);
+
+        dbg!(&arr);
+
+        assert_eq!(arr.len(), 3);
+
+        assert_eq!(arr.get(0), Some(LhsValue::from("one")));
+        assert_eq!(arr.get(1), Some(LhsValue::from("two")));
+        assert_eq!(arr.get(2), Some(LhsValue::from("three")));
     }
 }

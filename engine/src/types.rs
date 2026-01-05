@@ -1,6 +1,6 @@
 use crate::{
     lex::{Lex, LexResult, LexWith, expect, skip_space},
-    lhs_types::{Array, ArrayIterator, Bytes, Map, MapIter, MapValuesIntoIter},
+    lhs_types::{Array, ArrayIntoIter, ArrayIter, Bytes, Map, MapIter, MapValuesIntoIter},
     rhs_types::{BytesExpr, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
@@ -490,11 +490,15 @@ mod private {
 
     impl SealedIntoValue for &[u8] {}
     impl SealedIntoValue for Box<[u8]> {}
+    impl SealedIntoValue for &Box<[u8]> {}
     impl SealedIntoValue for Vec<u8> {}
+    impl SealedIntoValue for &Vec<u8> {}
     impl SealedIntoValue for Cow<'_, [u8]> {}
     impl SealedIntoValue for &str {}
     impl SealedIntoValue for Box<str> {}
+    impl SealedIntoValue for &Box<str> {}
     impl SealedIntoValue for String {}
+    impl SealedIntoValue for &String {}
     impl SealedIntoValue for Cow<'_, str> {}
     impl SealedIntoValue for Bytes<'_> {}
 
@@ -597,12 +601,30 @@ impl<'a> IntoValue<'a> for Box<[u8]> {
     }
 }
 
+impl<'a> IntoValue<'a> for &'a Box<[u8]> {
+    const TYPE: Type = Type::Bytes;
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Bytes(Bytes::from(&**self))
+    }
+}
+
 impl<'a> IntoValue<'a> for Vec<u8> {
     const TYPE: Type = Type::Bytes;
 
     #[inline]
     fn into_value(self) -> LhsValue<'a> {
         LhsValue::Bytes(Bytes::from(self))
+    }
+}
+
+impl<'a> IntoValue<'a> for &'a Vec<u8> {
+    const TYPE: Type = Type::Bytes;
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Bytes(Bytes::from(&**self))
     }
 }
 
@@ -633,12 +655,30 @@ impl<'a> IntoValue<'a> for Box<str> {
     }
 }
 
+impl<'a> IntoValue<'a> for &'a Box<str> {
+    const TYPE: Type = Type::Bytes;
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Bytes(Bytes::from(&**self))
+    }
+}
+
 impl<'a> IntoValue<'a> for String {
     const TYPE: Type = Type::Bytes;
 
     #[inline]
     fn into_value(self) -> LhsValue<'a> {
         LhsValue::Bytes(Bytes::from(self))
+    }
+}
+
+impl<'a> IntoValue<'a> for &'a String {
+    const TYPE: Type = Type::Bytes;
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Bytes(Bytes::from(self.as_str()))
     }
 }
 
@@ -757,7 +797,7 @@ impl From<RhsValue> for LhsValue<'_> {
 impl<'a> LhsValue<'a> {
     /// Converts a reference to an LhsValue to an LhsValue with an internal
     /// references
-    pub fn as_ref(&'a self) -> Self {
+    pub fn as_ref<'b>(&'b self) -> LhsValue<'b> {
         match self {
             LhsValue::Ip(ip) => LhsValue::Ip(*ip),
             LhsValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Borrowed(bytes)),
@@ -816,7 +856,7 @@ impl<'a> LhsValue<'a> {
     /// Returns an iterator over the Map or Array
     pub(crate) fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
-            LhsValue::Array(array) => Some(Iter::IterArray(array.as_slice().iter())),
+            LhsValue::Array(array) => Some(Iter::IterArray(array.into_iter())),
             LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
             _ => None,
         }
@@ -874,7 +914,7 @@ impl<'de> DeserializeSeed<'de> for LhsValueSeed<'_> {
 }
 
 pub enum IntoIter<'a> {
-    IntoArray(ArrayIterator<'a>),
+    IntoArray(ArrayIntoIter<'a>),
     IntoMap(MapValuesIntoIter<'a>),
 }
 
@@ -915,14 +955,14 @@ impl<'a> IntoIterator for LhsValue<'a> {
 }
 
 pub(crate) enum Iter<'a> {
-    IterArray(std::slice::Iter<'a, LhsValue<'a>>),
-    IterMap(MapIter<'a, 'a>),
+    IterArray(ArrayIter<'a>),
+    IterMap(MapIter<'a>),
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = &'a LhsValue<'a>;
+    type Item = LhsValue<'a>;
 
-    fn next(&mut self) -> Option<&'a LhsValue<'a>> {
+    fn next(&mut self) -> Option<LhsValue<'a>> {
         match self {
             Iter::IterArray(array) => array.next(),
             Iter::IterMap(map) => map.next().map(|(_, v)| v),

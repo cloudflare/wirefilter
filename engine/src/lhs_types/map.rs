@@ -165,7 +165,7 @@ impl<'a> Map<'a> {
 
     /// Creates an iterator visiting all key-value pairs in arbitrary order.
     #[inline]
-    pub fn iter(&self) -> MapIter<'a, '_> {
+    pub fn iter(&'a self) -> MapIter<'a> {
         MapIter(self.data.iter())
     }
 
@@ -222,14 +222,14 @@ impl Hash for Map<'_> {
 }
 
 /// An iterator over the entries of a Map.
-pub struct MapIter<'a, 'b>(std::collections::btree_map::Iter<'b, Box<[u8]>, LhsValue<'a>>);
+pub struct MapIter<'a>(std::collections::btree_map::Iter<'a, Box<[u8]>, LhsValue<'a>>);
 
-impl<'a, 'b> Iterator for MapIter<'a, 'b> {
-    type Item = (&'b [u8], &'b LhsValue<'a>);
+impl<'a> Iterator for MapIter<'a> {
+    type Item = (&'a [u8], LhsValue<'a>);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|(k, v)| (&**k, v))
+        self.0.next().map(|(k, v)| (&**k, v.as_ref()))
     }
 
     #[inline]
@@ -238,7 +238,7 @@ impl<'a, 'b> Iterator for MapIter<'a, 'b> {
     }
 }
 
-impl ExactSizeIterator for MapIter<'_, '_> {
+impl ExactSizeIterator for MapIter<'_> {
     #[inline]
     fn len(&self) -> usize {
         self.0.len()
@@ -287,9 +287,9 @@ impl<'a> IntoIterator for Map<'a> {
     }
 }
 
-impl<'a, 'b> IntoIterator for &'b Map<'a> {
-    type Item = (&'b [u8], &'b LhsValue<'a>);
-    type IntoIter = MapIter<'a, 'b>;
+impl<'a> IntoIterator for &'a Map<'a> {
+    type Item = (&'a [u8], LhsValue<'a>);
+    type IntoIter = MapIter<'a>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {

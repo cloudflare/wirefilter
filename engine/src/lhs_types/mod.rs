@@ -5,7 +5,7 @@ mod map;
 use crate::types::LhsValue;
 
 pub use self::{
-    array::{Array, ArrayIterator, TypedArray},
+    array::{Array, ArrayIntoIter, ArrayIter, TypedArray},
     bytes::Bytes,
     map::{Map, MapIter, MapValuesIntoIter, TypedMap},
 };
