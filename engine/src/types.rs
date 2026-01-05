@@ -1,6 +1,6 @@
 use crate::{
     lex::{Lex, LexResult, LexWith, expect, skip_space},
-    lhs_types::{Array, ArrayIterator, Bytes, Map, MapIter, MapValuesIntoIter},
+    lhs_types::{Array, ArrayIntoIter, ArrayIter, Bytes, Map, MapIter, MapValuesIntoIter},
     rhs_types::{BytesExpr, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
@@ -678,7 +678,7 @@ impl From<RhsValue> for LhsValue<'_> {
 impl<'a> LhsValue<'a> {
     /// Converts a reference to an LhsValue to an LhsValue with an internal
     /// references
-    pub fn as_ref(&'a self) -> Self {
+    pub fn as_ref<'b>(&'b self) -> LhsValue<'b> {
         match self {
             LhsValue::Ip(ip) => LhsValue::Ip(*ip),
             LhsValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Borrowed(bytes)),
@@ -737,7 +737,7 @@ impl<'a> LhsValue<'a> {
     /// Returns an iterator over the Map or Array
     pub(crate) fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
-            LhsValue::Array(array) => Some(Iter::IterArray(array.as_slice().iter())),
+            LhsValue::Array(array) => Some(Iter::IterArray(array.into_iter())),
             LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
             _ => None,
         }
@@ -795,7 +795,7 @@ impl<'de> DeserializeSeed<'de> for LhsValueSeed<'_> {
 }
 
 pub enum IntoIter<'a> {
-    IntoArray(ArrayIterator<'a>),
+    IntoArray(ArrayIntoIter<'a>),
     IntoMap(MapValuesIntoIter<'a>),
 }
 
@@ -836,17 +836,17 @@ impl<'a> IntoIterator for LhsValue<'a> {
 }
 
 pub(crate) enum Iter<'a> {
-    IterArray(std::slice::Iter<'a, LhsValue<'a>>),
+    IterArray(ArrayIter<'a>),
     IterMap(MapIter<'a>),
 }
 
 impl<'a> Iterator for Iter<'a> {
-    type Item = &'a LhsValue<'a>;
+    type Item = LhsValue<'a>;
 
-    fn next(&mut self) -> Option<&'a LhsValue<'a>> {
+    fn next(&mut self) -> Option<LhsValue<'a>> {
         match self {
             Iter::IterArray(array) => array.next(),
-            Iter::IterMap(map) => map.next().map(|(_, v)| v),
+            Iter::IterMap(map) => map.next().map(|(_, v)| v.as_ref()),
         }
     }
 

@@ -546,6 +546,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
                 .map(|opt_param| Ok(opt_param.default_value.clone()))
                 .collect();
             Box::new(move |args| {
+                let opt_args = &opt_args;
                 assert_eq!(params_count, args.len());
                 (implementation.0)(&mut ExactSizeChain::new(args, opt_args.iter().cloned()))
             })
