@@ -24,12 +24,12 @@ backtrace.workspace = true
 cfg-if.workspace = true
 cidr.workspace = true
 dyn-clone.workspace = true
+erased-serde.workspace = true
 fnv.workspace = true
 memmem.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
 serde.workspace = true
-serde_json.workspace = true
 sliceslice.workspace = true
 thiserror.workspace = true
 wildcard.workspace = true
@@ -37,6 +37,7 @@ wildcard.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 indoc.workspace = true
+serde_json.workspace = true
 
 [features]
 default = [ "regex" ]

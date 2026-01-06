@@ -818,6 +818,7 @@ mod tests {
         types::ExpectedType,
     };
     use cidr::IpCidr;
+    use serde::Deserialize;
     use std::sync::LazyLock;
     use std::{convert::TryFrom, iter::once, net::IpAddr};
 
@@ -950,12 +951,13 @@ mod tests {
     pub struct NumMListDefinition {}
 
     impl ListDefinition for NumMListDefinition {
-        fn matcher_from_json_value(
+        fn deserialize_matcher<'de>(
             &self,
             _: Type,
-            _: serde_json::Value,
-        ) -> Result<Box<dyn ListMatcher>, serde_json::Error> {
-            Ok(Box::new(NumMatcher {}))
+            deserializer: &mut dyn erased_serde::Deserializer<'de>,
+        ) -> Result<Box<dyn ListMatcher>, erased_serde::Error> {
+            let matcher = erased_serde::deserialize::<NumMatcher>(deserializer)?;
+            Ok(Box::new(matcher))
         }
 
         fn new_matcher(&self) -> Box<dyn ListMatcher> {
@@ -2467,7 +2469,7 @@ mod tests {
         );
     }
 
-    #[derive(Debug, PartialEq, Eq, Serialize, Clone)]
+    #[derive(Debug, PartialEq, Eq, Serialize, Clone, Deserialize)]
     pub struct NumMatcher {}
 
     impl ListMatcher for NumMatcher {
@@ -2483,10 +2485,6 @@ mod tests {
                 LhsValue::Int(num) => self.num_matches(*num, list_id),
                 _ => unreachable!(), // TODO: is this unreachable?
             }
-        }
-
-        fn to_json_value(&self) -> serde_json::Value {
-            serde_json::Value::Null
         }
 
         fn clear(&mut self) {}
@@ -2565,7 +2563,10 @@ mod tests {
         assert_eq!(expr.execute_one(ctx), true);
 
         let json = serde_json::to_string(ctx).unwrap();
-        assert_eq!(json, "{\"tcp.port\":1001,\"$lists\":[]}");
+        assert_eq!(
+            json,
+            "{\"tcp.port\":1001,\"$lists\":[{\"type\":\"Int\",\"data\":{}}]}"
+        );
     }
 
     #[test]

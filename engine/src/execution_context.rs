@@ -3,9 +3,9 @@ use crate::{
     scheme::{Field, List, Scheme, SchemeMismatchError},
     types::{GetType, LhsValue, LhsValueSeed, Type, TypeMismatchError},
 };
-use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, Visitor};
+use serde::Serialize;
+use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Debug;
@@ -292,11 +292,142 @@ impl<U, T> Drop for ExecutionContextGuard<'_, '_, U, T> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct ListData {
-    #[serde(rename = "type")]
-    ty: Type,
-    data: serde_json::Value,
+struct ListMatcherData<'a>(ListRef<'a>);
+
+impl<'de> DeserializeSeed<'de> for ListMatcherData<'_> {
+    type Value = Box<dyn ListMatcher>;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        let mut erased = <dyn erased_serde::Deserializer<'_>>::erase(deserializer);
+        self.0
+            .definition()
+            .deserialize_matcher(self.0.get_type(), &mut erased)
+            .map_err(D::Error::custom)
+    }
+}
+
+struct ListMatcherEntry<'a>(&'a Scheme, &'a mut [Box<dyn ListMatcher>]);
+
+impl<'de> DeserializeSeed<'de> for ListMatcherEntry<'_> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ListMatcherEntryVisitor<'a>(&'a Scheme, &'a mut [Box<dyn ListMatcher>]);
+
+        impl<'de> Visitor<'de> for ListMatcherEntryVisitor<'_> {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "list matcher data")
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<(), M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                use serde::de::Error;
+
+                let Some(key) = access.next_key::<Cow<'_, str>>()? else {
+                    return Err(M::Error::missing_field("type"));
+                };
+
+                if key != "type" {
+                    return Err(M::Error::unknown_field(&key, &["type", "data"]));
+                }
+
+                let ty = access.next_value::<Type>()?;
+
+                let Some(list) = self.0.get_list(&ty) else {
+                    return Err(M::Error::custom(format!("no list defined for type {ty}")));
+                };
+
+                let Some(key) = access.next_key::<Cow<'_, str>>()? else {
+                    return Err(M::Error::missing_field("data"));
+                };
+
+                if key != "data" {
+                    return Err(M::Error::unknown_field(&key, &["type", "data"]));
+                }
+
+                let matcher = access.next_value_seed(ListMatcherData(list))?;
+
+                self.1[list.index()] = matcher;
+
+                Ok(())
+            }
+        }
+
+        const FIELDS: &[&str] = &["type", "data"];
+        deserializer.deserialize_struct(
+            "ListMatcher",
+            FIELDS,
+            ListMatcherEntryVisitor(self.0, self.1),
+        )
+    }
+}
+
+struct ListMatcherSlice<'a>(&'a Scheme, &'a mut [Box<dyn ListMatcher>]);
+
+impl<'de> DeserializeSeed<'de> for ListMatcherSlice<'_> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ListMatcherSliceVisitor<'a>(&'a Scheme, &'a mut [Box<dyn ListMatcher>]);
+
+        impl<'de> Visitor<'de> for ListMatcherSliceVisitor<'_> {
+            type Value = ();
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "a list of list matcher data")
+            }
+
+            fn visit_seq<S>(self, mut access: S) -> Result<(), S::Error>
+            where
+                S: SeqAccess<'de>,
+            {
+                while let Some(()) = access.next_element_seed(ListMatcherEntry(self.0, self.1))? {}
+
+                Ok(())
+            }
+        }
+
+        deserializer.deserialize_seq(ListMatcherSliceVisitor(self.0, self.1))
+    }
+}
+
+impl Serialize for ListMatcherSlice<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct TypedListMatcher<'a> {
+            #[serde(rename = "type")]
+            ty: Type,
+            data: &'a dyn erased_serde::Serialize,
+        }
+
+        let mut seq = serializer.serialize_seq(Some(self.1.len()))?;
+        for list in self.0.lists() {
+            let matcher = &*self.1[list.index()] as &dyn erased_serde::Serialize;
+            seq.serialize_element(&TypedListMatcher {
+                ty: list.get_type(),
+                data: matcher,
+            })?;
+        }
+        seq.end()
+    }
 }
 
 impl<'de, U> DeserializeSeed<'de> for &mut ExecutionContext<'de, U> {
@@ -312,7 +443,7 @@ impl<'de, U> DeserializeSeed<'de> for &mut ExecutionContext<'de, U> {
             type Value = ();
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(formatter, "a map of lhs value")
+                write!(formatter, "a serialized execution context")
             }
 
             fn visit_map<M>(self, mut access: M) -> Result<(), M::Error>
@@ -322,20 +453,10 @@ impl<'de, U> DeserializeSeed<'de> for &mut ExecutionContext<'de, U> {
                 while let Some(key) = access.next_key::<Cow<'_, str>>()? {
                     if key == "$lists" {
                         // Deserialize lists
-                        let vec = access.next_value::<Vec<ListData>>()?;
-                        for ListData { ty, data } in vec.into_iter() {
-                            let list = self.0.scheme.get_list(&ty).ok_or_else(|| {
-                                de::Error::custom(format!("unknown list for type: {ty:?}"))
-                            })?;
-                            self.0.list_matchers[list.index()] = list
-                                .definition()
-                                .matcher_from_json_value(ty, data)
-                                .map_err(|err| {
-                                    de::Error::custom(format!(
-                                        "failed to deserialize list matcher: {err:?}"
-                                    ))
-                                })?;
-                        }
+                        access.next_value_seed(ListMatcherSlice(
+                            &self.0.scheme,
+                            &mut self.0.list_matchers,
+                        ))?;
                     } else {
                         let field = self
                             .0
@@ -381,6 +502,13 @@ impl<U> Serialize for ExecutionContext<'_, U> {
 
         struct ListMatcherSlice<'a>(&'a Scheme, &'a [Box<dyn ListMatcher>]);
 
+        #[derive(Serialize)]
+        struct TypedListMatcher<'a> {
+            #[serde(rename = "type")]
+            ty: Type,
+            data: &'a dyn erased_serde::Serialize,
+        }
+
         impl Serialize for ListMatcherSlice<'_> {
             fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
             where
@@ -388,13 +516,11 @@ impl<U> Serialize for ExecutionContext<'_, U> {
             {
                 let mut seq = serializer.serialize_seq(Some(self.1.len()))?;
                 for list in self.0.lists() {
-                    let data = self.1[list.index()].to_json_value();
-                    if data != serde_json::Value::Null {
-                        seq.serialize_element(&ListData {
-                            ty: list.get_type(),
-                            data,
-                        })?;
-                    }
+                    let matcher = &*self.1[list.index()] as &dyn erased_serde::Serialize;
+                    seq.serialize_element(&TypedListMatcher {
+                        ty: list.get_type(),
+                        data: matcher,
+                    })?;
                 }
                 seq.end()
             }

@@ -21,6 +21,7 @@ cfg-if = "1"
 cidr = { version = "0.2", features = ["serde"] }
 criterion = "0.5"
 dyn-clone = "1.0.20"
+erased-serde = "0.4.9"
 fnv = "1.0.6"
 getrandom = { version = "0.3" }
 indoc = "2"

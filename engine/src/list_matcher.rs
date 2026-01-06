@@ -1,7 +1,7 @@
 use crate::LhsValue;
 use crate::Type;
 use dyn_clone::DynClone;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::fmt::Debug;
 
@@ -10,15 +10,15 @@ use std::fmt::Debug;
 /// `ListDefinition` needs to be registered in the `Scheme` for a given `Type`.
 /// See `Scheme::add_list`.
 pub trait ListDefinition: Debug + Sync + Send {
-    /// Converts a deserialized `serde_json::Value` into a `ListMatcher`.
+    /// Deserializes a list matcher.
     ///
     /// This method is necessary to support deserialization of lists during the
     /// the deserialization of an `ExecutionContext`.
-    fn matcher_from_json_value(
+    fn deserialize_matcher<'de>(
         &self,
         ty: Type,
-        value: Value,
-    ) -> Result<Box<dyn ListMatcher>, serde_json::Error>;
+        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+    ) -> Result<Box<dyn ListMatcher>, erased_serde::Error>;
 
     /// Creates a new matcher object for this list.
     fn new_matcher(&self) -> Box<dyn ListMatcher>;
@@ -58,13 +58,12 @@ impl<T: PartialEq + Any> DynPartialEq for T {
     }
 }
 
-/// Implement this Trait to match a given `LhsValue` against a list.
-pub trait ListMatcher: AsAny + Debug + DynClone + DynPartialEq + Send + Sync + 'static {
+/// Implement this trait to match a given `LhsValue` against a list.
+pub trait ListMatcher:
+    AsAny + Debug + DynClone + DynPartialEq + Send + Sync + erased_serde::Serialize + 'static
+{
     /// Returns true if `val` is in the given list.
     fn match_value(&self, list_name: &str, val: &LhsValue<'_>) -> bool;
-
-    /// Convert the list matcher to a serde_json::Value in order to serialize it.
-    fn to_json_value(&self) -> Value;
 
     /// Clears the list matcher, removing all its content.
     fn clear(&mut self);
@@ -84,16 +83,17 @@ impl PartialEq for dyn ListMatcher {
 pub struct AlwaysList {}
 
 /// Matcher for `AlwaysList`
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AlwaysListMatcher {}
 
 impl ListDefinition for AlwaysList {
-    fn matcher_from_json_value(
+    fn deserialize_matcher<'de>(
         &self,
         _: Type,
-        _: serde_json::Value,
-    ) -> Result<Box<dyn ListMatcher>, serde_json::Error> {
-        Ok(Box::new(AlwaysListMatcher {}))
+        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+    ) -> Result<Box<dyn ListMatcher>, erased_serde::Error> {
+        let matcher = erased_serde::deserialize::<AlwaysListMatcher>(deserializer)?;
+        Ok(Box::new(matcher))
     }
 
     fn new_matcher(&self) -> Box<dyn ListMatcher> {
@@ -106,10 +106,6 @@ impl ListMatcher for AlwaysListMatcher {
         false
     }
 
-    fn to_json_value(&self) -> serde_json::Value {
-        serde_json::Value::Null
-    }
-
     fn clear(&mut self) {}
 }
 
@@ -118,16 +114,17 @@ impl ListMatcher for AlwaysListMatcher {
 pub struct NeverList {}
 
 /// Matcher for `NeverList`
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NeverListMatcher {}
 
 impl ListDefinition for NeverList {
-    fn matcher_from_json_value(
+    fn deserialize_matcher<'de>(
         &self,
         _: Type,
-        _: serde_json::Value,
-    ) -> Result<Box<dyn ListMatcher>, serde_json::Error> {
-        Ok(Box::new(NeverListMatcher {}))
+        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+    ) -> Result<Box<dyn ListMatcher>, erased_serde::Error> {
+        let matcher = erased_serde::deserialize::<NeverListMatcher>(deserializer)?;
+        Ok(Box::new(matcher))
     }
 
     fn new_matcher(&self) -> Box<dyn ListMatcher> {
@@ -138,10 +135,6 @@ impl ListDefinition for NeverList {
 impl ListMatcher for NeverListMatcher {
     fn match_value(&self, _: &str, _: &LhsValue<'_>) -> bool {
         false
-    }
-
-    fn to_json_value(&self) -> serde_json::Value {
-        serde_json::Value::Null
     }
 
     fn clear(&mut self) {}
