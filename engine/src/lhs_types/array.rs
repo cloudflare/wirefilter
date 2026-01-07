@@ -30,40 +30,6 @@ impl<'a> InnerArray<'a> {
     const fn new() -> Self {
         Self::Owned(Vec::new())
     }
-
-    #[inline]
-    fn as_vec(&mut self) -> &mut Vec<LhsValue<'a>> {
-        match self {
-            InnerArray::Owned(vec) => vec,
-            InnerArray::Borrowed(slice) => {
-                *self = InnerArray::Owned(slice.to_vec());
-                match self {
-                    InnerArray::Owned(vec) => vec,
-                    _ => unsafe { unreachable_unchecked() },
-                }
-            }
-        }
-    }
-
-    #[inline]
-    fn get_mut(&mut self, idx: usize) -> Option<&mut LhsValue<'a>> {
-        self.as_vec().get_mut(idx)
-    }
-
-    #[inline]
-    fn push(&mut self, value: LhsValue<'a>) {
-        self.as_vec().push(value)
-    }
-
-    #[inline]
-    fn truncate(&mut self, len: usize) {
-        match self {
-            InnerArray::Owned(vec) => vec.truncate(len),
-            InnerArray::Borrowed(slice) => {
-                *slice = &slice[..len];
-            }
-        }
-    }
 }
 
 impl<'a> Deref for InnerArray<'a> {
@@ -168,8 +134,11 @@ impl<'a> Array<'a> {
     where
         F: Fn(LhsValue<'a>) -> Option<LhsValue<'a>>,
     {
-        let Self { mut data, .. } = self;
-        let mut vec = std::mem::take(data.as_vec());
+        let Self { data, .. } = self;
+        let mut vec = match data {
+            InnerArray::Owned(vec) => vec,
+            InnerArray::Borrowed(slice) => slice.to_vec(),
+        };
         let val_type = value_type.into();
         let mut write = 0;
         for read in 0..vec.len() {
@@ -361,7 +330,10 @@ impl<'de> DeserializeSeed<'de> for &mut Array<'de> {
                 A: SeqAccess<'de>,
             {
                 let value_type = self.0.value_type();
-                let vec = self.0.data.as_vec();
+                let mut vec = match &mut self.0.data {
+                    InnerArray::Owned(vec) => std::mem::take(vec),
+                    InnerArray::Borrowed(slice) => slice.to_vec(),
+                };
                 while let Some(elem) = seq.next_element_seed(LhsValueSeed(&value_type))? {
                     let elem_type = elem.get_type();
                     if value_type != elem_type {
@@ -371,6 +343,7 @@ impl<'de> DeserializeSeed<'de> for &mut Array<'de> {
                     }
                     vec.push(elem);
                 }
+                self.0.data = InnerArray::Owned(vec);
                 Ok(())
             }
         }
@@ -396,16 +369,24 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     pub const fn new() -> Self {
         const {
             Self {
-                array: InnerArray::new(),
+                array: InnerArray::Owned(Vec::new()),
                 _marker: std::marker::PhantomData,
             }
+        }
+    }
+
+    #[inline]
+    fn as_vec(&mut self) -> &mut Vec<LhsValue<'a>> {
+        match &mut self.array {
+            InnerArray::Owned(vec) => vec,
+            InnerArray::Borrowed(_) => unreachable!(),
         }
     }
 
     /// Push an element to the back of the array
     #[inline]
     pub fn push(&mut self, value: V) {
-        self.array.push(value.into_value())
+        self.as_vec().push(value.into_value())
     }
 
     /// Returns the number of elements in the array
@@ -423,7 +404,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     /// Shortens the array, keeping the first `len` elements and dropping the rest.
     #[inline]
     pub fn truncate(&mut self, len: usize) {
-        self.array.truncate(len);
+        self.as_vec().truncate(len);
     }
 
     /// Converts the strongly typed array into a borrowed loosely typed array.
@@ -446,7 +427,7 @@ impl TypedArray<'static, bool> {
 
     #[inline]
     pub(crate) fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut bool> + '_ {
-        self.array.as_vec().iter_mut().map(|value| match value {
+        self.as_vec().iter_mut().map(|value| match value {
             LhsValue::Bool(b) => b,
             _ => unsafe { unreachable_unchecked() },
         })
@@ -496,8 +477,7 @@ impl<'a, V: IntoValue<'a>> Default for TypedArray<'a, V> {
 impl<'a, V: IntoValue<'a>> Extend<V> for TypedArray<'a, V> {
     #[inline]
     fn extend<T: IntoIterator<Item = V>>(&mut self, iter: T) {
-        self.array
-            .as_vec()
+        self.as_vec()
             .extend(iter.into_iter().map(IntoValue::into_value))
     }
 }
@@ -538,7 +518,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedArray<'a, V>> {
 
     /// Returns a mutable reference to an element or None if the index is out of bounds.
     pub fn get_mut(&mut self, index: usize) -> Option<&mut TypedArray<'a, V>> {
-        self.array.get_mut(index).map(|val| match val {
+        self.as_vec().get_mut(index).map(|val| match val {
             LhsValue::Array(array) => {
                 // Safety: this is safe because `TypedArray` is a repr(transparent)
                 // newtype over `InnerArray`.
@@ -568,7 +548,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedMap<'a, V>> {
 
     /// Returns a mutable reference to an element or None if the index is out of bounds.
     pub fn get_mut(&mut self, index: usize) -> Option<&mut TypedMap<'a, V>> {
-        self.array.get_mut(index).map(|val| match val {
+        self.as_vec().get_mut(index).map(|val| match val {
             LhsValue::Map(map) => {
                 // Safety: this is safe because `TypedMap` is a repr(transparent)
                 // newtype over `InnerMap`.
