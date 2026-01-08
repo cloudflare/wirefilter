@@ -864,7 +864,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             LhsValue::Array(array) => IntoIter::IntoArray(array.into_iter()),
-            LhsValue::Map(map) => IntoIter::IntoMap(map.values_into_iter()),
+            LhsValue::Map(map) => IntoIter::IntoMap(map.into_values()),
             _ => unreachable!(),
         }
     }
