@@ -8,7 +8,6 @@ use crate::{
 use serde::de::{DeserializeSeed, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
-    borrow::Cow,
     cmp::Ordering,
     collections::BTreeSet,
     convert::TryFrom,
@@ -473,7 +472,6 @@ impl PartialEq<RhsValue> for LhsValue<'_> {
 mod private {
     use super::IntoValue;
     use crate::{Bytes, TypedArray, TypedMap};
-    use std::borrow::Cow;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     pub trait SealedIntoValue {}
@@ -488,19 +486,11 @@ mod private {
     impl SealedIntoValue for u32 {}
     impl SealedIntoValue for i64 {}
 
-    impl SealedIntoValue for &[u8] {}
-    impl SealedIntoValue for Box<[u8]> {}
-    impl SealedIntoValue for Vec<u8> {}
-    impl SealedIntoValue for Cow<'_, [u8]> {}
-    impl SealedIntoValue for &str {}
-    impl SealedIntoValue for Box<str> {}
-    impl SealedIntoValue for String {}
-    impl SealedIntoValue for Cow<'_, str> {}
-    impl SealedIntoValue for Bytes<'_> {}
-
     impl SealedIntoValue for IpAddr {}
     impl SealedIntoValue for Ipv4Addr {}
     impl SealedIntoValue for Ipv6Addr {}
+
+    impl<'a, T: Into<Bytes<'a>>> SealedIntoValue for T {}
 
     impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedArray<'a, V> {}
     impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedMap<'a, V> {}
@@ -579,87 +569,6 @@ impl<'a> IntoValue<'a> for u8 {
     }
 }
 
-impl<'a> IntoValue<'a> for &'a [u8] {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Box<[u8]> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Vec<u8> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Cow<'a, [u8]> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for &'a str {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Box<str> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for String {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Cow<'a, str> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(Bytes::from(self))
-    }
-}
-
-impl<'a> IntoValue<'a> for Bytes<'a> {
-    const TYPE: Type = Type::Bytes;
-
-    #[inline]
-    fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(self)
-    }
-}
-
 impl<'a> IntoValue<'a> for IpAddr {
     const TYPE: Type = Type::Ip;
 
@@ -684,6 +593,15 @@ impl<'a> IntoValue<'a> for Ipv6Addr {
     #[inline]
     fn into_value(self) -> LhsValue<'a> {
         LhsValue::Ip(IpAddr::V6(self))
+    }
+}
+
+impl<'a, T: Into<Bytes<'a>>> IntoValue<'a> for T {
+    const TYPE: Type = Type::Bytes;
+
+    #[inline]
+    fn into_value(self) -> LhsValue<'a> {
+        LhsValue::Bytes(self.into())
     }
 }
 

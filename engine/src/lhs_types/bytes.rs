@@ -145,11 +145,25 @@ impl From<Box<str>> for Bytes<'static> {
     }
 }
 
+impl<'a> From<&'a Box<str>> for Bytes<'a> {
+    #[inline]
+    fn from(value: &'a Box<str>) -> Self {
+        Bytes::Borrowed(value.as_bytes())
+    }
+}
+
 impl From<String> for Bytes<'static> {
     #[inline]
     fn from(value: String) -> Self {
         // Call into_boxed_str in order to reduce memory usage
         Bytes::Owned(value.into_boxed_str().into_boxed_bytes())
+    }
+}
+
+impl<'a> From<&'a String> for Bytes<'a> {
+    #[inline]
+    fn from(value: &'a String) -> Self {
+        Bytes::Borrowed(value.as_bytes())
     }
 }
 
