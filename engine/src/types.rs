@@ -490,7 +490,7 @@ mod private {
     impl SealedIntoValue for Ipv4Addr {}
     impl SealedIntoValue for Ipv6Addr {}
 
-    impl<'a, T: Into<Bytes<'a>>> SealedIntoValue for T {}
+    impl<'a, T> SealedIntoValue for T where Bytes<'a>: From<T> {}
 
     impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedArray<'a, V> {}
     impl<'a, V: IntoValue<'a>> SealedIntoValue for TypedMap<'a, V> {}
@@ -596,12 +596,15 @@ impl<'a> IntoValue<'a> for Ipv6Addr {
     }
 }
 
-impl<'a, T: Into<Bytes<'a>>> IntoValue<'a> for T {
+impl<'a, T> IntoValue<'a> for T
+where
+    Bytes<'a>: From<T>,
+{
     const TYPE: Type = Type::Bytes;
 
     #[inline]
     fn into_value(self) -> LhsValue<'a> {
-        LhsValue::Bytes(self.into())
+        LhsValue::Bytes(Bytes::from(self))
     }
 }
 
