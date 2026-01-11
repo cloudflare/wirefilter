@@ -1,6 +1,6 @@
 use crate::{
     TypeMismatchError,
-    lhs_types::{AsRefIterator, Bytes},
+    lhs_types::Bytes,
     types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type},
 };
 use serde::{
@@ -115,13 +115,9 @@ impl<'a> Map<'a> {
     }
 
     /// Convert current map into an iterator over contained values
-    pub fn values_into_iter(self) -> MapValuesIntoIter<'a> {
-        let Map { data, .. } = self;
-        match data {
-            InnerMap::Owned(map) => MapValuesIntoIter::Owned(map.into_iter()),
-            InnerMap::Borrowed(map) => {
-                MapValuesIntoIter::Borrowed(AsRefIterator::new(map.values()))
-            }
+    pub fn into_values(self) -> MapValuesIntoIter<'a> {
+        MapValuesIntoIter {
+            inner: self.into_iter(),
         }
     }
 
@@ -135,8 +131,8 @@ impl<'a> Map<'a> {
 
     /// Creates an iterator visiting all key-value pairs in arbitrary order.
     #[inline]
-    pub fn iter(&self) -> MapIter<'a, '_> {
-        MapIter(self.data.iter())
+    pub fn iter(&self) -> MapIter<'_> {
+        MapIter::new(&self.data)
     }
 
     /// Creates a new map from the specified iterator.
@@ -192,14 +188,80 @@ impl Hash for Map<'_> {
 }
 
 /// An iterator over the entries of a Map.
-pub struct MapIter<'a, 'b>(std::collections::btree_map::Iter<'b, Box<[u8]>, LhsValue<'a>>);
+#[derive(Debug)]
+pub struct MapIter<'a> {
+    map: &'a BTreeMap<Box<[u8]>, LhsValue<'a>>,
+    #[allow(clippy::borrowed_box)]
+    next_kv: Option<(&'a Box<[u8]>, &'a LhsValue<'a>)>,
+    left: usize,
+}
 
-impl<'a, 'b> Iterator for MapIter<'a, 'b> {
-    type Item = (&'b [u8], &'b LhsValue<'a>);
+impl<'a> MapIter<'a> {
+    fn new(map: &'a BTreeMap<Box<[u8]>, LhsValue<'a>>) -> Self {
+        Self {
+            map,
+            next_kv: map.first_key_value(),
+            left: map.len(),
+        }
+    }
+}
+
+impl<'a> Iterator for MapIter<'a> {
+    type Item = (&'a [u8], &'a LhsValue<'a>);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|(k, v)| (&**k, v))
+        use std::ops::Bound;
+
+        if let Some((k, v)) = self.next_kv {
+            let range = (Bound::Excluded(k), Bound::Unbounded);
+            self.next_kv = self.map.range::<Box<[u8]>, _>(range).next();
+            self.left -= 1;
+            Some((k, v))
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.left, Some(self.left))
+    }
+}
+
+impl<'a> IntoIterator for &'a Map<'a> {
+    type Item = (&'a [u8], &'a LhsValue<'a>);
+    type IntoIter = MapIter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        MapIter::new(&self.data)
+    }
+}
+
+impl ExactSizeIterator for MapIter<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.left
+    }
+}
+
+enum MapIntoIterImpl<'a> {
+    Owned(std::collections::btree_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
+    Borrowed(MapIter<'a>),
+}
+
+pub struct MapIntoIter<'a>(MapIntoIterImpl<'a>);
+
+impl<'a> Iterator for MapIntoIter<'a> {
+    type Item = (Cow<'a, [u8]>, LhsValue<'a>);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.0 {
+            MapIntoIterImpl::Owned(iter) => iter.next().map(|(k, v)| (Vec::from(k).into(), v)),
+            MapIntoIterImpl::Borrowed(iter) => iter.next().map(|(k, v)| (k.into(), v.as_ref())),
+        }
     }
 
     #[inline]
@@ -208,16 +270,31 @@ impl<'a, 'b> Iterator for MapIter<'a, 'b> {
     }
 }
 
-impl ExactSizeIterator for MapIter<'_, '_> {
+impl<'a> IntoIterator for Map<'a> {
+    type Item = (Cow<'a, [u8]>, LhsValue<'a>);
+    type IntoIter = MapIntoIter<'a>;
+
     #[inline]
-    fn len(&self) -> usize {
-        self.0.len()
+    fn into_iter(self) -> Self::IntoIter {
+        match self.data {
+            InnerMap::Owned(map) => MapIntoIter(MapIntoIterImpl::Owned(map.into_iter())),
+            InnerMap::Borrowed(map) => MapIntoIter(MapIntoIterImpl::Borrowed(MapIter::new(map))),
+        }
     }
 }
 
-pub enum MapValuesIntoIter<'a> {
-    Owned(std::collections::btree_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::collections::btree_map::Values<'a, Box<[u8]>, LhsValue<'a>>>),
+impl ExactSizeIterator for MapIntoIter<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        match &self.0 {
+            MapIntoIterImpl::Owned(iter) => iter.len(),
+            MapIntoIterImpl::Borrowed(iter) => iter.len(),
+        }
+    }
+}
+
+pub struct MapValuesIntoIter<'a> {
+    inner: MapIntoIter<'a>,
 }
 
 impl<'a> Iterator for MapValuesIntoIter<'a> {
@@ -225,10 +302,7 @@ impl<'a> Iterator for MapValuesIntoIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            MapValuesIntoIter::Owned(iter) => iter.next().map(|(_, v)| v),
-            MapValuesIntoIter::Borrowed(iter) => iter.next(),
-        }
+        self.inner.next().map(|(_, v)| v)
     }
 
     #[inline]
@@ -238,32 +312,9 @@ impl<'a> Iterator for MapValuesIntoIter<'a> {
 }
 
 impl ExactSizeIterator for MapValuesIntoIter<'_> {
-    fn len(&self) -> usize {
-        match self {
-            MapValuesIntoIter::Owned(iter) => iter.len(),
-            MapValuesIntoIter::Borrowed(iter) => iter.len(),
-        }
-    }
-}
-
-impl<'a> IntoIterator for Map<'a> {
-    type Item = (Box<[u8]>, LhsValue<'a>);
-    type IntoIter = std::collections::btree_map::IntoIter<Box<[u8]>, LhsValue<'a>>;
-    fn into_iter(self) -> Self::IntoIter {
-        match self.data {
-            InnerMap::Owned(map) => map.into_iter(),
-            InnerMap::Borrowed(ref_map) => ref_map.clone().into_iter(),
-        }
-    }
-}
-
-impl<'a, 'b> IntoIterator for &'b Map<'a> {
-    type Item = (&'b [u8], &'b LhsValue<'a>);
-    type IntoIter = MapIter<'a, 'b>;
-
     #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        MapIter(self.data.deref().iter())
+    fn len(&self) -> usize {
+        self.inner.len()
     }
 }
 

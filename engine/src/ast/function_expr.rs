@@ -295,7 +295,7 @@ impl ValueExpr for FunctionCallExpr {
                 // Extract the values of the map
                 if let LhsValue::Map(map) = first {
                     first = LhsValue::Array(
-                        Array::try_from_iter(map.value_type(), map.values_into_iter()).unwrap(),
+                        Array::try_from_iter(map.value_type(), map.into_values()).unwrap(),
                     );
                 }
                 // Retrieve the underlying `Array`
