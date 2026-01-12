@@ -225,7 +225,8 @@ impl<'a> Map<'a> {
         }
     }
 
-    pub(crate) fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
+    /// Extracts a value with key `key` if it exists.
+    pub fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
         let Self { data, .. } = self;
         match data {
             InnerMap::Owned(mut map) => map.remove(key),

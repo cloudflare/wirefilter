@@ -318,7 +318,8 @@ impl<'a> Array<'a> {
         self.data.is_empty()
     }
 
-    pub(crate) fn extract(self, idx: usize) -> Option<LhsValue<'a>> {
+    /// Extracts a value at index `idx` if it exists.
+    pub fn extract(self, idx: usize) -> Option<LhsValue<'a>> {
         let Self { data, .. } = self;
         match data {
             InnerArray::Owned(mut vec) => {
