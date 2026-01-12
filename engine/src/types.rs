@@ -846,7 +846,7 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<LhsValue<'a>> {
         match self {
             Iter::IterArray(array) => array.next(),
-            Iter::IterMap(map) => map.next().map(|(_, v)| v.as_ref()),
+            Iter::IterMap(map) => map.next().map(|(_, v)| v),
         }
     }
 

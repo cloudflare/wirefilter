@@ -3,25 +3,100 @@ use crate::{
     lhs_types::Bytes,
     types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type},
 };
+use dyn_hash::DynHash;
 use serde::{
     Serialize, Serializer,
     de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{SerializeMap, SerializeSeq},
 };
 use std::{
-    borrow::Cow,
+    borrow::{Borrow, Cow},
     collections::BTreeMap,
     fmt,
     hash::{Hash, Hasher},
-    ops::Deref,
+    ops::Bound,
 };
 
 use super::{TypedArray, array::InnerArray};
 
+pub(crate) trait MapInterface: std::fmt::Debug + DynHash + Send + Sync {
+    fn len(&self) -> usize;
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn get(&self, key: &[u8]) -> Option<LhsValue<'_>>;
+
+    fn first(&self) -> Option<(&[u8], LhsValue<'_>)>;
+
+    fn next(&self, key: &[u8]) -> Option<(&[u8], LhsValue<'_>)>;
+}
+
+dyn_hash::hash_trait_object!(MapInterface);
+
+impl<'a> MapInterface for BTreeMap<Box<[u8]>, LhsValue<'a>> {
+    fn len(&self) -> usize {
+        BTreeMap::len(self)
+    }
+
+    fn is_empty(&self) -> bool {
+        BTreeMap::is_empty(self)
+    }
+
+    fn get(&self, key: &[u8]) -> Option<LhsValue<'_>> {
+        BTreeMap::get(self, key).map(LhsValue::as_ref)
+    }
+
+    fn first(&self) -> Option<(&[u8], LhsValue<'_>)> {
+        BTreeMap::first_key_value(self).map(|(k, v)| (&**k, v.as_ref()))
+    }
+
+    fn next(&self, key: &[u8]) -> Option<(&[u8], LhsValue<'_>)> {
+        let range = (Bound::Excluded(key), Bound::Unbounded);
+        self.range::<[u8], _>(range)
+            .next()
+            .map(|(k, v)| (&**k, v.as_ref()))
+    }
+}
+
+impl<
+    'a,
+    K: Borrow<[u8]> + Ord + std::fmt::Debug + Hash + Send + Sync,
+    V: std::fmt::Debug + Hash + Send + Sync,
+> MapInterface for BTreeMap<K, V>
+where
+    for<'b> &'b V: IntoValue<'b>,
+{
+    fn len(&self) -> usize {
+        BTreeMap::len(self)
+    }
+
+    fn is_empty(&self) -> bool {
+        BTreeMap::is_empty(self)
+    }
+
+    fn get(&self, key: &[u8]) -> Option<LhsValue<'_>> {
+        BTreeMap::get(self, key).map(IntoValue::into_value)
+    }
+
+    fn first(&self) -> Option<(&[u8], LhsValue<'_>)> {
+        BTreeMap::first_key_value(self).map(|(k, v)| (k.borrow(), v.into_value()))
+    }
+
+    fn next(&self, key: &[u8]) -> Option<(&[u8], LhsValue<'_>)> {
+        let range = (Bound::Excluded(key), Bound::Unbounded);
+        self.range::<[u8], _>(range)
+            .next()
+            .map(|(k, v)| (k.borrow(), v.into_value()))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum InnerMap<'a> {
     Owned(BTreeMap<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(&'a BTreeMap<Box<[u8]>, LhsValue<'a>>),
+    Borrowed(&'a (dyn MapInterface + 'a)),
 }
 
 impl<'a> InnerMap<'a> {
@@ -29,16 +104,28 @@ impl<'a> InnerMap<'a> {
     const fn new() -> Self {
         Self::Owned(BTreeMap::new())
     }
-}
-
-impl<'a> Deref for InnerMap<'a> {
-    type Target = BTreeMap<Box<[u8]>, LhsValue<'a>>;
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
+    fn len(&self) -> usize {
         match self {
-            InnerMap::Owned(map) => map,
-            InnerMap::Borrowed(ref_map) => ref_map,
+            InnerMap::Owned(map) => map.len(),
+            InnerMap::Borrowed(map) => map.len(),
+        }
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        match self {
+            InnerMap::Owned(map) => map.is_empty(),
+            InnerMap::Borrowed(map) => map.is_empty(),
+        }
+    }
+
+    #[inline]
+    fn iter(&self) -> MapIter<'_> {
+        match self {
+            InnerMap::Owned(map) => MapIter::new(map),
+            InnerMap::Borrowed(map) => MapIter::new(*map),
         }
     }
 }
@@ -46,6 +133,16 @@ impl<'a> Deref for InnerMap<'a> {
 impl Default for InnerMap<'_> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Hash for InnerMap<'_> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            InnerMap::Owned(map) => map.hash(state),
+            InnerMap::Borrowed(map) => map.hash(state),
+        }
     }
 }
 
@@ -66,8 +163,11 @@ impl<'a> Map<'a> {
     }
 
     /// Get a reference to an element if it exists
-    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<&LhsValue<'a>> {
-        self.data.get(key.as_ref())
+    pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<LhsValue<'_>> {
+        match &self.data {
+            InnerMap::Owned(map) => map.get(key.as_ref()).map(LhsValue::as_ref),
+            InnerMap::Borrowed(map) => map.get(key.as_ref()),
+        }
     }
 
     pub(crate) fn as_ref(&'a self) -> Map<'a> {
@@ -91,8 +191,8 @@ impl<'a> Map<'a> {
                         .collect(),
                 ),
                 InnerMap::Borrowed(map) => InnerMap::Owned(
-                    map.iter()
-                        .map(|(key, value)| (key.clone(), value.clone().into_owned()))
+                    MapIter::new(map)
+                        .map(|(key, value)| (key.to_vec().into(), value.into_owned()))
                         .collect(),
                 ),
             },
@@ -100,21 +200,25 @@ impl<'a> Map<'a> {
     }
 
     /// Returns the type of the contained values.
+    #[inline]
     pub fn value_type(&self) -> Type {
         self.val_type.into()
     }
 
     /// Returns the number of elements in the map
+    #[inline]
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Returns true if the map contains no elements.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Convert current map into an iterator over contained values
+    #[inline]
     pub fn into_values(self) -> MapValuesIntoIter<'a> {
         MapValuesIntoIter {
             inner: self.into_iter(),
@@ -125,14 +229,14 @@ impl<'a> Map<'a> {
         let Self { data, .. } = self;
         match data {
             InnerMap::Owned(mut map) => map.remove(key),
-            InnerMap::Borrowed(map) => map.get(key).map(LhsValue::as_ref),
+            InnerMap::Borrowed(map) => map.get(key),
         }
     }
 
     /// Creates an iterator visiting all key-value pairs in arbitrary order.
     #[inline]
     pub fn iter(&self) -> MapIter<'_> {
-        MapIter::new(&self.data)
+        self.data.iter()
     }
 
     /// Creates a new map from the specified iterator.
@@ -165,9 +269,18 @@ impl<'a> Map<'a> {
 }
 
 impl<'a> PartialEq for Map<'a> {
-    #[inline]
     fn eq(&self, other: &Map<'a>) -> bool {
-        self.val_type == other.val_type && self.data.deref() == other.data.deref()
+        if self.len() != other.len() || self.val_type != other.val_type {
+            return false;
+        }
+
+        for (k, v) in self.iter() {
+            if other.get(k) != Some(v) {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -180,42 +293,56 @@ impl GetType for Map<'_> {
     }
 }
 
+impl<
+    'a,
+    K: Borrow<[u8]> + std::fmt::Debug + Hash + Send + Sync + Ord,
+    V: std::fmt::Debug + Hash + Send + Sync,
+> From<&'a BTreeMap<K, V>> for Map<'a>
+where
+    for<'b> &'b V: IntoValue<'b>,
+{
+    fn from(data: &'a BTreeMap<K, V>) -> Self {
+        Map {
+            val_type: <&V>::TYPE.into(),
+            data: InnerMap::Borrowed(data as &dyn MapInterface),
+        }
+    }
+}
+
 impl Hash for Map<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get_type().hash(state);
-        self.data.deref().hash(state);
+        self.data.hash(state);
     }
 }
 
 /// An iterator over the entries of a Map.
 #[derive(Debug)]
 pub struct MapIter<'a> {
-    map: &'a BTreeMap<Box<[u8]>, LhsValue<'a>>,
+    map: &'a dyn MapInterface,
     #[allow(clippy::borrowed_box)]
-    next_kv: Option<(&'a Box<[u8]>, &'a LhsValue<'a>)>,
+    next_kv: Option<(&'a [u8], LhsValue<'a>)>,
     left: usize,
 }
 
 impl<'a> MapIter<'a> {
-    fn new(map: &'a BTreeMap<Box<[u8]>, LhsValue<'a>>) -> Self {
+    #[inline]
+    fn new(map: &'a dyn MapInterface) -> Self {
         Self {
             map,
-            next_kv: map.first_key_value(),
+            next_kv: map.first(),
             left: map.len(),
         }
     }
 }
 
 impl<'a> Iterator for MapIter<'a> {
-    type Item = (&'a [u8], &'a LhsValue<'a>);
+    type Item = (&'a [u8], LhsValue<'a>);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        use std::ops::Bound;
-
-        if let Some((k, v)) = self.next_kv {
-            let range = (Bound::Excluded(k), Bound::Unbounded);
-            self.next_kv = self.map.range::<Box<[u8]>, _>(range).next();
+        if let Some((k, v)) = self.next_kv.take() {
+            self.next_kv = self.map.next(k);
             self.left -= 1;
             Some((k, v))
         } else {
@@ -230,12 +357,12 @@ impl<'a> Iterator for MapIter<'a> {
 }
 
 impl<'a> IntoIterator for &'a Map<'a> {
-    type Item = (&'a [u8], &'a LhsValue<'a>);
+    type Item = (&'a [u8], LhsValue<'a>);
     type IntoIter = MapIter<'a>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        MapIter::new(&self.data)
+        self.iter()
     }
 }
 
@@ -260,7 +387,7 @@ impl<'a> Iterator for MapIntoIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.0 {
             MapIntoIterImpl::Owned(iter) => iter.next().map(|(k, v)| (Vec::from(k).into(), v)),
-            MapIntoIterImpl::Borrowed(iter) => iter.next().map(|(k, v)| (k.into(), v.as_ref())),
+            MapIntoIterImpl::Borrowed(iter) => iter.next().map(|(k, v)| (k.into(), v)),
         }
     }
 
@@ -323,26 +450,29 @@ impl Serialize for Map<'_> {
     where
         S: Serializer,
     {
-        let to_map = self.data.keys().all(|key| std::str::from_utf8(key).is_ok());
+        let to_map = self
+            .data
+            .iter()
+            .all(|(key, _)| std::str::from_utf8(key).is_ok());
 
         if to_map {
             let mut map = serializer.serialize_map(Some(self.len()))?;
             for (k, v) in self.data.iter() {
-                map.serialize_entry(std::str::from_utf8(k).unwrap(), v)?;
+                map.serialize_entry(std::str::from_utf8(k).unwrap(), &v)?;
             }
             map.end()
         } else {
             // Keys have to be sorted in order to have reproducible output
             let mut keys = Vec::new();
-            for key in self.data.keys() {
+            for (key, _) in self.data.iter() {
                 keys.push(key)
             }
             keys.sort();
             let mut seq = serializer.serialize_seq(Some(self.len()))?;
             for key in keys {
                 seq.serialize_element(&[
-                    &LhsValue::Bytes((&**key).into()),
-                    self.data.get(key).unwrap(),
+                    &LhsValue::Bytes((&*key).into()),
+                    &self.get(key).unwrap(),
                 ])?;
             }
             seq.end()
@@ -413,7 +543,9 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                 let map = match &mut self.0.data {
                     InnerMap::Owned(map) => map,
                     InnerMap::Borrowed(map) => {
-                        let map = map.clone();
+                        let map = MapIter::new(*map)
+                            .map(|(k, v)| (k.to_vec().into(), v))
+                            .collect();
                         self.0.data = InnerMap::Owned(map);
                         match &mut self.0.data {
                             InnerMap::Owned(map) => map,
@@ -444,7 +576,9 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                 let map = match &mut self.0.data {
                     InnerMap::Owned(map) => map,
                     InnerMap::Borrowed(map) => {
-                        let map = map.clone();
+                        let map = MapIter::new(*map)
+                            .map(|(k, v)| (k.to_vec().into(), v))
+                            .collect();
                         self.0.data = InnerMap::Owned(map);
                         match &mut self.0.data {
                             InnerMap::Owned(map) => map,
@@ -494,6 +628,14 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
     }
 
     #[inline]
+    fn as_map_ref(&self) -> &BTreeMap<Box<[u8]>, LhsValue<'a>> {
+        match &self.map {
+            InnerMap::Owned(map) => map,
+            InnerMap::Borrowed(_) => unreachable!(),
+        }
+    }
+
+    #[inline]
     fn as_map_mut(&mut self) -> &mut BTreeMap<Box<[u8]>, LhsValue<'a>> {
         match &mut self.map {
             InnerMap::Owned(map) => map,
@@ -533,13 +675,13 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
 
 impl<'a, V: IntoValue<'a>> fmt::Debug for TypedMap<'a, V> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_map().entries(self.map.iter()).finish()
+        fmt.debug_map().entries(self.as_map_ref().iter()).finish()
     }
 }
 
 impl<'a, V: IntoValue<'a>> PartialEq for TypedMap<'a, V> {
     fn eq(&self, other: &Self) -> bool {
-        self.map.deref() == other.map.deref()
+        self.as_map_ref() == other.as_map_ref()
     }
 }
 
@@ -550,7 +692,7 @@ impl<'a, 'k, V: Copy + IntoValue<'a>, S: AsRef<[(&'k [u8], V)]>> PartialEq<S> fo
             .iter()
             .copied()
             .map(|(k, v)| (k, v.into_value()))
-            .eq(self.map.iter().map(|(k, v)| (&**k, v.as_ref())))
+            .eq(self.as_map_ref().iter().map(|(k, v)| (&**k, v.as_ref())))
     }
 }
 
@@ -603,7 +745,7 @@ impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedMap<'a, V> {
 impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedMap<'a, V>> {
     /// Returns a reference to the value corresponding to the key.
     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<&TypedMap<'a, V>> {
-        self.map.get(key.as_ref()).map(|val| match val {
+        self.as_map_ref().get(key.as_ref()).map(|val| match val {
             LhsValue::Map(map) => {
                 // Safety: this is safe because `TypedMap` is a repr(transparent)
                 // newtype over `InnerMap`.
@@ -653,7 +795,7 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedMap<'a, V>> {
 impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedArray<'a, V>> {
     /// Returns a reference to the value corresponding to the key.
     pub fn get<K: AsRef<[u8]>>(&self, key: K) -> Option<&TypedArray<'a, V>> {
-        self.map.get(key.as_ref()).map(|val| match val {
+        self.as_map_ref().get(key.as_ref()).map(|val| match val {
             LhsValue::Array(array) => {
                 // Safety: this is safe because `TypedArray` is a repr(transparent)
                 // newtype over `InnerArray`.
