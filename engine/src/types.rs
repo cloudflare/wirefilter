@@ -1,6 +1,6 @@
 use crate::{
     lex::{Lex, LexResult, LexWith, expect, skip_space},
-    lhs_types::{Array, ArrayIterator, Bytes, Map, MapIter, MapValuesIntoIter},
+    lhs_types::{Array, ArrayIntoIter, ArrayIter, Bytes, Map, MapIter, MapValuesIntoIter},
     rhs_types::{BytesExpr, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap},
     scheme::{FieldIndex, IndexAccessError},
     strict_partial_ord::StrictPartialOrd,
@@ -772,7 +772,7 @@ impl<'a> LhsValue<'a> {
     /// Returns an iterator over the Map or Array
     pub(crate) fn iter(&'a self) -> Option<Iter<'a>> {
         match self {
-            LhsValue::Array(array) => Some(Iter::IterArray(array.as_slice().iter())),
+            LhsValue::Array(array) => Some(Iter::IterArray(array.iter())),
             LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
             _ => None,
         }
@@ -830,7 +830,7 @@ impl<'de> DeserializeSeed<'de> for LhsValueSeed<'_> {
 }
 
 pub enum IntoIter<'a> {
-    IntoArray(ArrayIterator<'a>),
+    IntoArray(ArrayIntoIter<'a>),
     IntoMap(MapValuesIntoIter<'a>),
 }
 
@@ -871,7 +871,7 @@ impl<'a> IntoIterator for LhsValue<'a> {
 }
 
 pub(crate) enum Iter<'a> {
-    IterArray(std::slice::Iter<'a, LhsValue<'a>>),
+    IterArray(ArrayIter<'a, 'a>),
     IterMap(MapIter<'a, 'a>),
 }
 
