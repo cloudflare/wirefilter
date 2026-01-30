@@ -697,8 +697,8 @@ impl Expr for ComparisonExpr {
                 RhsValues::Ip(ranges) => {
                     let mut v4 = Vec::new();
                     let mut v6 = Vec::new();
-                    for range in ranges {
-                        match range.clone().into() {
+                    for range in ranges.into_iter() {
+                        match range.into() {
                             ExplicitIpRange::V4(range) => v4.push(range),
                             ExplicitIpRange::V6(range) => v6.push(range),
                         }
