@@ -1,19 +1,19 @@
 [workspace]
-members = [
-	"engine",
-	"ffi",
-	"fuzz/bytes",
-	"fuzz/raw-string",
-	"fuzz/map-keys",
-	"wasm",
-]
 resolver = "2"
+members = [
+  "engine",
+  "ffi",
+  "fuzz/bytes",
+  "fuzz/map-keys",
+  "fuzz/raw-string",
+  "wasm",
+]
 
 [workspace.package]
-authors = [ "Ingvar Stepanyan <me@rreverser.com>" ]
 version = "0.7.0"
-publish = true
+authors = ["Ingvar Stepanyan <me@rreverser.com>"]
 edition = "2024"
+publish = true
 
 [workspace.dependencies]
 backtrace = "0.3"
@@ -23,23 +23,23 @@ criterion = "0.5"
 dyn-clone = "1.0.20"
 erased-serde = "0.4.9"
 fnv = "1.0.6"
-getrandom = { version = "0.3" }
+getrandom = "0.3"
 indoc = "2"
 libc = "0.2.42"
 memchr = "2.8.0"
 num_enum = "0.7"
 rand = "0.9"
-regex-automata = { version = "0.4.9" }
-serde = { version = "1.0.113", features = [ "derive" ] }
+regex-automata = "0.4.9"
+serde = { version = "1.0.113", features = ["derive"] }
 serde_json = "1.0.56"
 sliceslice = "0.4.3"
 thiserror = "2.0"
 wildcard = "0.3.0"
-wirefilter = { path = "engine", package = "wirefilter-engine" }
-
-[profile.release]
-panic = "unwind"
-lto = true
+wirefilter = { package = "wirefilter-engine", path = "engine" }
 
 [profile.dev]
+panic = "unwind"
+
+[profile.release]
+lto = true
 panic = "unwind"

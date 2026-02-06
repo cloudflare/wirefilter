@@ -1,19 +1,25 @@
 [package]
-authors.workspace = true
 name = "wirefilter-ffi"
 version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "FFI bindings for the Wirefilter engine"
 publish = false
-edition.workspace = true
 
 [package.metadata.deb]
-assets = [ [ "target/release/libwirefilter_ffi.so", "usr/local/lib/libwirefilter.so", "644" ] ]
+assets = [
+  [
+    "target/release/libwirefilter_ffi.so",
+    "usr/local/lib/libwirefilter.so",
+    "644",
+  ],
+]
 
 [lib]
-crate-type = [ "cdylib", "rlib" ]
+bench = false
+crate-type = ["cdylib", "rlib"]
 # Avoid duplicate compilation error messages as we don't have doctests anyway
 doctest = false
-bench = false
 
 [dependencies]
 fnv.workspace = true

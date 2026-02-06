@@ -8,4 +8,4 @@ afl = "0.15"
 wirefilter.workspace = true
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
