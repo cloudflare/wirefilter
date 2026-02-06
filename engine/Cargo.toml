@@ -26,7 +26,7 @@ cidr.workspace = true
 dyn-clone.workspace = true
 erased-serde.workspace = true
 fnv.workspace = true
-memmem.workspace = true
+memchr.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
 serde.workspace = true

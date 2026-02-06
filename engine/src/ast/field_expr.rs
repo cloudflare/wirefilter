@@ -13,7 +13,7 @@ use crate::{
     range_set::RangeSet,
     rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard},
     scheme::{Field, Identifier, List},
-    searcher::{EmptySearcher, TwoWaySearcher},
+    searcher::{EmptySearcher, MemmemSearcher},
     strict_partial_ord::StrictPartialOrd,
     types::{GetType, LhsValue, RhsValue, RhsValues, Type},
 };
@@ -686,7 +686,7 @@ impl Expr for ComparisonExpr {
                     };
                 }
 
-                search!(TwoWaySearcher::new(bytes))
+                search!(MemmemSearcher::new(bytes))
             }
             ComparisonOpExpr::Matches(regex) => lhs.compile_with(compiler, false, regex),
             ComparisonOpExpr::Wildcard(wildcard) => lhs.compile_with(compiler, false, wildcard),

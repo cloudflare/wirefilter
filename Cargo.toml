@@ -26,7 +26,7 @@ fnv = "1.0.6"
 getrandom = { version = "0.3" }
 indoc = "2"
 libc = "0.2.42"
-memmem = "0.1.1"
+memchr = "2.8.0"
 num_enum = "0.7"
 rand = "0.9"
 regex-automata = { version = "0.4.9" }
