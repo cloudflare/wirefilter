@@ -17,12 +17,14 @@ jobs:
       with:
         toolchain: stable
         components: clippy,rustfmt
+    - uses: tombi-toml/setup-tombi@v1
     - name: Print versions
       run: |
         cargo --version
         rustc --version
         clippy-driver --version
         rustfmt --version
+        tombi --version
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -31,6 +33,8 @@ jobs:
       run: cargo clippy --verbose --all-targets -- -D clippy::all
     - name: Check code formatting
       run: cargo fmt --verbose --all -- --check
+    - name: Check toml formatting
+      run: tombi format --check
 
   doc:
     name: Documentation
