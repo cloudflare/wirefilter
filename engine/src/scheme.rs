@@ -82,7 +82,7 @@ impl<'i> Lex<'i> for FieldIndex {
                     input,
                 )),
             },
-            RhsValue::Bytes(b) => match String::from_utf8(b.to_vec()) {
+            RhsValue::Bytes(b) => match String::from_utf8(b.into()) {
                 Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
                 Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
             },
