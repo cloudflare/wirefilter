@@ -785,7 +785,7 @@ impl Serialize for LhsValue<'_> {
         match self {
             LhsValue::Ip(ip) => ip.serialize(serializer),
             LhsValue::Bytes(bytes) => {
-                if let Ok(s) = std::str::from_utf8(bytes) {
+                if let Ok(s) = simdutf8::basic::from_utf8(bytes) {
                     serializer.serialize_str(s)
                 } else {
                     serializer.serialize_bytes(bytes)

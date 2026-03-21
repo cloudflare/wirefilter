@@ -936,7 +936,10 @@ mod tests {
                     LhsValue::Bytes(bytes) => bytes,
                     _ => unreachable!(),
                 };
-                assert_eq!(std::str::from_utf8(&bytes).unwrap(), format!("[{i}][{j}]"));
+                assert_eq!(
+                    simdutf8::basic::from_utf8(&bytes).unwrap(),
+                    format!("[{i}][{j}]")
+                );
             }
 
             let indexes = [FieldIndex::MapEach, FieldIndex::ArrayIndex(i)];
@@ -948,7 +951,10 @@ mod tests {
                     LhsValue::Bytes(bytes) => bytes,
                     _ => unreachable!(),
                 };
-                assert_eq!(std::str::from_utf8(&bytes).unwrap(), format!("[{j}][{i}]"));
+                assert_eq!(
+                    simdutf8::basic::from_utf8(&bytes).unwrap(),
+                    format!("[{j}][{i}]")
+                );
             }
         }
 
@@ -963,7 +969,10 @@ mod tests {
                 LhsValue::Bytes(bytes) => bytes,
                 _ => unreachable!(),
             };
-            assert_eq!(std::str::from_utf8(&bytes).unwrap(), format!("[{i}][{j}]"));
+            assert_eq!(
+                simdutf8::basic::from_utf8(&bytes).unwrap(),
+                format!("[{i}][{j}]")
+            );
             j = (j + 1) % 10;
             i += (j == 0) as u32;
         }

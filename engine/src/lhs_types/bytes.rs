@@ -254,7 +254,7 @@ impl Serialize for Bytes<'_> {
     where
         S: Serializer,
     {
-        if let Ok(s) = std::str::from_utf8(self) {
+        if let Ok(s) = simdutf8::basic::from_utf8(self) {
             serializer.serialize_str(s)
         } else {
             serializer.serialize_bytes(self)

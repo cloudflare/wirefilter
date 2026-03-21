@@ -76,10 +76,16 @@ impl<'i> Lex<'i> for FieldIndex {
                     input,
                 )),
             },
-            RhsValue::Bytes(b) => match String::from_utf8(b.into()) {
-                Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
-                Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
-            },
+            RhsValue::Bytes(b) => {
+                match simdutf8::basic::from_utf8(&b) {
+                    Ok(_) => {
+                        // SAFETY: simdutf8 just validated the bytes as valid UTF-8.
+                        let s = unsafe { String::from_utf8_unchecked(b.into()) };
+                        Ok((FieldIndex::MapKey(s), rest))
+                    }
+                    Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
+                }
+            }
             _ => unreachable!(),
         }
     }

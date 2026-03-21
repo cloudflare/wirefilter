@@ -339,12 +339,12 @@ impl Serialize for Map<'_> {
         let to_map = self
             .data
             .iter()
-            .all(|(key, _)| std::str::from_utf8(key).is_ok());
+            .all(|(key, _)| simdutf8::basic::from_utf8(key).is_ok());
 
         if to_map {
             let mut map = serializer.serialize_map(Some(self.len()))?;
             for (k, v) in self.data.iter() {
-                map.serialize_entry(std::str::from_utf8(k).unwrap(), v)?;
+                map.serialize_entry(simdutf8::basic::from_utf8(k).unwrap(), v)?;
             }
             map.end()
         } else {
