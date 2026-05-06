@@ -48,7 +48,7 @@ impl Serialize for BytesExpr {
         S: Serializer,
     {
         match self.format() {
-            BytesFormat::Quoted | BytesFormat::Raw(_) => match std::str::from_utf8(&self.data) {
+            BytesFormat::Quoted | BytesFormat::Raw(_) => match str::from_utf8(&self.data) {
                 Ok(s) => s.serialize(serializer),
                 Err(_) => self.data.serialize(serializer),
             },
@@ -61,7 +61,6 @@ impl Serialize for BytesExpr {
 // We can get away with `Eq` invariant though because we do want
 // `Bytes == Bytes` to check enum tags but `Bytes == &[u8]` to ignore them, and
 // consistency of the latter is all that matters for `Borrow` consumers.
-#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for BytesExpr {
     #[inline]
     fn hash<H: Hasher>(&self, h: &mut H) {
@@ -117,7 +116,7 @@ impl Debug for BytesExpr {
         }
 
         match self.format {
-            BytesFormat::Quoted | BytesFormat::Raw(_) => match std::str::from_utf8(&self.data) {
+            BytesFormat::Quoted | BytesFormat::Raw(_) => match str::from_utf8(&self.data) {
                 Ok(s) => s.fmt(f),
                 Err(_) => fmt_raw(&self.data, f),
             },

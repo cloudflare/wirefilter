@@ -1,6 +1,3 @@
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-#![warn(rust_2018_idioms)]
-
 mod cstring;
 pub mod panic;
 
@@ -10,7 +7,6 @@ use libc::c_char;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use serde::de::DeserializeSeed;
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::hash::Hasher;
 use std::io::{self, Write};
 use std::net::IpAddr;
@@ -140,6 +136,7 @@ macro_rules! wrap_type {
             }
         }
 
+        #[allow(single_use_lifetimes)]
         impl$(<$ffi_lt>)? DerefMut for $ffi$(<$ffi_lt>)? {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
@@ -221,7 +218,7 @@ pub enum Status {
 /// Returns a pointer to the last error string if there was one or NULL.
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_get_last_error() -> *const c_char {
-    crate::LAST_ERROR.with_borrow(|last_error| last_error.as_c_str())
+    LAST_ERROR.with_borrow(|last_error| last_error.as_c_str())
 }
 
 /// Clears the last error string if there was one.
@@ -230,7 +227,7 @@ pub extern "C" fn wirefilter_get_last_error() -> *const c_char {
 /// until another error is written to it.
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_clear_last_error() {
-    crate::LAST_ERROR.with_borrow_mut(|last_error| {
+    LAST_ERROR.with_borrow_mut(|last_error| {
         last_error.clear();
     });
 }
@@ -501,8 +498,8 @@ pub extern "C" fn wirefilter_serialize_type_to_json(ty: CType) -> SerializingRes
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn wirefilter_create_execution_context<'e, 's: 'e>(
-    scheme: &'s Scheme,
+pub extern "C" fn wirefilter_create_execution_context<'e>(
+    scheme: &Scheme,
 ) -> Box<ExecutionContext<'e>> {
     Box::new(ExecutionContext(wirefilter::ExecutionContext::new(scheme)))
 }
@@ -514,6 +511,7 @@ pub extern "C" fn wirefilter_serialize_execution_context_to_json(
     serde_json::to_string(exec_context.as_ref()).into()
 }
 
+#[expect(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_deserialize_json_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
@@ -537,6 +535,7 @@ pub extern "C" fn wirefilter_free_execution_context(exec_context: Box<ExecutionC
     drop(exec_context);
 }
 
+#[expect(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_json_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
@@ -581,6 +580,7 @@ pub extern "C" fn wirefilter_add_int_value_to_execution_context(
     exec_context.set_field_value_from_name(name, value).is_ok()
 }
 
+#[expect(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn wirefilter_add_bytes_value_to_execution_context(
     exec_context: &mut ExecutionContext<'_>,
@@ -825,7 +825,7 @@ pub extern "C" fn wirefilter_get_version() -> StaticRustAllocatedString {
 }
 
 #[cfg(test)]
-#[allow(clippy::bool_assert_comparison)]
+#[expect(clippy::bool_assert_comparison)]
 mod ffi_test {
     use super::*;
     use regex_automata::meta::Regex;
@@ -888,7 +888,7 @@ mod ffi_test {
         wirefilter_build_scheme(builder)
     }
 
-    fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> Box<ExecutionContext<'e>> {
+    fn create_execution_context<'e>(scheme: &Scheme) -> Box<ExecutionContext<'e>> {
         let mut exec_context = wirefilter_create_execution_context(scheme);
         let invalid_key = &b"\xc3\x28"[..];
 

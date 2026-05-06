@@ -27,7 +27,7 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
       - name: Run clippy
-        run: cargo clippy --verbose --all-targets -- -D clippy::all
+        run: cargo clippy --all-targets -- -Dwarnings
 
   fmt:
     runs-on: ubuntu-latest

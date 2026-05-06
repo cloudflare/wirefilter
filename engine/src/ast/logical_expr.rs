@@ -318,8 +318,7 @@ impl Expr for LogicalExpr {
 }
 
 #[test]
-#[allow(clippy::bool_assert_comparison)]
-#[allow(clippy::cognitive_complexity)]
+#[expect(clippy::bool_assert_comparison)]
 fn test() {
     use super::field_expr::ComparisonExpr;
     use crate::ast::field_expr::{ComparisonOpExpr, IdentifierExpr};

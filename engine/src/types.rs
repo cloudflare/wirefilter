@@ -9,7 +9,6 @@ use serde::de::{DeserializeSeed, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
-use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
 use std::iter::once;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -53,7 +52,7 @@ impl From<Type> for ExpectedType {
     }
 }
 
-impl std::fmt::Display for ExpectedType {
+impl fmt::Display for ExpectedType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ExpectedType::Array => write!(f, "Array<_>"),
@@ -74,9 +73,9 @@ impl ExpectedTypeList {
     }
 }
 
-impl fmt::Debug for ExpectedTypeList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
+impl Debug for ExpectedTypeList {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.0, f)
     }
 }
 
@@ -101,8 +100,8 @@ impl<T: Iterator<Item = ExpectedType>> From<T> for ExpectedTypeList {
     }
 }
 
-impl std::fmt::Display for ExpectedTypeList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ExpectedTypeList {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0.len() {
             0 => unreachable!(),
             1 => write!(f, "{}", self.0.first().unwrap()),
@@ -189,6 +188,7 @@ macro_rules! declare_types {
             $($(# $vattrs)* $variant($ty),)*
         }
 
+        #[allow(single_use_lifetimes)]
         impl $(<$lt>)* GetType for $name $(<$lt>)* {
             fn get_type(&self) -> Type {
                 match self {
@@ -197,6 +197,7 @@ macro_rules! declare_types {
             }
         }
 
+        #[allow(single_use_lifetimes)]
         impl $(<$lt>)* Debug for $name $(<$lt>)* {
             fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
                 match self {
@@ -263,7 +264,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'i> LexWith<'i, Type> for RhsValue {
+        impl LexWith<'_, Type> for RhsValue {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(replace_underscore!($name $(($val_ty))?) => {
@@ -274,7 +275,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
+        impl PartialOrd<RhsValue> for LhsValue<'_> {
             fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
                 match (self, other) {
                     $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
@@ -285,7 +286,7 @@ macro_rules! declare_types {
             }
         }
 
-        $(impl<'a> TryFrom<RhsValue> for $rhs_ty {
+        $(impl TryFrom<RhsValue> for $rhs_ty {
             type Error = TypeMismatchError;
 
             fn try_from(value: RhsValue) -> Result<$rhs_ty, TypeMismatchError> {
@@ -380,7 +381,7 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'i> LexWith<'i, Type> for RhsValues {
+        impl LexWith<'_, Type> for RhsValues {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(replace_underscore!($name $(($val_ty))?) => {
@@ -422,8 +423,8 @@ impl Type {
     }
 }
 
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bool => write!(f, "Bool"),
             Self::Bytes => write!(f, "Bytes"),
@@ -809,7 +810,7 @@ impl<'de> DeserializeSeed<'de> for LhsValueSeed<'_> {
         D: Deserializer<'de>,
     {
         match self.0 {
-            Type::Ip => Ok(LhsValue::Ip(std::net::IpAddr::deserialize(deserializer)?)),
+            Type::Ip => Ok(LhsValue::Ip(IpAddr::deserialize(deserializer)?)),
             Type::Int => Ok(LhsValue::Int(i64::deserialize(deserializer)?)),
             Type::Bool => Ok(LhsValue::Bool(bool::deserialize(deserializer)?)),
             Type::Bytes => Ok(LhsValue::Bytes(Bytes::deserialize(deserializer)?)),
@@ -1174,5 +1175,5 @@ fn test_type_deserialize() {
 
 #[test]
 fn test_size_of_lhs_value() {
-    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 48);
+    assert_eq!(size_of::<LhsValue<'_>>(), 48);
 }

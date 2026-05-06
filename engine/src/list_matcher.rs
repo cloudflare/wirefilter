@@ -13,10 +13,10 @@ pub trait ListDefinition: Debug + Sync + Send {
     ///
     /// This method is necessary to support deserialization of lists during the
     /// the deserialization of an `ExecutionContext`.
-    fn deserialize_matcher<'de>(
+    fn deserialize_matcher(
         &self,
         ty: Type,
-        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+        deserializer: &mut dyn erased_serde::Deserializer<'_>,
     ) -> Result<Box<dyn ListMatcher>, erased_serde::Error>;
 
     /// Creates a new matcher object for this list.
@@ -86,10 +86,10 @@ pub struct AlwaysList {}
 pub struct AlwaysListMatcher {}
 
 impl ListDefinition for AlwaysList {
-    fn deserialize_matcher<'de>(
+    fn deserialize_matcher(
         &self,
         _: Type,
-        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+        deserializer: &mut dyn erased_serde::Deserializer<'_>,
     ) -> Result<Box<dyn ListMatcher>, erased_serde::Error> {
         let matcher = erased_serde::deserialize::<AlwaysListMatcher>(deserializer)?;
         Ok(Box::new(matcher))
@@ -117,10 +117,10 @@ pub struct NeverList {}
 pub struct NeverListMatcher {}
 
 impl ListDefinition for NeverList {
-    fn deserialize_matcher<'de>(
+    fn deserialize_matcher(
         &self,
         _: Type,
-        deserializer: &mut dyn erased_serde::Deserializer<'de>,
+        deserializer: &mut dyn erased_serde::Deserializer<'_>,
     ) -> Result<Box<dyn ListMatcher>, erased_serde::Error> {
         let matcher = erased_serde::deserialize::<NeverListMatcher>(deserializer)?;
         Ok(Box::new(matcher))

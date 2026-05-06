@@ -6,7 +6,6 @@ use std::alloc::System;
 static A: System = System;
 
 use criterion::{Bencher, Criterion, criterion_group, criterion_main};
-use std::clone::Clone;
 use std::fmt::Debug;
 use std::net::IpAddr;
 use wirefilter::{
@@ -87,7 +86,7 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
                     builder.add_function(name, function.clone()).unwrap();
                 }
                 let scheme = builder.build();
-                move |b: &mut Bencher| {
+                move |b: &mut Bencher<'_>| {
                     b.iter(|| scheme.parse(filter).unwrap());
                 }
             });
@@ -103,7 +102,7 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
                     builder.add_function(name, function.clone()).unwrap();
                 }
                 let scheme = builder.build();
-                move |b: &mut Bencher| {
+                move |b: &mut Bencher<'_>| {
                     let filter = scheme.parse(filter).unwrap();
 
                     b.iter_with_setup(move || filter.clone(), FilterAst::compile);
@@ -121,7 +120,7 @@ impl<T: 'static + Copy + Debug + Into<LhsValue<'static>>> FieldBench<'_, T> {
                     builder.add_function(name, function.clone()).unwrap();
                 }
                 let scheme = builder.build();
-                move |b: &mut Bencher, values: &[T]| {
+                move |b: &mut Bencher<'_>, values: &[T]| {
                     let filter = scheme.parse(filter).unwrap();
 
                     let filter = filter.compile();

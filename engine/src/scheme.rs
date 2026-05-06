@@ -10,10 +10,8 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::convert::TryFrom;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::iter::Iterator;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -28,7 +26,6 @@ pub struct SchemeMismatchError;
 /// * A map key with [`FieldIndex::MapKey`]
 ///
 /// ```
-/// #[allow(dead_code)]
 /// enum FieldIndex {
 ///     ArrayIndex(u32),
 ///     MapKey(String),
@@ -823,7 +820,7 @@ impl<'de> Deserialize<'de> for Scheme {
         impl<'de> Visitor<'de> for FieldMapVisitor {
             type Value = SchemeBuilder;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 formatter.write_str("a wirefilter scheme")
             }
 

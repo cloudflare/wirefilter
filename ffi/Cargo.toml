@@ -1,3 +1,5 @@
+lints.workspace = true
+
 [package]
 name = "wirefilter-ffi"
 version.workspace = true

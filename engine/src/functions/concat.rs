@@ -90,8 +90,8 @@ impl FunctionDefinition for ConcatFunction {
         (2, None)
     }
 
-    fn compile<'s>(
-        &'s self,
+    fn compile(
+        &self,
         _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
     ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>

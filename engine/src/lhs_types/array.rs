@@ -641,7 +641,7 @@ mod tests {
 
     #[test]
     fn test_size_of_array() {
-        assert_eq!(std::mem::size_of::<Array<'_>>(), 32);
+        assert_eq!(size_of::<Array<'_>>(), 32);
     }
 
     #[test]

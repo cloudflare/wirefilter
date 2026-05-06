@@ -2,7 +2,7 @@ use super::ValueExpr;
 use super::parse::FilterParser;
 use super::visitor::{Visitor, VisitorMut};
 use crate::FunctionRef;
-use crate::ast::field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr};
+use crate::ast::field_expr::{ComparisonExpr, ComparisonOp};
 use crate::ast::index_expr::IndexExpr;
 use crate::ast::logical_expr::{LogicalExpr, UnaryOp};
 use crate::compiler::Compiler;
@@ -86,17 +86,6 @@ impl FunctionCallArgExpr {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_count(),
             FunctionCallArgExpr::Literal(_) => 0,
             FunctionCallArgExpr::Logical(_) => 0,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn simplify(self) -> Self {
-        match self {
-            FunctionCallArgExpr::Logical(LogicalExpr::Comparison(ComparisonExpr {
-                lhs,
-                op: ComparisonOpExpr::IsTrue,
-            })) => FunctionCallArgExpr::IndexExpr(lhs),
-            _ => self,
         }
     }
 }
@@ -272,10 +261,10 @@ impl ValueExpr for FunctionCallExpr {
             let first = args.remove(0);
 
             #[inline(always)]
-            fn compute<'s, 'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
+            fn compute<'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
                 first: CompiledValueResult<'a>,
                 call: &(
-                     dyn for<'b> Fn(FunctionArgs<'_, 'b>) -> Option<LhsValue<'b>> + Sync + Send + 's
+                     dyn for<'b> Fn(FunctionArgs<'_, 'b>) -> Option<LhsValue<'b>> + Sync + Send + '_
                  ),
                 return_type: Type,
                 f: impl Fn(LhsValue<'a>) -> I,
@@ -520,18 +509,15 @@ impl<'i> LexWith<'i, &FilterParser<'_>> for FunctionCallExpr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SimpleFunctionArgKind;
-    use crate::ast::field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, OrderingOp};
-    use crate::ast::logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr};
-    use crate::ast::parse::FilterParser;
+    use crate::ast::field_expr::{ComparisonOpExpr, IdentifierExpr, OrderingOp};
+    use crate::ast::logical_expr::{LogicalOp, ParenthesizedExpr};
     use crate::functions::{
-        FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, SimpleFunctionDefinition,
-        SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
+        FunctionArgKind, FunctionArgKindMismatchError, SimpleFunctionArgKind,
+        SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
     };
     use crate::rhs_types::{BytesExpr, BytesFormat};
     use crate::scheme::{FieldIndex, IndexAccessError, Scheme};
-    use crate::types::{RhsValues, Type, TypeMismatchError};
-    use std::convert::TryFrom;
+    use crate::types::{RhsValues, TypeMismatchError};
     use std::sync::LazyLock;
 
     fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {

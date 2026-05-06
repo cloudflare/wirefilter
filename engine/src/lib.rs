@@ -55,9 +55,6 @@
 //! }
 //! ```
 #![warn(missing_docs)]
-#![warn(rust_2018_idioms)]
-#![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::needless_raw_string_hashes)]
 
 #[macro_use]
 mod lex;

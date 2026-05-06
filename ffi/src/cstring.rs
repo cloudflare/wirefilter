@@ -50,19 +50,19 @@ impl CString {
 }
 
 impl io::Write for CString {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.append(buf);
         Ok(buf.len())
     }
 
     #[inline]
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 impl fmt::Write for CString {
-    fn write_str(&mut self, s: &str) -> Result<(), std::fmt::Error> {
+    fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         self.append(s.as_bytes());
         Ok(())
     }

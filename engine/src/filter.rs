@@ -184,7 +184,7 @@ pub struct Filter<U = ()> {
     scheme: Scheme,
 }
 
-impl<U> std::fmt::Debug for Filter<U> {
+impl<U> fmt::Debug for Filter<U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Filter")
             .field("root", &self.root_expr)

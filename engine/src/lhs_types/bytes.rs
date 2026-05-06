@@ -13,7 +13,7 @@ pub enum Bytes<'a> {
     Owned(Box<[u8]>),
 }
 
-impl<'a> Bytes<'a> {
+impl Bytes<'_> {
     /// Clones self into a fully owned byte string.
     #[inline]
     pub fn to_owned(&self) -> Bytes<'static> {

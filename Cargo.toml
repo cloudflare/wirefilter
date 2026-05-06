@@ -41,6 +41,50 @@ wasm-bindgen = { version = "0.2.108", features = ["serde-serialize"] }
 wildcard = "0.3.0"
 wirefilter = { package = "wirefilter-engine", path = "engine" }
 
+# tombi: format.rules.table-keys-order.disabled = true
+[workspace.lints.clippy]
+# groups
+all = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# group exceptions
+cargo_common_metadata = "allow"
+multiple_crate_versions = "allow"
+
+# tombi: format.rules.table-keys-order.disabled = true
+[workspace.lints.rust]
+# groups
+deprecated-safe = { level = "warn", priority = -1 }
+future-incompatible = { level = "warn", priority = -1 }
+keyword-idents = { level = "warn", priority = -1 }
+let-underscore = { level = "warn", priority = -1 }
+nonstandard-style = { level = "warn", priority = -1 }
+refining-impl-trait = { level = "warn", priority = -1 }
+rust-2018-compatibility = { level = "warn", priority = -1 }
+rust-2018-idioms = { level = "warn", priority = -1 }
+rust-2021-compatibility = { level = "warn", priority = -1 }
+rust-2024-compatibility = { level = "warn", priority = -1 }
+unknown-or-malformed-diagnostic-attributes = { level = "warn", priority = -1 }
+unused = { level = "warn", priority = -1 }
+warnings = { level = "warn", priority = -1 }
+# group exceptions
+let-underscore-drop = "allow"
+# ungrouped
+closure-returning-async-block = "warn"
+deprecated-in-future = "warn"
+deref-into-dyn-supertrait = "warn"
+impl-trait-redundant-captures = "warn"
+linker-messages = "warn"
+macro-use-extern-crate = "warn"
+meta-variable-misuse = "warn"
+redundant-imports = "warn"
+redundant-lifetimes = "warn"
+single-use-lifetimes = "warn"
+trivial-numeric-casts = "warn"
+unit-bindings = "warn"
+unused-import-braces = "warn"
+unused-lifetimes = "warn"
+unused-qualifications = "warn"
+
 [profile.dev]
 panic = "unwind"
 

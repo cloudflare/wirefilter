@@ -729,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_size_of_map() {
-        assert_eq!(std::mem::size_of::<Map<'_>>(), 40);
+        assert_eq!(size_of::<Map<'_>>(), 40);
     }
 
     #[test]

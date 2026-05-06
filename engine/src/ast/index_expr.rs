@@ -28,7 +28,7 @@ pub struct IndexExpr {
     pub indexes: Vec<FieldIndex>,
 }
 
-#[allow(clippy::manual_ok_err)]
+#[expect(clippy::manual_ok_err)]
 #[inline]
 pub fn ok_ref<T, E>(result: &Result<T, E>) -> Option<&T> {
     match result {
@@ -525,11 +525,9 @@ impl<'a> Iterator for MapEachIterator<'a, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::field_expr::IdentifierExpr;
     use crate::{
-        Array, FieldIndex, FilterParser, FunctionArgs, FunctionCallArgExpr, FunctionCallExpr,
-        Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
-        SimpleFunctionParam,
+        FunctionArgs, FunctionCallArgExpr, FunctionCallExpr, Scheme, SchemeBuilder,
+        SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam,
     };
     use std::sync::LazyLock;
 
