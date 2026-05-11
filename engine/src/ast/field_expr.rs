@@ -255,7 +255,8 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr {
         match item {
             Identifier::Field(field) => Ok((IdentifierExpr::Field(field.to_owned()), input)),
             Identifier::Function(function) => {
-                FunctionCallExpr::lex_with_function(input, parser, function)
+                let nested_parser = parser.with_increased_nesting(skip_space(input))?;
+                FunctionCallExpr::lex_with_function(input, &nested_parser, function)
                     .map(|(call, input)| (IdentifierExpr::FunctionCallExpr(call), input))
             }
         }

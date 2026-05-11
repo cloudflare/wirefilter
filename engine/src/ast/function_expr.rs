@@ -512,8 +512,9 @@ impl GetType for FunctionCallExpr {
 impl<'i> LexWith<'i, &FilterParser<'_>> for FunctionCallExpr {
     fn lex_with(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
         let (function, rest) = FunctionRef::lex_with(input, parser.scheme)?;
+        let nested_parser = parser.with_increased_nesting(skip_space(rest))?;
 
-        Self::lex_with_function(rest, parser, function)
+        Self::lex_with_function(rest, &nested_parser, function)
     }
 }
 
@@ -564,6 +565,44 @@ mod tests {
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
+    }
+
+    #[test]
+    fn test_function_call_nesting_limit() {
+        let mut parser = FilterParser::new(&SCHEME);
+        parser.set_max_nesting_depth(2);
+
+        assert_err!(
+            parser.lex_as::<FunctionCallExpr>("echo ( echo ( echo ( http.host ) ) )"),
+            LexErrorKind::NestingLimitExceeded { limit: 2 },
+            "( http.host ) ) )"
+        );
+    }
+
+    #[test]
+    fn test_value_expr_function_call_nesting_limit() {
+        let mut parser = FilterParser::new(&SCHEME);
+        parser.set_max_nesting_depth(2);
+
+        assert_err!(
+            parser.lex_as::<crate::FilterValueAst>("echo ( echo ( echo ( http.host ) ) )"),
+            LexErrorKind::NestingLimitExceeded { limit: 2 },
+            "( http.host ) ) )"
+        );
+    }
+
+    #[test]
+    fn test_logical_argument_nesting_limit_is_counted_via_function_and_parentheses() {
+        let mut parser = FilterParser::new(&SCHEME);
+        parser.set_max_nesting_depth(1);
+
+        assert_err!(
+            parser.lex_as::<FunctionCallExpr>(
+                "any ( ( http.request.headers.is_empty or http.request.headers.is_empty ) )"
+            ),
+            LexErrorKind::NestingLimitExceeded { limit: 1 },
+            "( http.request.headers.is_empty or http.request.headers.is_empty ) )"
+        );
     }
 
     fn len_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {

@@ -106,6 +106,9 @@ pub struct ParserSettings {
     /// Maximum number of star metacharacters allowed in a wildcard.
     /// Default: unlimited
     pub wildcard_star_limit: usize,
+    /// Maximum nesting depth allowed while parsing.
+    /// Default: 128
+    pub max_nesting_depth: u16,
 }
 
 impl Default for ParserSettings {
@@ -117,6 +120,7 @@ impl Default for ParserSettings {
             // Default value extracted from the regex crate.
             regex_dfa_size_limit: 2 * (1 << 20),
             wildcard_star_limit: usize::MAX,
+            max_nesting_depth: 128,
         }
     }
 }
@@ -126,6 +130,7 @@ impl Default for ParserSettings {
 pub struct FilterParser<'s> {
     pub(crate) scheme: &'s Scheme,
     pub(crate) settings: ParserSettings,
+    current_nesting_depth: u16,
 }
 
 impl<'s> FilterParser<'s> {
@@ -135,13 +140,18 @@ impl<'s> FilterParser<'s> {
         Self {
             scheme,
             settings: ParserSettings::default(),
+            current_nesting_depth: 0,
         }
     }
 
     /// Creates a new parser with the specified settings.
     #[inline]
     pub fn with_settings(scheme: &'s Scheme, settings: ParserSettings) -> Self {
-        Self { scheme, settings }
+        Self {
+            scheme,
+            settings,
+            current_nesting_depth: 0,
+        }
     }
 
     /// Returns the [`Scheme`](struct@Scheme) for which this parser has been constructor for.
@@ -156,6 +166,25 @@ impl<'s> FilterParser<'s> {
         input: &'i str,
     ) -> LexResult<'i, L> {
         L::lex_with(input, self)
+    }
+
+    #[inline]
+    pub(crate) fn with_increased_nesting<'i>(
+        &self,
+        span: &'i str,
+    ) -> Result<Self, (LexErrorKind, &'i str)> {
+        if self.current_nesting_depth >= self.settings.max_nesting_depth {
+            Err((
+                LexErrorKind::NestingLimitExceeded {
+                    limit: self.settings.max_nesting_depth,
+                },
+                span,
+            ))
+        } else {
+            let mut nested = self.clone();
+            nested.current_nesting_depth += 1;
+            Ok(nested)
+        }
     }
 
     /// Parses a filter expression into an AST form.
@@ -208,5 +237,17 @@ impl<'s> FilterParser<'s> {
     #[inline]
     pub fn wildcard_get_star_limit(&self) -> usize {
         self.settings.wildcard_star_limit
+    }
+
+    /// Set the maximum nesting depth allowed while parsing.
+    #[inline]
+    pub fn set_max_nesting_depth(&mut self, max_nesting_depth: u16) {
+        self.settings.max_nesting_depth = max_nesting_depth;
+    }
+
+    /// Get the maximum nesting depth allowed while parsing.
+    #[inline]
+    pub fn max_nesting_depth(&self) -> u16 {
+        self.settings.max_nesting_depth
     }
 }
