@@ -150,6 +150,13 @@ pub enum LexErrorKind {
         /// Name of the list
         name: String,
     },
+
+    /// Maximum nesting depth exceeded while parsing.
+    #[error("maximum nesting depth exceeded (limit: {limit})")]
+    NestingLimitExceeded {
+        /// The configured maximum nesting depth.
+        limit: u16,
+    },
 }
 
 pub type LexError<'i> = (LexErrorKind, &'i str);

@@ -82,18 +82,20 @@ impl LogicalExpr {
     }
 
     fn lex_simple_expr<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
-        Ok(if let Ok(input) = expect(input, "(") {
-            let input = skip_space(input);
-            let (expr, input) = LogicalExpr::lex_with(input, parser)?;
+        Ok(if let Ok(rest) = expect(input, "(") {
+            let nested_parser = parser.with_increased_nesting(input)?;
+            let input = skip_space(rest);
+            let (expr, input) = LogicalExpr::lex_with(input, &nested_parser)?;
             let input = skip_space(input);
             let input = expect(input, ")")?;
             (
                 LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr { expr })),
                 input,
             )
-        } else if let Ok((op, input)) = UnaryOp::lex(input) {
-            let input = skip_space(input);
-            let (arg, input) = Self::lex_simple_expr(input, parser)?;
+        } else if let Ok((op, rest)) = UnaryOp::lex(input) {
+            let nested_parser = parser.with_increased_nesting(input)?;
+            let input = skip_space(rest);
+            let (arg, input) = Self::lex_simple_expr(input, &nested_parser)?;
             (
                 LogicalExpr::Unary {
                     op,
@@ -550,6 +552,46 @@ fn test() {
         }
     );
 
+    assert_ok!(
+        FilterParser::new(scheme).lex_as("t and (t or t)"),
+        LogicalExpr::Combining {
+            op: LogicalOp::And,
+            items: vec![
+                t_expr(),
+                LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr {
+                    expr: LogicalExpr::Combining {
+                        op: LogicalOp::Or,
+                        items: vec![t_expr(), t_expr()],
+                    },
+                })),
+            ],
+        }
+    );
+
+    assert_ok!(
+        FilterParser::new(scheme).lex_as("t and (t or (t and t))"),
+        LogicalExpr::Combining {
+            op: LogicalOp::And,
+            items: vec![
+                t_expr(),
+                LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr {
+                    expr: LogicalExpr::Combining {
+                        op: LogicalOp::Or,
+                        items: vec![
+                            t_expr(),
+                            LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr {
+                                expr: LogicalExpr::Combining {
+                                    op: LogicalOp::And,
+                                    items: vec![t_expr(), t_expr()],
+                                },
+                            })),
+                        ],
+                    },
+                })),
+            ],
+        }
+    );
+
     {
         let expr = assert_ok!(
             FilterParser::new(scheme).lex_as("at and af"),
@@ -878,6 +920,42 @@ fn test() {
         FilterParser::new(scheme).lex_as("! (not !at)"),
         not_expr(parenthesized_expr(not_expr(not_expr(at_expr()))))
     );
+
+    {
+        let mut parser = FilterParser::new(scheme);
+        parser.set_max_nesting_depth(1);
+        assert_err!(
+            parser.lex_as::<LogicalExpr>("((t))"),
+            LexErrorKind::NestingLimitExceeded { limit: 1 },
+            "(t))"
+        );
+    }
+
+    {
+        let mut parser = FilterParser::new(scheme);
+        parser.set_max_nesting_depth(1);
+        assert_err!(
+            parser.lex_as::<LogicalExpr>("!!t"),
+            LexErrorKind::NestingLimitExceeded { limit: 1 },
+            "!t"
+        );
+    }
+
+    {
+        let mut parser = FilterParser::new(scheme);
+        parser.set_max_nesting_depth(2);
+        assert_ok!(parser.lex_as("!!t"), not_expr(not_expr(t_expr())));
+    }
+
+    {
+        let mut parser = FilterParser::new(scheme);
+        parser.set_max_nesting_depth(0);
+        assert_err!(
+            parser.lex_as::<LogicalExpr>("t and (t or t)"),
+            LexErrorKind::NestingLimitExceeded { limit: 0 },
+            "(t or t)"
+        );
+    }
 
     {
         let expr = assert_ok!(
