@@ -4,7 +4,6 @@ use crate::{
 };
 use std::iter::once;
 
-#[inline]
 fn all_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
     let arg = args.next().expect("expected 1 argument, got 0");
     if args.next().is_some() {
