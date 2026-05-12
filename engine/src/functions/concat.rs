@@ -20,6 +20,7 @@ impl ConcatFunction {
     }
 }
 
+#[inline]
 fn concat_array<'a>(accumulator: Array<'a>, args: FunctionArgs<'_, 'a>) -> Array<'a> {
     let mut args = args.flat_map(|arg| arg.ok());
     let Some(first) = args.next() else {
@@ -44,6 +45,7 @@ fn concat_array<'a>(accumulator: Array<'a>, args: FunctionArgs<'_, 'a>) -> Array
     Array::try_from_vec(val_type, vec).unwrap()
 }
 
+#[inline]
 fn concat_bytes<'a>(mut accumulator: Vec<u8>, args: FunctionArgs<'_, 'a>) -> Bytes<'a> {
     for arg in args {
         match arg {
@@ -53,6 +55,25 @@ fn concat_bytes<'a>(mut accumulator: Vec<u8>, args: FunctionArgs<'_, 'a>) -> Byt
         }
     }
     accumulator.into()
+}
+
+fn concat_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+    while let Some(arg) = args.next() {
+        match arg {
+            Ok(LhsValue::Array(array)) => {
+                return Some(LhsValue::Array(concat_array(array, args)));
+            }
+            Ok(LhsValue::Bytes(bytes)) => {
+                return Some(LhsValue::Bytes(concat_bytes(
+                    bytes.into_owned().into(),
+                    args,
+                )));
+            }
+            Err(_) => (),
+            _ => unreachable!(),
+        }
+    }
+    None
 }
 
 pub(crate) const EXPECTED_TYPES: [ExpectedType; 2] =
@@ -96,24 +117,7 @@ impl FunctionDefinition for ConcatFunction {
         _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
     ) -> CompiledFunction {
-        Box::new(|args| {
-            while let Some(arg) = args.next() {
-                match arg {
-                    Ok(LhsValue::Array(array)) => {
-                        return Some(LhsValue::Array(concat_array(array, args)));
-                    }
-                    Ok(LhsValue::Bytes(bytes)) => {
-                        return Some(LhsValue::Bytes(concat_bytes(
-                            bytes.into_owned().into(),
-                            args,
-                        )));
-                    }
-                    Err(_) => (),
-                    _ => unreachable!(),
-                }
-            }
-            None
-        })
+        Box::new(concat_impl)
     }
 }
 
@@ -133,7 +137,7 @@ mod tests {
         .into_iter();
         assert_eq!(
             Some(LhsValue::Bytes(Bytes::Borrowed(b"helloworld"))),
-            CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args)
+            concat_impl(&mut args)
         );
     }
 
@@ -148,7 +152,7 @@ mod tests {
         .into_iter();
         assert_eq!(
             Some(LhsValue::Bytes(Bytes::Borrowed(b"helloworldhello2world2"))),
-            CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args)
+            concat_impl(&mut args)
         );
     }
 
@@ -159,7 +163,7 @@ mod tests {
         let mut args = vec![Ok(arg1), Ok(arg2)].into_iter();
         assert_eq!(
             Some(LhsValue::Array(Array::from_iter([1, 2, 3, 4, 5, 6]))),
-            CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args)
+            concat_impl(&mut args)
         );
     }
 
@@ -167,7 +171,7 @@ mod tests {
     #[should_panic]
     fn test_concat_function_bad_arg_type() {
         let mut args = vec![Ok(LhsValue::from(2))].into_iter();
-        CONCAT_FN.compile(&mut std::iter::empty(), None)(&mut args);
+        concat_impl(&mut args);
     }
 
     #[test]
