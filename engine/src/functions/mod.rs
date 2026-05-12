@@ -373,6 +373,13 @@ impl std::fmt::Debug for FunctionDefinitionContext {
     }
 }
 
+/// A compiled function that can be called during filter execution.
+///
+/// Returned by [`FunctionDefinition::compile`] after a function call expression
+/// has been validated and compiled.
+pub type CompiledFunction =
+    Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>;
+
 /// Trait to implement function
 pub trait FunctionDefinition: Debug + Send + Sync {
     /// Custom context to store information during parsing
@@ -404,7 +411,7 @@ pub trait FunctionDefinition: Debug + Send + Sync {
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ctx: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>;
+    ) -> CompiledFunction;
 }
 
 // Simple function APIs
@@ -530,8 +537,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
         &self,
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>
-    {
+    ) -> CompiledFunction {
         let params_count = params.len();
         let opt_params = &self.opt_params[(params_count - self.params.len())..];
         let implementation = self.implementation;

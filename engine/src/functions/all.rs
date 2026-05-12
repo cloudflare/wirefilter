@@ -1,6 +1,6 @@
 use crate::{
-    FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
-    FunctionParamError, GetType, LhsValue, ParserSettings, Type,
+    CompiledFunction, FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
+    FunctionParam, FunctionParamError, GetType, LhsValue, ParserSettings, Type,
 };
 use std::iter::once;
 
@@ -58,12 +58,11 @@ impl FunctionDefinition for AllFunction {
         (1, Some(0))
     }
 
-    fn compile<'s>(
-        &'s self,
+    fn compile(
+        &self,
         _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         _: Option<FunctionDefinitionContext>,
-    ) -> Box<dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>> + Sync + Send + 'static>
-    {
+    ) -> CompiledFunction {
         Box::new(all_impl)
     }
 }

@@ -8,7 +8,7 @@ use crate::ast::logical_expr::{LogicalExpr, UnaryOp};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledValueExpr, CompiledValueResult};
 use crate::functions::{
-    ExactSizeChain, FunctionArgs, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
+    CompiledFunction, ExactSizeChain, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
     FunctionParamError,
 };
 use crate::lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
@@ -272,11 +272,9 @@ impl ValueExpr for FunctionCallExpr {
             let first = args.remove(0);
 
             #[inline(always)]
-            fn compute<'s, 'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
+            fn compute<'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
                 first: CompiledValueResult<'a>,
-                call: &(
-                     dyn for<'b> Fn(FunctionArgs<'_, 'b>) -> Option<LhsValue<'b>> + Sync + Send + 's
-                 ),
+                call: &CompiledFunction,
                 return_type: Type,
                 f: impl Fn(LhsValue<'a>) -> I,
             ) -> CompiledValueResult<'a> {
