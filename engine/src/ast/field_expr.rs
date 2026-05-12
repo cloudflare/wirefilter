@@ -799,9 +799,9 @@ mod tests {
     use crate::ast::logical_expr::LogicalExpr;
     use crate::execution_context::ExecutionContext;
     use crate::functions::{
-        FunctionArgKind, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
-        FunctionParam, FunctionParamError, SimpleFunctionDefinition, SimpleFunctionImpl,
-        SimpleFunctionOptParam, SimpleFunctionParam,
+        CompiledFunction, FunctionArgKind, FunctionArgs, FunctionDefinition,
+        FunctionDefinitionContext, FunctionParam, FunctionParamError, SimpleFunctionDefinition,
+        SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
     };
     use crate::lhs_types::{Array, Map};
     use crate::list_matcher::{ListDefinition, ListMatcher};
@@ -908,12 +908,7 @@ mod tests {
             &self,
             _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
             _: Option<FunctionDefinitionContext>,
-        ) -> Box<
-            dyn for<'i, 'a> Fn(FunctionArgs<'i, 'a>) -> Option<LhsValue<'a>>
-                + Sync
-                + Send
-                + 'static,
-        > {
+        ) -> CompiledFunction {
             Box::new(|args| {
                 let value_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
                 let keep_array = Array::try_from(args.next().unwrap().unwrap()).unwrap();
