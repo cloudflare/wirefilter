@@ -60,9 +60,7 @@ impl<'i> Lex<'i> for FieldIndex {
             Ok(_) => RhsValue::lex_with(input, Type::Bytes),
             Err(_) => RhsValue::lex_with(input, Type::Int).map_err(|_| {
                 (
-                    LexErrorKind::ExpectedLiteral(
-                        "expected quoted utf8 string or positive integer",
-                    ),
+                    LexErrorKind::ExpectedName("quoted utf8 string or positive integer"),
                     input,
                 )
             }),
@@ -72,13 +70,13 @@ impl<'i> Lex<'i> for FieldIndex {
             RhsValue::Int(i) => match u32::try_from(i) {
                 Ok(u) => Ok((FieldIndex::ArrayIndex(u), rest)),
                 Err(_) => Err((
-                    LexErrorKind::ExpectedLiteral("expected positive integer as index"),
+                    LexErrorKind::ExpectedName("positive integer as index"),
                     input,
                 )),
             },
             RhsValue::Bytes(b) => match String::from_utf8(b.into()) {
                 Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
-                Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
+                Err(_) => Err((LexErrorKind::ExpectedName("utf8 string"), input)),
             },
             _ => unreachable!(),
         }
@@ -1228,6 +1226,30 @@ fn test_parse_error() {
     }
 
     {
+        let err = scheme.parse("str eq str").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: LexErrorKind::ExpectedName("quoted utf8 or raw or hex string"),
+                input: "str eq str",
+                line_number: 0,
+                span_start: 7,
+                span_len: 3
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            indoc!(
+                r#"
+                Filter parsing error (1:8):
+                str eq str
+                       ^^^ expected quoted utf8 or raw or hex string
+                "#
+            )
+        );
+    }
+
+    {
         let err = scheme.parse(indoc!(r"concat(0, 0) == 0")).unwrap_err();
         assert_eq!(
             err,
@@ -1627,6 +1649,21 @@ fn test_parse_error_ordering_op() {
         }
 
         {
+            let filter = format!("str {op} str");
+            let err = scheme.parse(&filter).unwrap_err();
+            assert_eq!(
+                err,
+                ParseError {
+                    kind: LexErrorKind::ExpectedName("quoted utf8 or raw or hex string"),
+                    input: &filter,
+                    line_number: 0,
+                    span_start: 7,
+                    span_len: 3,
+                }
+            );
+        }
+
+        {
             let filter = format!("str_arr {op} 0");
             let err = scheme.parse(&filter).unwrap_err();
             assert_eq!(
@@ -1800,7 +1837,7 @@ fn test_field_lex_indexes() {
     assert_ok!(FieldIndex::lex("0"), FieldIndex::ArrayIndex(0));
     assert_err!(
         FieldIndex::lex("-1"),
-        LexErrorKind::ExpectedLiteral("expected positive integer as index"),
+        LexErrorKind::ExpectedName("positive integer as index"),
         "-1"
     );
 

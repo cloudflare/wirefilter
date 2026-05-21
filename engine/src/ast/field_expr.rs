@@ -18,6 +18,7 @@ use sliceslice::MemchrSearcher;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::num::IntErrorKind;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "wasm32"))]
 use std::sync::LazyLock;
 
@@ -360,7 +361,22 @@ impl ComparisonExpr {
                 (Type::Ip, ComparisonOp::Ordering(op))
                 | (Type::Bytes, ComparisonOp::Ordering(op))
                 | (Type::Int, ComparisonOp::Ordering(op)) => {
-                    let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
+                    let (rhs, input) =
+                        RhsValue::lex_with(input, lhs_type).map_err(|(kind, rest)| {
+                            match (lhs_type, kind) {
+                                (Type::Bytes, LexErrorKind::ParseInt { err, radix })
+                                    if *err.kind() == IntErrorKind::InvalidDigit && radix == 16 =>
+                                {
+                                    (
+                                        LexErrorKind::ExpectedName(
+                                            "quoted utf8 or raw or hex string",
+                                        ),
+                                        input,
+                                    )
+                                }
+                                (_, kind) => (kind, rest),
+                            }
+                        })?;
                     (ComparisonOpExpr::Ordering { op, rhs }, input)
                 }
                 (Type::Int, ComparisonOp::Int(op)) => {
@@ -1206,6 +1222,15 @@ mod tests {
                     "op": "LessThan",
                     "rhs": [0x12, 0x13]
                 }
+            );
+        }
+
+        // just check that parsing correctly reports errors
+        {
+            assert_err!(
+                FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>(r#"http.host eq http.host"#),
+                LexErrorKind::ExpectedName("quoted utf8 or raw or hex string"),
+                "http.host"
             );
         }
 

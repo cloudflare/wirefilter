@@ -617,7 +617,7 @@ mod tests {
 
         assert_err!(
             FilterParser::new(&SCHEME).lex_as::<IndexExpr>("test[-1]"),
-            LexErrorKind::ExpectedLiteral("expected positive integer as index"),
+            LexErrorKind::ExpectedName("positive integer as index"),
             "-1]"
         );
     }
@@ -645,13 +645,13 @@ mod tests {
     fn test_access_with_non_string() {
         assert_err!(
             FilterParser::new(&SCHEME).lex_as::<IndexExpr>(r#"test[a]"#),
-            LexErrorKind::ExpectedLiteral("expected quoted utf8 string or positive integer"),
+            LexErrorKind::ExpectedName("quoted utf8 string or positive integer"),
             "a]"
         );
 
         assert_err!(
             FilterParser::new(&SCHEME).lex_as::<IndexExpr>(r#"map[a]"#),
-            LexErrorKind::ExpectedLiteral("expected quoted utf8 string or positive integer"),
+            LexErrorKind::ExpectedName("quoted utf8 string or positive integer"),
             "a]"
         );
     }
