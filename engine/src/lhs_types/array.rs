@@ -160,22 +160,33 @@ impl<'a> Array<'a> {
     where
         F: Fn(LhsValue<'a>) -> Option<LhsValue<'a>>,
     {
-        let Self { data, .. } = self;
-        let mut vec = match data {
-            InnerArray::Owned(vec) => vec,
-            InnerArray::Borrowed(slice) => slice.to_vec(),
-        };
         let val_type = value_type.into();
-        let mut write = 0;
-        for read in 0..vec.len() {
-            let elem = &mut vec[read];
-            if let Some(elem) = func(std::mem::replace(elem, LhsValue::Bool(false))) {
-                assert!(elem.get_type() == val_type.into());
-                vec[write] = elem;
-                write += 1;
+        let Self { data, .. } = self;
+        let vec = match data {
+            InnerArray::Owned(mut vec) => {
+                let mut write = 0;
+                for read in 0..vec.len() {
+                    let elem = &mut vec[read];
+                    if let Some(elem) = func(std::mem::replace(elem, LhsValue::Bool(false))) {
+                        assert!(elem.get_type() == val_type.into());
+                        vec[write] = elem;
+                        write += 1;
+                    }
+                }
+                vec.truncate(write);
+                vec
             }
-        }
-        vec.truncate(write);
+            InnerArray::Borrowed(slice) => {
+                let mut vec = Vec::with_capacity(slice.len());
+                for elem in slice {
+                    if let Some(elem) = func(elem.as_ref()) {
+                        assert!(elem.get_type() == val_type.into());
+                        vec.push(elem);
+                    }
+                }
+                vec
+            }
+        };
         Array {
             val_type,
             data: InnerArray::Owned(vec),
