@@ -278,27 +278,38 @@ impl ValueExpr for FunctionCallExpr {
                 return_type: Type,
                 f: impl Fn(LhsValue<'a>) -> I,
             ) -> CompiledValueResult<'a> {
-                let mut first = match first {
+                let first = match first {
                     Ok(first) => first,
                     Err(_) => {
                         return Err(Type::Array(return_type.into()));
                     }
                 };
-                // Extract the values of the map
-                if let LhsValue::Map(map) = first {
-                    first = LhsValue::Array(
-                        Array::try_from_iter(map.value_type(), map.into_values()).unwrap(),
-                    );
-                }
-                // Retrieve the underlying `Array`
-                let mut first = match first {
-                    LhsValue::Array(arr) => arr,
+                let result = match first {
+                    // Map the values straight into the result array. This avoids
+                    // the intermediate `Array` allocation (and per-element type
+                    // re-check) that a separate map -> array conversion followed
+                    // by `filter_map_to` would incur.
+                    LhsValue::Map(map) => {
+                        // Reserve up front for the whole map: `filter_map`'s
+                        // `size_hint` lower bound is 0, and `map_each` rarely
+                        // filters, so this avoids repeated reallocations.
+                        let len = map.len();
+                        Array::try_from_iter_with_capacity(
+                            return_type,
+                            len,
+                            map.into_values().filter_map(|elem| call(&mut f(elem))),
+                        )
+                        .unwrap()
+                    }
+                    LhsValue::Array(mut arr) => {
+                        if !arr.is_empty() {
+                            arr = arr.filter_map_to(return_type, |elem| call(&mut f(elem)));
+                        }
+                        arr
+                    }
                     _ => unreachable!(),
                 };
-                if !first.is_empty() {
-                    first = first.filter_map_to(return_type, |elem| call(&mut f(elem)));
-                }
-                Ok(LhsValue::Array(first))
+                Ok(LhsValue::Array(result))
             }
 
             if args.is_empty() {
