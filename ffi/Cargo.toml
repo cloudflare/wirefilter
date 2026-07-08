@@ -36,5 +36,5 @@ regex-automata.workspace = true
 [build-dependencies]
 cbindgen.workspace = true
 
-[target.'cfg(unix)'.dev-dependencies]
+[target."cfg(unix)".dev-dependencies]
 wirefilter-ffi-ctests = { path = "tests/ctests" }
