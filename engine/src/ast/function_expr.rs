@@ -2,7 +2,7 @@ use super::ValueExpr;
 use super::parse::FilterParser;
 use super::visitor::{Visitor, VisitorMut};
 use crate::FunctionRef;
-use crate::ast::field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr};
+use crate::ast::field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr, IdentifierExpr};
 use crate::ast::index_expr::IndexExpr;
 use crate::ast::logical_expr::{LogicalExpr, UnaryOp};
 use crate::compiler::Compiler;
@@ -86,6 +86,20 @@ impl FunctionCallArgExpr {
             FunctionCallArgExpr::IndexExpr(index_expr) => index_expr.map_each_count(),
             FunctionCallArgExpr::Literal(_) => 0,
             FunctionCallArgExpr::Logical(_) => 0,
+        }
+    }
+
+    /// Returns `true` if re-evaluating this argument for every mapped element
+    /// could be costly, i.e. it is a nested function call or a logical
+    /// sub-expression. Literals and plain field accesses are cheap to evaluate
+    /// repeatedly, so memoizing them would only add overhead.
+    fn is_expensive_to_reevaluate(&self) -> bool {
+        match self {
+            FunctionCallArgExpr::Literal(_) => false,
+            FunctionCallArgExpr::Logical(_) => true,
+            FunctionCallArgExpr::IndexExpr(index_expr) => {
+                matches!(index_expr.identifier, IdentifierExpr::FunctionCallExpr(_))
+            }
         }
     }
 
@@ -263,6 +277,16 @@ impl ValueExpr for FunctionCallExpr {
         let call = function
             .as_definition()
             .compile(&mut args.iter().map(|arg| arg.into()), context);
+        // For `map_each`, only bother evaluating the non-mapped arguments once
+        // (instead of once per element) when at least one of them is expensive
+        // to re-evaluate. For trivial arguments (literals / plain field
+        // accesses) inline re-evaluation is just as cheap and avoids a
+        // per-call allocation.
+        let memoize_extra_args = map_each_count > 0
+            && args
+                .iter()
+                .skip(1)
+                .any(FunctionCallArgExpr::is_expensive_to_reevaluate);
         let mut args = args
             .into_iter()
             .map(|arg| compiler.compile_function_call_arg_expr(arg))
@@ -320,6 +344,21 @@ impl ValueExpr for FunctionCallExpr {
                         return_type,
                         #[inline]
                         |elem| once(Ok(elem)),
+                    )
+                })
+            } else if memoize_extra_args {
+                CompiledValueExpr::new(move |ctx| {
+                    // At least one non-mapped argument is expensive to
+                    // re-evaluate, so evaluate all of them once per call and
+                    // reuse them (cheaply cloned) for every element instead of
+                    // re-executing the argument expressions for every element.
+                    let extra_args = args.iter().map(|arg| arg.execute(ctx)).collect::<Vec<_>>();
+                    compute(
+                        first.execute(ctx),
+                        &call,
+                        return_type,
+                        #[inline]
+                        |elem| ExactSizeChain::new(once(Ok(elem)), extra_args.iter().cloned()),
                     )
                 })
             } else {

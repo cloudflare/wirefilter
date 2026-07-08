@@ -795,6 +795,7 @@ impl Expr for ComparisonExpr {
 #[allow(clippy::bool_assert_comparison)]
 mod tests {
     use super::*;
+    use crate::ast::ValueExpr;
     use crate::ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
     use crate::ast::logical_expr::LogicalExpr;
     use crate::execution_context::ExecutionContext;
@@ -1029,6 +1030,26 @@ mod tests {
                             default_value: "".into(),
                         },
                     ],
+                    return_type: Type::Bytes,
+                    implementation: SimpleFunctionImpl::new(concat_function),
+                },
+            )
+            .unwrap();
+        builder
+            .add_function(
+                "concat_fields",
+                SimpleFunctionDefinition {
+                    params: vec![
+                        SimpleFunctionParam {
+                            arg_kind: SimpleFunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        },
+                        SimpleFunctionParam {
+                            arg_kind: SimpleFunctionArgKind::Field,
+                            val_type: Type::Bytes,
+                        },
+                    ],
+                    opt_params: vec![],
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(concat_function),
                 },
@@ -2205,6 +2226,86 @@ mod tests {
         ctx.set_field_value(field("http.headers"), headers).unwrap();
 
         assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    // The non-mapped argument (the "-cf" literal) must be applied to *every*
+    // mapped element, even though it is now evaluated only once per call.
+    #[test]
+    fn test_map_each_function_non_mapped_arg_applied_to_all_elements() {
+        let (expr, rest) = FilterParser::new(&SCHEME)
+            .lex_as::<FunctionCallExpr>(r#"concat(http.cookies[*], "-cf")"#)
+            .unwrap();
+        assert_eq!(rest, "");
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(
+            field("http.cookies"),
+            Array::from_iter(["one", "two", "three"]),
+        )
+        .unwrap();
+
+        assert_eq!(
+            expr.execute(ctx),
+            Ok(LhsValue::Array(Array::from_iter([
+                "one-cf", "two-cf", "three-cf"
+            ])))
+        );
+    }
+
+    // A non-mapped argument that is expensive to re-evaluate (here a nested
+    // function call) is evaluated once and reused for every mapped element.
+    #[test]
+    fn test_map_each_memoizes_expensive_non_mapped_arg() {
+        let (expr, rest) = FilterParser::new(&SCHEME)
+            .lex_as::<FunctionCallExpr>(r#"concat_fields(http.cookies[*], lowercase(http.host))"#)
+            .unwrap();
+        assert_eq!(rest, "");
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(
+            field("http.cookies"),
+            Array::from_iter(["one", "two", "three"]),
+        )
+        .unwrap();
+        ctx.set_field_value(field("http.host"), "SUFFIX").unwrap();
+
+        // `lowercase(http.host)` == "suffix" is appended to every element.
+        assert_eq!(
+            expr.execute(ctx),
+            Ok(LhsValue::Array(Array::from_iter([
+                "onesuffix",
+                "twosuffix",
+                "threesuffix"
+            ])))
+        );
+    }
+
+    // map_each over a Map with no extra args: exercises the fused Map -> Array
+    // path (no intermediate array allocation) and the empty-args fast path.
+    #[test]
+    fn test_map_each_on_map_no_extra_args() {
+        let (expr, rest) = FilterParser::new(&SCHEME)
+            .lex_as::<FunctionCallExpr>(r#"lowercase(http.headers[*])"#)
+            .unwrap();
+        assert_eq!(rest, "");
+
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        let headers = LhsValue::from({
+            let mut map = TypedMap::new();
+            map.insert(b"0".to_vec().into(), "ONE");
+            map.insert(b"1".to_vec().into(), "TWO");
+            map.insert(b"2".to_vec().into(), "THREE");
+            map
+        });
+        ctx.set_field_value(field("http.headers"), headers).unwrap();
+
+        assert_eq!(
+            expr.execute(ctx),
+            Ok(LhsValue::Array(Array::from_iter(["one", "two", "three"])))
+        );
     }
 
     #[test]
