@@ -797,10 +797,10 @@ mod tests {
     use super::*;
     use crate::ast::ValueExpr;
     use crate::ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
-    use crate::ast::logical_expr::LogicalExpr;
+    use crate::ast::logical_expr::{LogicalExpr, QuantifierArgExpr, QuantifierOp};
     use crate::execution_context::ExecutionContext;
     use crate::functions::{
-        AllFunction, CompiledFunction, FunctionArgKind, FunctionArgs, FunctionDefinition,
+        CompiledFunction, FunctionArgKind, FunctionArgs, FunctionDefinition,
         FunctionDefinitionContext, FunctionParam, FunctionParamError, SimpleFunctionDefinition,
         SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
     };
@@ -819,19 +819,6 @@ mod tests {
     use std::iter::once;
     use std::net::IpAddr;
     use std::sync::LazyLock;
-
-    fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        match args.next()? {
-            Ok(v) => Some(LhsValue::Bool(
-                Array::try_from(v)
-                    .unwrap()
-                    .into_iter()
-                    .any(|lhs| bool::try_from(lhs).unwrap()),
-            )),
-            Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
-            _ => unreachable!(),
-        }
-    }
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
@@ -972,21 +959,6 @@ mod tests {
             map.bytes.arr: Map(Array(Bytes)),
             http.parts: Array(Array(Bytes)),
         };
-        builder
-            .add_function(
-                "any",
-                SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
-                        arg_kind: SimpleFunctionArgKind::Field,
-                        val_type: Type::Array(Type::Bool.into()),
-                    }],
-                    opt_params: vec![],
-                    return_type: Type::Bool,
-                    implementation: SimpleFunctionImpl::new(any_function),
-                },
-            )
-            .unwrap();
-        builder.add_function("all", AllFunction::default()).unwrap();
         builder
             .add_function(
                 "echo",
@@ -2670,53 +2642,37 @@ mod tests {
         let list = SCHEME.get_list(&Type::Int).unwrap();
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as(r#"any(tcp.ports[*] in $even)"#),
-            ComparisonExpr {
-                lhs: IndexExpr {
-                    identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
-                        function: SCHEME.get_function("any").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Comparison(
-                            ComparisonExpr {
-                                lhs: IndexExpr {
-                                    identifier: IdentifierExpr::Field(
-                                        field("tcp.ports").to_owned()
-                                    ),
-                                    indexes: vec![FieldIndex::MapEach],
-                                },
-                                op: ComparisonOpExpr::InList {
-                                    list: list.to_owned(),
-                                    name: ListName::from("even".to_string()),
-                                },
-                            }
-                        ))],
-                        context: None,
-                    }),
-                    indexes: vec![],
-                },
-                op: ComparisonOpExpr::IsTrue
+            LogicalExpr::Quantifier {
+                op: QuantifierOp::Any,
+                arg: Box::new(QuantifierArgExpr::Logical(LogicalExpr::Comparison(
+                    ComparisonExpr {
+                        lhs: IndexExpr {
+                            identifier: IdentifierExpr::Field(field("tcp.ports").to_owned()),
+                            indexes: vec![FieldIndex::MapEach],
+                        },
+                        op: ComparisonOpExpr::InList {
+                            list: list.to_owned(),
+                            name: ListName::from("even".to_string()),
+                        },
+                    }
+                ))),
             }
         );
 
-        assert_eq!(expr.lhs.identifier.get_type(), Type::Bool);
-        assert_eq!(expr.lhs.get_type(), Type::Bool);
         assert_eq!(expr.get_type(), Type::Bool);
 
         assert_json!(
             expr,
             {
-                "lhs": {
-                    "name": "any",
-                    "args": [
-                        {
-                            "kind": "SimpleExpr",
-                            "value": {
-                                "lhs": ["tcp.ports", {"kind": "MapEach"}],
-                                "op": "InList",
-                                "rhs": "even"
-                            }
-                        }
-                    ]
-                },
-                "op": "IsTrue"
+                "op": "Any",
+                "arg": {
+                    "kind": "SimpleExpr",
+                    "value": {
+                        "lhs": ["tcp.ports", {"kind": "MapEach"}],
+                        "op": "InList",
+                        "rhs": "even"
+                    }
+                }
             }
         );
 
