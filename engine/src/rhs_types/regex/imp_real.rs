@@ -2,7 +2,6 @@ use super::Error;
 use crate::{ParserSettings, RegexFormat};
 use regex_automata::MatchKind;
 use regex_automata::nfa::thompson::WhichCaptures;
-use std::ops::Deref;
 use std::sync::Arc;
 
 /// Wrapper around [`regex_automata::meta::Regex`]
@@ -33,7 +32,7 @@ impl Regex {
             .onepass(false)
             .dfa_size_limit(Some(settings.regex_compiled_size_limit))
             .hybrid_cache_capacity(settings.regex_dfa_size_limit)
-            .which_captures(WhichCaptures::Implicit)
+            .which_captures(WhichCaptures::None)
     }
 
     /// Compiles a regular expression.
@@ -73,21 +72,17 @@ impl Regex {
     pub fn format(&self) -> RegexFormat {
         self.format
     }
-}
 
-impl From<Regex> for regex_automata::meta::Regex {
+    /// Returns whether this regex matches the input.
     #[inline]
-    fn from(regex: Regex) -> Self {
-        regex.regex
+    pub fn config(&self) -> &regex_automata::meta::Config {
+        self.regex.get_config()
     }
-}
 
-impl Deref for Regex {
-    type Target = regex_automata::meta::Regex;
-
+    /// Returns whether this regex matches the input.
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.regex
+    pub fn is_match(&self, input: &[u8]) -> bool {
+        self.regex.is_match(input)
     }
 }
 
