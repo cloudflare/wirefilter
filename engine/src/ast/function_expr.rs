@@ -4,7 +4,7 @@ use super::visitor::{Visitor, VisitorMut};
 use crate::FunctionRef;
 use crate::ast::field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr, IdentifierExpr};
 use crate::ast::index_expr::IndexExpr;
-use crate::ast::logical_expr::{LogicalExpr, UnaryOp};
+use crate::ast::logical_expr::{LogicalExpr, QuantifierOp, UnaryOp};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledValueExpr, CompiledValueResult};
 use crate::functions::{
@@ -143,7 +143,10 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr {
             if c == '"' || (c == 'r' && (c2 == Some('#') || c2 == Some('"'))) {
                 return RhsValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input));
-            } else if c == '(' || UnaryOp::lex(input).is_ok() {
+            } else if c == '('
+                || UnaryOp::lex(input).is_ok()
+                || QuantifierOp::lex_call(input).is_some()
+            {
                 return LogicalExpr::lex_with(input, parser)
                     .map(|(lhs, input)| (FunctionCallArgExpr::Logical(lhs), input));
             } else if c_is_field!(c)
@@ -571,7 +574,9 @@ mod tests {
     use super::*;
     use crate::SimpleFunctionArgKind;
     use crate::ast::field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, OrderingOp};
-    use crate::ast::logical_expr::{LogicalExpr, LogicalOp, ParenthesizedExpr};
+    use crate::ast::logical_expr::{
+        LogicalExpr, LogicalOp, ParenthesizedExpr, QuantifierArgExpr, QuantifierOp,
+    };
     use crate::ast::parse::FilterParser;
     use crate::functions::{
         FunctionArgKind, FunctionArgKindMismatchError, FunctionArgs, SimpleFunctionDefinition,
@@ -582,19 +587,6 @@ mod tests {
     use crate::types::{RhsValues, Type, TypeMismatchError};
     use std::convert::TryFrom;
     use std::sync::LazyLock;
-
-    fn any_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
-        match args.next()? {
-            Ok(v) => Some(LhsValue::Bool(
-                Array::try_from(v)
-                    .unwrap()
-                    .into_iter()
-                    .any(|lhs| bool::try_from(lhs).unwrap()),
-            )),
-            Err(Type::Array(ref arr)) if arr.get_type() == Type::Bool => None,
-            _ => unreachable!(),
-        }
-    }
 
     fn regex_replace<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
@@ -645,7 +637,7 @@ mod tests {
         parser.set_max_nesting_depth(1);
 
         assert_err!(
-            parser.lex_as::<FunctionCallExpr>(
+            parser.lex_as::<LogicalExpr>(
                 "any ( ( http.request.headers.is_empty or http.request.headers.is_empty ) )"
             ),
             LexErrorKind::NestingLimitExceeded { limit: 1 },
@@ -672,20 +664,6 @@ mod tests {
             ssl: Bool,
             tcp.port: Int,
         };
-        builder
-            .add_function(
-                "any",
-                SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
-                        arg_kind: SimpleFunctionArgKind::Field,
-                        val_type: Type::Array(Type::Bool.into()),
-                    }],
-                    opt_params: vec![],
-                    return_type: Type::Bool,
-                    implementation: SimpleFunctionImpl::new(any_function),
-                },
-            )
-            .unwrap();
         builder
             .add_function(
                 "echo",
@@ -958,9 +936,9 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(
                 r#"any ( ( http.request.headers.is_empty or http.request.headers.is_empty ) )"#
             ),
-            FunctionCallExpr {
-                function: SCHEME.get_function("any").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Parenthesized(
+            LogicalExpr::Quantifier {
+                op: QuantifierOp::Any,
+                arg: Box::new(QuantifierArgExpr::Logical(LogicalExpr::Parenthesized(
                     Box::new(ParenthesizedExpr {
                         expr: LogicalExpr::Combining {
                             op: LogicalOp::Or,
@@ -992,37 +970,33 @@ mod tests {
                             ]
                         }
                     })
-                ))],
-                context: None,
+                ))),
             },
             ""
         );
 
-        assert_eq!(expr.return_type(), Type::Bool);
         assert_eq!(expr.get_type(), Type::Bool);
 
         assert_json!(
             expr,
             {
-                "name": "any",
-                "args": [
-                    {
-                        "kind": "SimpleExpr",
-                        "value": {
-                            "items": [
-                                {
-                                    "lhs": "http.request.headers.is_empty",
-                                    "op": "IsTrue",
-                                },
-                                {
-                                    "lhs": "http.request.headers.is_empty",
-                                    "op": "IsTrue",
-                                }
-                            ],
-                            "op": "Or",
-                        }
+                "op": "Any",
+                "arg": {
+                    "kind": "SimpleExpr",
+                    "value": {
+                        "items": [
+                            {
+                                "lhs": "http.request.headers.is_empty",
+                                "op": "IsTrue",
+                            },
+                            {
+                                "lhs": "http.request.headers.is_empty",
+                                "op": "IsTrue",
+                            }
+                        ],
+                        "op": "Or",
                     }
-                ]
+                }
             }
         );
 
@@ -1114,9 +1088,9 @@ mod tests {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME)
                 .lex_as("any(lower(http.request.headers.names[*])[*] contains \"c\")"),
-            FunctionCallExpr {
-                function: SCHEME.get_function("any").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Comparison(
+            LogicalExpr::Quantifier {
+                op: QuantifierOp::Any,
+                arg: Box::new(QuantifierArgExpr::Logical(LogicalExpr::Comparison(
                     ComparisonExpr {
                         lhs: IndexExpr {
                             identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
@@ -1136,41 +1110,37 @@ mod tests {
                         },
                         op: ComparisonOpExpr::Contains("c".to_string().into(),)
                     }
-                ))],
-                context: None,
+                ))),
             },
             ""
         );
 
-        assert_eq!(expr.return_type(), Type::Bool);
         assert_eq!(expr.get_type(), Type::Bool);
 
         assert_json!(
             expr,
             {
-                "args": [
-                    {
-                        "kind": "SimpleExpr",
-                        "value": {
-                            "lhs": [
-                                {
-                                    "args": [
-                                        {
-                                            "kind": "IndexExpr",
-                                            "value": ["http.request.headers.names", {"kind": "MapEach"}]
-                                        }
-                                    ],
-                                    "name": "lower"
-                                },{
-                                    "kind": "MapEach"
-                                }
-                            ],
-                            "op": "Contains",
-                            "rhs": "c"
-                        }
+                "op": "Any",
+                "arg": {
+                    "kind": "SimpleExpr",
+                    "value": {
+                        "lhs": [
+                            {
+                                "args": [
+                                    {
+                                        "kind": "IndexExpr",
+                                        "value": ["http.request.headers.names", {"kind": "MapEach"}]
+                                    }
+                                ],
+                                "name": "lower"
+                            },{
+                                "kind": "MapEach"
+                            }
+                        ],
+                        "op": "Contains",
+                        "rhs": "c"
                     }
-                ],
-                "name": "any"
+                }
             }
         );
 
@@ -1208,9 +1178,9 @@ mod tests {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME)
                 .lex_as("any(not(http.request.headers.names[*] in {\"Cookie\" \"Cookies\"}))"),
-            FunctionCallExpr {
-                function: SCHEME.get_function("any").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Unary {
+            LogicalExpr::Quantifier {
+                op: QuantifierOp::Any,
+                arg: Box::new(QuantifierArgExpr::Logical(LogicalExpr::Unary {
                     op: UnaryOp::Not,
                     arg: Box::new(LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr {
                         expr: LogicalExpr::Comparison(ComparisonExpr {
@@ -1229,49 +1199,45 @@ mod tests {
                             ])),
                         })
                     },)))
-                })],
-                context: None,
+                })),
             },
             ""
         );
 
-        assert_eq!(expr.return_type(), Type::Bool);
         assert_eq!(expr.get_type(), Type::Bool);
 
         assert_json!(
             expr,
             {
-                "name": "any",
-                "args": [
-                    {
-                        "kind": "SimpleExpr",
-                        "value": {
-                            "op": "Not",
-                            "arg": {
-                                "lhs": [
-                                    "http.request.headers.names",
-                                    {
-                                        "kind": "MapEach"
-                                    }
-                                ],
-                                "op": "OneOf",
-                                "rhs": [
-                                    "Cookie",
-                                    "Cookies"
-                                ]
-                            }
+                "op": "Any",
+                "arg": {
+                    "kind": "SimpleExpr",
+                    "value": {
+                        "op": "Not",
+                        "arg": {
+                            "lhs": [
+                                "http.request.headers.names",
+                                {
+                                    "kind": "MapEach"
+                                }
+                            ],
+                            "op": "OneOf",
+                            "rhs": [
+                                "Cookie",
+                                "Cookies"
+                            ]
                         }
                     }
-                ]
+                }
             }
         );
 
         let expr = assert_ok!(
             FilterParser::new(&SCHEME)
                 .lex_as("any(!(http.request.headers.names[*] in {\"Cookie\" \"Cookies\"}))"),
-            FunctionCallExpr {
-                function: SCHEME.get_function("any").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::Logical(LogicalExpr::Unary {
+            LogicalExpr::Quantifier {
+                op: QuantifierOp::Any,
+                arg: Box::new(QuantifierArgExpr::Logical(LogicalExpr::Unary {
                     op: UnaryOp::Not,
                     arg: Box::new(LogicalExpr::Parenthesized(Box::new(ParenthesizedExpr {
                         expr: LogicalExpr::Comparison(ComparisonExpr {
@@ -1290,40 +1256,36 @@ mod tests {
                             ])),
                         })
                     },)))
-                })],
-                context: None,
+                })),
             },
             ""
         );
 
-        assert_eq!(expr.return_type(), Type::Bool);
         assert_eq!(expr.get_type(), Type::Bool);
 
         assert_json!(
             expr,
             {
-                "name": "any",
-                "args": [
-                    {
-                        "kind": "SimpleExpr",
-                        "value": {
-                            "op": "Not",
-                            "arg": {
-                                "lhs": [
-                                    "http.request.headers.names",
-                                    {
-                                        "kind": "MapEach"
-                                    }
-                                ],
-                                "op": "OneOf",
-                                "rhs": [
-                                    "Cookie",
-                                    "Cookies"
-                                ]
-                            }
+                "op": "Any",
+                "arg": {
+                    "kind": "SimpleExpr",
+                    "value": {
+                        "op": "Not",
+                        "arg": {
+                            "lhs": [
+                                "http.request.headers.names",
+                                {
+                                    "kind": "MapEach"
+                                }
+                            ],
+                            "op": "OneOf",
+                            "rhs": [
+                                "Cookie",
+                                "Cookies"
+                            ]
                         }
                     }
-                ]
+                }
             }
         );
     }
