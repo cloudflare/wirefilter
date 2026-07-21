@@ -110,7 +110,7 @@ fn record_backtrace(info: &std::panic::PanicHookInfo<'_>, bt: &mut String) {
     } else {
         "<unknown>"
     };
-    bt.truncate(0);
+    bt.clear();
     let _ = std::fmt::write(
         &mut *bt,
         format_args!(
