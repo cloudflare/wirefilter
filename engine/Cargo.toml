@@ -30,6 +30,7 @@ memchr.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
 serde.workspace = true
+simdutf8.workspace = true
 sliceslice.workspace = true
 thiserror.workspace = true
 wildcard.workspace = true
