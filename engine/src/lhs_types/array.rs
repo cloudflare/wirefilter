@@ -4,6 +4,8 @@ use crate::lhs_types::AsRefIterator;
 use crate::types::{
     CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type, TypeMismatchError,
 };
+#[cfg(feature = "get-size2")]
+use get_size2::{GetSize, GetSizeTracker};
 use serde::de::{self, DeserializeSeed, Deserializer, SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
@@ -18,6 +20,16 @@ use std::hint::unreachable_unchecked;
 pub(crate) enum InnerArray<'a> {
     Owned(Vec<LhsValue<'a>>),
     Borrowed(&'a [LhsValue<'a>]),
+}
+
+#[cfg(feature = "get-size2")]
+impl GetSize for InnerArray<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        match self {
+            Self::Owned(values) => values.get_heap_size_with_tracker(tracker),
+            Self::Borrowed(_) => (0, tracker),
+        }
+    }
 }
 
 impl<'a> InnerArray<'a> {
@@ -79,6 +91,13 @@ impl Hash for InnerArray<'_> {
 pub struct Array<'a> {
     val_type: CompoundType,
     pub(crate) data: InnerArray<'a>,
+}
+
+#[cfg(feature = "get-size2")]
+impl GetSize for Array<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        self.data.get_heap_size_with_tracker(tracker)
+    }
 }
 
 impl<'a> Array<'a> {

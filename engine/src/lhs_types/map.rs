@@ -3,6 +3,8 @@ use super::array::InnerArray;
 use crate::TypeMismatchError;
 use crate::lhs_types::{AsRefIterator, Bytes};
 use crate::types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type};
+#[cfg(feature = "get-size2")]
+use get_size2::{GetSize, GetSizeTracker};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
@@ -15,6 +17,16 @@ use std::hash::{Hash, Hasher};
 pub(crate) enum InnerMap<'a> {
     Owned(BTreeMap<Box<[u8]>, LhsValue<'a>>),
     Borrowed(&'a BTreeMap<Box<[u8]>, LhsValue<'a>>),
+}
+
+#[cfg(feature = "get-size2")]
+impl GetSize for InnerMap<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        match self {
+            Self::Owned(values) => values.get_heap_size_with_tracker(tracker),
+            Self::Borrowed(_) => (0, tracker),
+        }
+    }
 }
 
 impl<'a> InnerMap<'a> {
@@ -77,6 +89,13 @@ impl Hash for InnerMap<'_> {
 pub struct Map<'a> {
     val_type: CompoundType,
     pub(crate) data: InnerMap<'a>,
+}
+
+#[cfg(feature = "get-size2")]
+impl GetSize for Map<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        self.data.get_heap_size_with_tracker(tracker)
+    }
 }
 
 impl<'a> Map<'a> {

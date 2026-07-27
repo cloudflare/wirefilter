@@ -406,6 +406,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "get-size2"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b411f34418305908ab15a82ff78958c2a9aee9a272b2a2e663836b20a4e4b9d3"
+
+[[package]]
 name = "getrandom"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1273,6 +1279,7 @@ dependencies = [
  "dyn-clone",
  "erased-serde",
  "fnv",
+ "get-size2",
  "getrandom 0.3.4",
  "indoc",
  "memchr",

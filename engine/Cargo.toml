@@ -26,6 +26,7 @@ cidr.workspace = true
 dyn-clone.workspace = true
 erased-serde.workspace = true
 fnv.workspace = true
+get-size2 = { workspace = true, optional = true }
 memchr.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
@@ -46,5 +47,6 @@ serde_json.workspace = true
 getrandom.workspace = true
 
 [features]
-default = ["regex"]
+default = ["get-size2", "regex"]
+get-size2 = ["dep:get-size2"]
 regex = ["dep:regex-automata"]

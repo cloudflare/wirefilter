@@ -5,6 +5,8 @@ use crate::rhs_types::{
 };
 use crate::scheme::{FieldIndex, IndexAccessError};
 use crate::strict_partial_ord::StrictPartialOrd;
+#[cfg(feature = "get-size2")]
+use get_size2::{GetSize, GetSizeTracker};
 use serde::de::{DeserializeSeed, Deserializer};
 use serde::{Deserialize, Serialize, Serializer};
 use std::cmp::Ordering;
@@ -1062,6 +1064,18 @@ declare_types!(
     Map[CompoundType](#[serde(skip_deserializing)] Map<'a> | UninhabitedMap | UninhabitedMap),
 );
 
+#[cfg(feature = "get-size2")]
+impl GetSize for LhsValue<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        match self {
+            Self::Bool(_) | Self::Int(_) | Self::Ip(_) => (0, tracker),
+            Self::Bytes(value) => value.get_heap_size_with_tracker(tracker),
+            Self::Array(value) => value.get_heap_size_with_tracker(tracker),
+            Self::Map(value) => value.get_heap_size_with_tracker(tracker),
+        }
+    }
+}
+
 #[test]
 fn test_lhs_value_deserialize() {
     use std::str::FromStr;
@@ -1175,4 +1189,95 @@ fn test_type_deserialize() {
 #[test]
 fn test_size_of_lhs_value() {
     assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 48);
+}
+
+#[cfg(feature = "get-size2")]
+#[test]
+fn test_lhs_value_get_size() {
+    let stack_size = std::mem::size_of::<LhsValue<'static>>();
+
+    assert_eq!(LhsValue::Bool(false).get_size(), stack_size);
+    assert_eq!(LhsValue::Int(42).get_size(), stack_size);
+    assert_eq!(
+        LhsValue::Ip(IpAddr::V4(Ipv4Addr::LOCALHOST)).get_size(),
+        stack_size
+    );
+
+    let borrowed_bytes = LhsValue::Bytes(Bytes::Borrowed(b"borrowed"));
+    assert_eq!(borrowed_bytes.get_size(), stack_size);
+
+    let owned_bytes = LhsValue::Bytes(Bytes::Owned(Box::from(&b"owned"[..])));
+    assert_eq!(owned_bytes.get_size(), stack_size + b"owned".len());
+}
+
+#[cfg(feature = "get-size2")]
+#[test]
+fn test_array_lhs_value_get_size() {
+    let stack_size = std::mem::size_of::<LhsValue<'static>>();
+
+    let mut borrowed_values = Vec::with_capacity(4);
+    borrowed_values.push(LhsValue::Bytes(Bytes::Borrowed(b"borrowed")));
+    let borrowed_values_capacity = borrowed_values.capacity();
+    let owned_array_of_borrowed = Array::try_from_vec(Type::Bytes, borrowed_values).unwrap();
+    assert_eq!(
+        LhsValue::Array(owned_array_of_borrowed.as_ref()).get_size(),
+        stack_size
+    );
+    assert_eq!(
+        LhsValue::Array(owned_array_of_borrowed).get_size(),
+        stack_size + borrowed_values_capacity * stack_size
+    );
+
+    let mut owned_values = Vec::with_capacity(4);
+    owned_values.push(LhsValue::Bytes(Bytes::Owned(Box::from(&b"owned"[..]))));
+    let owned_values_capacity = owned_values.capacity();
+    let owned_array_of_owned = Array::try_from_vec(Type::Bytes, owned_values).unwrap();
+    assert_eq!(
+        LhsValue::Array(owned_array_of_owned.as_ref()).get_size(),
+        stack_size
+    );
+    assert_eq!(
+        LhsValue::Array(owned_array_of_owned).get_size(),
+        stack_size + owned_values_capacity * stack_size + b"owned".len()
+    );
+}
+
+#[cfg(feature = "get-size2")]
+#[test]
+fn test_map_lhs_value_get_size() {
+    let stack_size = std::mem::size_of::<LhsValue<'static>>();
+
+    let owned_map_of_borrowed = Map::try_from_iter(
+        Type::Bytes,
+        [Ok::<_, TypeMismatchError>((
+            Box::from(b"key".as_slice()),
+            Bytes::Borrowed(b"borrowed"),
+        ))],
+    )
+    .unwrap();
+    assert_eq!(
+        LhsValue::Map(owned_map_of_borrowed.as_ref()).get_size(),
+        stack_size
+    );
+    assert_eq!(
+        LhsValue::Map(owned_map_of_borrowed).get_size(),
+        stack_size + std::mem::size_of::<Box<[u8]>>() + b"key".len() + stack_size
+    );
+
+    let owned_map_of_owned = Map::try_from_iter(
+        Type::Bytes,
+        [Ok::<_, TypeMismatchError>((
+            Box::from(b"key".as_slice()),
+            Bytes::Owned(Box::from(&b"owned"[..])),
+        ))],
+    )
+    .unwrap();
+    assert_eq!(
+        LhsValue::Map(owned_map_of_owned.as_ref()).get_size(),
+        stack_size
+    );
+    assert_eq!(
+        LhsValue::Map(owned_map_of_owned).get_size(),
+        stack_size + std::mem::size_of::<Box<[u8]>>() + b"key".len() + stack_size + b"owned".len()
+    );
 }

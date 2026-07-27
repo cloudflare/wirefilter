@@ -1,3 +1,5 @@
+#[cfg(feature = "get-size2")]
+use get_size2::{GetSize, GetSizeTracker};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
@@ -11,6 +13,16 @@ pub enum Bytes<'a> {
     Borrowed(&'a [u8]),
     /// Owned byte string.
     Owned(Box<[u8]>),
+}
+
+#[cfg(feature = "get-size2")]
+impl GetSize for Bytes<'_> {
+    fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
+        match self {
+            Self::Owned(bytes) => bytes.get_heap_size_with_tracker(tracker),
+            Self::Borrowed(_) => (0, tracker),
+        }
+    }
 }
 
 impl<'a> Bytes<'a> {
