@@ -556,7 +556,7 @@ impl Expr for ComparisonExpr {
 
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if *USE_AVX2 {
-                    use rand::{Rng, rng};
+                    use rand::{RngExt, rng};
                     use sliceslice::x86::*;
 
                     struct ArraySearcher<const N: usize>(Avx2Searcher<[u8; N]>);
@@ -660,7 +660,7 @@ impl Expr for ComparisonExpr {
                 }
                 #[cfg(target_arch = "wasm32")]
                 if *USE_SIMD128 {
-                    use rand::{Rng, rng};
+                    use rand::{RngExt, rng};
                     use sliceslice::wasm32::*;
 
                     struct WasmSearcher(Wasm32Searcher<Box<[u8]>>);
