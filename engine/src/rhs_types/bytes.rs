@@ -4,7 +4,6 @@ use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
-use std::str;
 
 /// BytesFormat describes the format in which the string was expressed
 #[derive(PartialEq, Eq, Copy, Clone)]
@@ -48,10 +47,12 @@ impl Serialize for BytesExpr {
         S: Serializer,
     {
         match self.format() {
-            BytesFormat::Quoted | BytesFormat::Raw(_) => match std::str::from_utf8(&self.data) {
-                Ok(s) => s.serialize(serializer),
-                Err(_) => self.data.serialize(serializer),
-            },
+            BytesFormat::Quoted | BytesFormat::Raw(_) => {
+                match simdutf8::basic::from_utf8(&self.data) {
+                    Ok(s) => s.serialize(serializer),
+                    Err(_) => self.data.serialize(serializer),
+                }
+            }
             BytesFormat::Byte => self.data.serialize(serializer),
         }
     }
@@ -117,10 +118,12 @@ impl Debug for BytesExpr {
         }
 
         match self.format {
-            BytesFormat::Quoted | BytesFormat::Raw(_) => match std::str::from_utf8(&self.data) {
-                Ok(s) => s.fmt(f),
-                Err(_) => fmt_raw(&self.data, f),
-            },
+            BytesFormat::Quoted | BytesFormat::Raw(_) => {
+                match simdutf8::basic::from_utf8(&self.data) {
+                    Ok(s) => s.fmt(f),
+                    Err(_) => fmt_raw(&self.data, f),
+                }
+            }
             BytesFormat::Byte => fmt_raw(&self.data, f),
         }
     }
