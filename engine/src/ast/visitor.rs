@@ -2,7 +2,7 @@ use super::field_expr::{ComparisonExpr, ComparisonOpExpr};
 use super::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
 use super::index_expr::IndexExpr;
 use super::logical_expr::LogicalExpr;
-use super::{Expr, ValueExpr};
+use super::{Expr, FilterValueExpr, ValueExpr};
 use crate::{Field, FieldRef, Function};
 
 /// Trait used to immutably visit all nodes in the AST.
@@ -33,6 +33,12 @@ pub trait Visitor<'a>: Sized {
     #[inline]
     fn visit_value_expr(&mut self, node: &'a impl ValueExpr) {
         node.walk(self)
+    }
+
+    /// Visit [`FilterValueExpr`] node.
+    #[inline]
+    fn visit_filter_value_expr(&mut self, node: &'a FilterValueExpr) {
+        self.visit_value_expr(node)
     }
 
     /// Visit [`IndexExpr`] node.
@@ -98,6 +104,12 @@ pub trait VisitorMut<'a>: Sized {
     #[inline]
     fn visit_value_expr(&mut self, node: &'a mut impl ValueExpr) {
         node.walk_mut(self)
+    }
+
+    /// Visit [`FilterValueExpr`] node.
+    #[inline]
+    fn visit_filter_value_expr(&mut self, node: &'a mut FilterValueExpr) {
+        self.visit_value_expr(node)
     }
 
     /// Visit [`IndexExpr`] node.

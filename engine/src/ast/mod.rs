@@ -306,13 +306,13 @@ impl FilterValueAst {
     /// Recursively visit all nodes in the AST using a [`Visitor`].
     #[inline]
     pub fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
-        visitor.visit_value_expr(&self.op)
+        visitor.visit_filter_value_expr(&self.op)
     }
 
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     #[inline]
     pub fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
-        visitor.visit_value_expr(&mut self.op)
+        visitor.visit_filter_value_expr(&mut self.op)
     }
 
     /// Recursively checks whether a [`FilterAst`] uses a given field name.
