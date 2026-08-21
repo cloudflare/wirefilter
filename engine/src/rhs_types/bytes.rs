@@ -273,7 +273,7 @@ pub(crate) fn lex_raw_string_as_str(input: &str) -> LexResult<'_, (&str, u8)> {
     // consume '"'`
     if input.as_bytes().get(start_hash_count) != Some(&b'"') {
         return Err((
-            LexErrorKind::ExpectedName("\" or #"),
+            LexErrorKind::ExpectedLiteral("\" or #"),
             &full_input[start_hash_count..],
         ));
     }
@@ -320,7 +320,7 @@ pub(crate) fn lex_quoted_or_raw_string(input: &str) -> LexResult<'_, BytesExpr> 
     match input.as_bytes().first() {
         Some(b'"') => lex_quoted_string(&input[1..]),
         Some(b'r') => lex_raw_string(&input[1..]),
-        Some(_) => Err((LexErrorKind::ExpectedName("\" or r"), input)),
+        Some(_) => Err((LexErrorKind::ExpectedLiteral("\" or r"), input)),
         None => Err((LexErrorKind::EOF, input)),
     }
 }
@@ -583,17 +583,17 @@ mod test {
         // Invalid character after 'r' or '#'
         assert_err!(
             BytesExpr::lex("r"),
-            LexErrorKind::ExpectedName("\" or #"),
+            LexErrorKind::ExpectedLiteral("\" or #"),
             ""
         );
         assert_err!(
             BytesExpr::lex("r#ab"),
-            LexErrorKind::ExpectedName("\" or #"),
+            LexErrorKind::ExpectedLiteral("\" or #"),
             "ab"
         );
         assert_err!(
             BytesExpr::lex("r##ab"),
-            LexErrorKind::ExpectedName("\" or #"),
+            LexErrorKind::ExpectedLiteral("\" or #"),
             "ab"
         );
 

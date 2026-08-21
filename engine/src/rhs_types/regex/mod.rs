@@ -116,7 +116,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
             match c {
                 b'"' => lex_regex_from_literal(&input[1..], parser),
                 b'r' => lex_regex_from_raw_string(&input[1..], parser),
-                _ => Err((LexErrorKind::ExpectedName("\" or r"), input)),
+                _ => Err((LexErrorKind::ExpectedLiteral("\" or r"), input)),
             }
         } else {
             Err((LexErrorKind::EOF, input))
@@ -228,7 +228,7 @@ mod test {
 
         assert_err!(
             Regex::lex_with("x", &FilterParser::new(&scheme)),
-            LexErrorKind::ExpectedName("\" or r"),
+            LexErrorKind::ExpectedLiteral("\" or r"),
             "x"
         );
     }

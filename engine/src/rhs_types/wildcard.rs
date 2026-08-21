@@ -283,7 +283,7 @@ mod test {
 
             assert_err!(
                 Wildcard::<STRICT>::lex_with("61:20:71:75:6F:74", &FilterParser::new(&scheme)),
-                LexErrorKind::ExpectedName("\" or r"),
+                LexErrorKind::ExpectedLiteral("\" or r"),
                 "61:20:71:75:6F:74"
             );
         }
