@@ -1,6 +1,8 @@
 pub(crate) mod concat;
+mod settings;
 
 pub use self::concat::ConcatFunction;
+pub use self::settings::{FunctionSettings, FunctionSettingsValue};
 use crate::ParserSettings;
 use crate::filter::CompiledValueResult;
 use crate::types::{
@@ -378,10 +380,17 @@ pub type CompiledFunction =
 
 /// Trait to implement function
 pub trait FunctionDefinition: Debug + Send + Sync {
-    /// Custom context to store information during parsing
-    fn context(&self) -> Option<FunctionDefinitionContext> {
+    /// Settings shared by all registrations of this function-definition type while parsing.
+    ///
+    /// Functions that do not use settings should specify `()`.
+    type Settings: FunctionSettingsValue;
+
+    /// Custom context to store information during parsing.
+    fn context(&self, settings: &ParserSettings) -> Option<FunctionDefinitionContext> {
+        let _ = settings;
         None
     }
+
     /// Given a slice of already checked parameters, checks that next_param is
     /// correct. Return the expected the parameter definition.
     fn check_param(
@@ -408,6 +417,73 @@ pub trait FunctionDefinition: Debug + Send + Sync {
         params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
         ctx: Option<FunctionDefinitionContext>,
     ) -> CompiledFunction;
+}
+
+pub(crate) trait ErasedFunctionDefinition: Debug + Send + Sync {
+    fn context(&self, settings: &ParserSettings) -> Option<FunctionDefinitionContext>;
+
+    fn check_param(
+        &self,
+        settings: &ParserSettings,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        next_param: &FunctionParam<'_>,
+        ctx: Option<&mut FunctionDefinitionContext>,
+    ) -> Result<(), FunctionParamError>;
+
+    fn return_type(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<&FunctionDefinitionContext>,
+    ) -> Type;
+
+    fn arg_count(&self) -> (usize, Option<usize>);
+
+    fn compile(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<FunctionDefinitionContext>,
+    ) -> CompiledFunction;
+}
+
+impl<F: FunctionDefinition + 'static> ErasedFunctionDefinition for F {
+    #[inline]
+    fn context(&self, settings: &ParserSettings) -> Option<FunctionDefinitionContext> {
+        FunctionDefinition::context(self, settings)
+    }
+
+    #[inline]
+    fn check_param(
+        &self,
+        settings: &ParserSettings,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        next_param: &FunctionParam<'_>,
+        ctx: Option<&mut FunctionDefinitionContext>,
+    ) -> Result<(), FunctionParamError> {
+        FunctionDefinition::check_param(self, settings, params, next_param, ctx)
+    }
+
+    #[inline]
+    fn return_type(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<&FunctionDefinitionContext>,
+    ) -> Type {
+        FunctionDefinition::return_type(self, params, ctx)
+    }
+
+    #[inline]
+    fn arg_count(&self) -> (usize, Option<usize>) {
+        FunctionDefinition::arg_count(self)
+    }
+
+    #[inline]
+    fn compile(
+        &self,
+        params: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+        ctx: Option<FunctionDefinitionContext>,
+    ) -> CompiledFunction {
+        FunctionDefinition::compile(self, params, ctx)
+    }
 }
 
 // Simple function APIs
@@ -494,6 +570,8 @@ pub struct SimpleFunctionDefinition {
 }
 
 impl FunctionDefinition for SimpleFunctionDefinition {
+    type Settings = ();
+
     fn check_param(
         &self,
         _settings: &ParserSettings,

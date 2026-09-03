@@ -1,5 +1,5 @@
 use super::ValueExpr;
-use super::parse::FilterParser;
+use super::parse::ParserContext;
 use super::visitor::{Visitor, VisitorMut};
 use crate::FunctionRef;
 use crate::ast::field_expr::{ComparisonExpr, ComparisonOp, ComparisonOpExpr, IdentifierExpr};
@@ -8,8 +8,8 @@ use crate::ast::logical_expr::{LogicalExpr, QuantifierOp, UnaryOp};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledValueExpr, CompiledValueResult};
 use crate::functions::{
-    CompiledFunction, ExactSizeChain, FunctionDefinition, FunctionDefinitionContext, FunctionParam,
-    FunctionParamError,
+    CompiledFunction, ErasedFunctionDefinition, ExactSizeChain, FunctionDefinitionContext,
+    FunctionParam, FunctionParamError,
 };
 use crate::lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
 use crate::lhs_types::Array;
@@ -115,8 +115,8 @@ impl FunctionCallArgExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for FunctionCallArgExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let _initial_input = input;
 
         macro_rules! c_is_field {
@@ -409,7 +409,7 @@ impl FunctionCallExpr {
 
     pub(crate) fn lex_with_function<'i>(
         input: &'i str,
-        parser: &FilterParser<'_>,
+        parser: &ParserContext<'_>,
         function: FunctionRef<'_>,
     ) -> LexResult<'i, Self> {
         let definition = function.as_definition();
@@ -426,7 +426,7 @@ impl FunctionCallExpr {
 
         let mut index = 0;
 
-        let mut ctx = definition.context();
+        let mut ctx = definition.context(parser.settings());
 
         while let Some(c) = input.chars().next() {
             if c == ')' {
@@ -539,7 +539,7 @@ impl FunctionCallExpr {
     }
 }
 
-fn invalid_args_count<'i>(function: &dyn FunctionDefinition, input: &'i str) -> LexError<'i> {
+fn invalid_args_count<'i>(function: &dyn ErasedFunctionDefinition, input: &'i str) -> LexError<'i> {
     let (mandatory, optional) = function.arg_count();
     (
         LexErrorKind::InvalidArgumentsCount {
@@ -560,9 +560,9 @@ impl GetType for FunctionCallExpr {
     }
 }
 
-impl<'i> LexWith<'i, &FilterParser<'_>> for FunctionCallExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
-        let (function, rest) = FunctionRef::lex_with(input, parser.scheme)?;
+impl<'i> LexWith<'i, &ParserContext<'_>> for FunctionCallExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
+        let (function, rest) = FunctionRef::lex_with(input, parser.scheme())?;
         let nested_parser = parser.with_increased_nesting(skip_space(rest))?;
 
         Self::lex_with_function(rest, &nested_parser, function)
@@ -1144,9 +1144,8 @@ mod tests {
             }
         );
 
-        let expr = FunctionCallArgExpr::lex_with(
+        let expr = FilterParser::new(&SCHEME).lex_as::<FunctionCallArgExpr>(
             "lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(lower(http.host)))))))))))))))))))))))))))))))) contains \"c\"",
-            &FilterParser::new(&SCHEME),
         );
         assert!(expr.is_ok());
 

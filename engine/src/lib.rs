@@ -87,7 +87,7 @@ pub use self::ast::index_expr::{Compare, IndexExpr};
 pub use self::ast::logical_expr::{
     LogicalExpr, LogicalOp, ParenthesizedExpr, QuantifierArgExpr, QuantifierOp, UnaryOp,
 };
-pub use self::ast::parse::{FilterParser, ParseError, ParserSettings};
+pub use self::ast::parse::{FilterParser, ParseError, ParserContext, ParserSettings};
 pub use self::ast::visitor::{Visitor, VisitorMut};
 pub use self::ast::{Expr, FilterAst, FilterValueAst, FilterValueExpr, ValueExpr};
 pub use self::compiler::{Compiler, DefaultCompiler};
@@ -100,8 +100,9 @@ pub use self::filter::{
 pub use self::functions::{
     CompiledFunction, ConcatFunction, FunctionArgInvalidConstantError, FunctionArgKind,
     FunctionArgKindMismatchError, FunctionArgs, FunctionDefinition, FunctionDefinitionContext,
-    FunctionParam, FunctionParamError, SimpleFunctionArgKind, SimpleFunctionDefinition,
-    SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
+    FunctionParam, FunctionParamError, FunctionSettings, FunctionSettingsValue,
+    SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionOptParam,
+    SimpleFunctionParam,
 };
 pub use self::lex::LexErrorKind;
 pub use self::lhs_types::{Array, Bytes, Map, MapIter, TypedArray, TypedMap};

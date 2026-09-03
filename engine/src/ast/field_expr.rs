@@ -1,6 +1,8 @@
 use super::Expr;
 use super::function_expr::FunctionCallExpr;
+#[cfg(test)]
 use super::parse::FilterParser;
+use super::parse::ParserContext;
 use super::visitor::{Visitor, VisitorMut};
 use crate::ast::index_expr::{Compare, IndexExpr};
 use crate::compiler::Compiler;
@@ -249,9 +251,9 @@ impl IdentifierExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IdentifierExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
-        let (item, input) = Identifier::lex_with(input, parser.scheme)?;
+impl<'i> LexWith<'i, &ParserContext<'_>> for IdentifierExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
+        let (item, input) = Identifier::lex_with(input, parser.scheme())?;
         match item {
             Identifier::Field(field) => Ok((IdentifierExpr::Field(field.to_owned()), input)),
             Identifier::Function(function) => {
@@ -296,8 +298,8 @@ impl GetType for ComparisonExpr {
     }
 }
 
-impl<'i> LexWith<'i, &FilterParser<'_>> for ComparisonExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for ComparisonExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (lhs, input) = IndexExpr::lex_with(input, parser)?;
 
         Self::lex_with_lhs(input, parser, lhs)
@@ -307,7 +309,7 @@ impl<'i> LexWith<'i, &FilterParser<'_>> for ComparisonExpr {
 impl ComparisonExpr {
     pub(crate) fn lex_with_lhs<'i>(
         input: &'i str,
-        parser: &FilterParser<'_>,
+        parser: &ParserContext<'_>,
         lhs: IndexExpr,
     ) -> LexResult<'i, Self> {
         let lhs_type = lhs.get_type();
@@ -341,7 +343,7 @@ impl ComparisonExpr {
                 | (Type::Int, ComparisonOp::In) => {
                     if expect(input, "$").is_ok() {
                         let (name, input) = ListName::lex(input)?;
-                        let list = parser.scheme.get_list(&lhs_type).ok_or((
+                        let list = parser.scheme().get_list(&lhs_type).ok_or((
                             LexErrorKind::UnsupportedOp { lhs_type },
                             span(initial_input, input),
                         ))?;
@@ -856,6 +858,8 @@ mod tests {
     }
 
     impl FunctionDefinition for FilterFunction {
+        type Settings = ();
+
         fn check_param(
             &self,
             _: &ParserSettings,

@@ -1,6 +1,7 @@
+use crate::ast::parse::ParserContext;
 use crate::lex::{LexResult, LexWith};
 use crate::rhs_types::bytes::{BytesExpr, lex_quoted_or_raw_string};
-use crate::{FilterParser, LexErrorKind};
+use crate::{FilterParser, LexErrorKind, ParserSettings};
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
@@ -123,13 +124,26 @@ impl<const STRICT: bool> Serialize for Wildcard<STRICT> {
 
 impl<'i, 's, const STRICT: bool> LexWith<'i, &FilterParser<'s>> for Wildcard<STRICT> {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Wildcard<STRICT>> {
-        lex_quoted_or_raw_string(input).and_then(|(pattern, rest)| {
-            match Wildcard::new(pattern, parser.settings.wildcard_star_limit) {
-                Ok(wildcard) => Ok((wildcard, rest)),
-                Err(err) => Err((LexErrorKind::ParseWildcard(err), input)),
-            }
-        })
+        lex_wildcard(input, parser.settings())
     }
+}
+
+impl<'i, const STRICT: bool> LexWith<'i, &ParserContext<'_>> for Wildcard<STRICT> {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
+        lex_wildcard(input, parser.settings())
+    }
+}
+
+fn lex_wildcard<'i, const STRICT: bool>(
+    input: &'i str,
+    settings: &ParserSettings,
+) -> LexResult<'i, Wildcard<STRICT>> {
+    lex_quoted_or_raw_string(input).and_then(|(pattern, rest)| {
+        match Wildcard::new(pattern, settings.wildcard_star_limit) {
+            Ok(wildcard) => Ok((wildcard, rest)),
+            Err(err) => Err((LexErrorKind::ParseWildcard(err), input)),
+        }
+    })
 }
 
 #[cfg(test)]

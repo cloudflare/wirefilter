@@ -24,6 +24,7 @@ backtrace.workspace = true
 cfg-if.workspace = true
 cidr.workspace = true
 dyn-clone.workspace = true
+dyn-eq.workspace = true
 erased-serde.workspace = true
 fnv.workspace = true
 get-size2 = { workspace = true, optional = true }
