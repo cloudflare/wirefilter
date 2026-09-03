@@ -1,6 +1,6 @@
 use super::ValueExpr;
 use super::field_expr::IdentifierExpr;
-use super::parse::FilterParser;
+use super::parse::ParserContext;
 use super::visitor::{Visitor, VisitorMut};
 use crate::compiler::Compiler;
 use crate::execution_context::ExecutionContext;
@@ -314,8 +314,8 @@ impl IndexExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
-    fn lex_with(mut input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for IndexExpr {
+    fn lex_with(mut input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (identifier, rest) = IdentifierExpr::lex_with(input, parser)?;
 
         let mut current_type = identifier.get_type();

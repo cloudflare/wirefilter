@@ -7,7 +7,7 @@ pub mod visitor;
 
 use self::index_expr::IndexExpr;
 use self::logical_expr::{LogicalExpr, QuantifierArgExpr, QuantifierOp};
-use self::parse::FilterParser;
+use self::parse::ParserContext;
 use self::visitor::{UsesListVisitor, UsesVisitor, Visitor, VisitorMut};
 use crate::compiler::{Compiler, DefaultCompiler};
 use crate::filter::{CompiledExpr, CompiledValueExpr, Filter, FilterValue};
@@ -18,9 +18,7 @@ use serde::Serialize;
 use std::fmt::{self, Debug};
 
 /// Trait used to represent node that evaluates to a [`bool`] (or a [`Vec<bool>`]).
-pub trait Expr:
-    Sized + Eq + Debug + for<'i, 'p, 's> LexWith<'i, &'p FilterParser<'s>> + Serialize
-{
+pub trait Expr: Sized + Eq + Debug + Serialize {
     /// Recursively visit all nodes in the AST using a [`Visitor`].
     fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V);
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
@@ -35,9 +33,7 @@ pub trait Expr:
 }
 
 /// Trait used to represent node that evaluates to an [`crate::LhsValue`].
-pub trait ValueExpr:
-    Sized + Eq + Debug + for<'i, 'p, 's> LexWith<'i, &'p FilterParser<'s>> + Serialize
-{
+pub trait ValueExpr: Sized + Eq + Debug + Serialize {
     /// Recursively visit all nodes in the AST using a [`Visitor`].
     fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V);
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
@@ -71,8 +67,8 @@ impl Debug for FilterAst {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FilterAst {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for FilterAst {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (op, input) = LogicalExpr::lex_with(input, parser)?;
         // LogicalExpr::lex_with can return an AST where the root is an
         // LogicalExpr::Combining of type [`Array(Bool)`].
@@ -88,7 +84,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FilterAst {
         match ty {
             Type::Bool => Ok((
                 FilterAst {
-                    scheme: parser.scheme.clone(),
+                    scheme: parser.scheme().clone(),
                     op,
                 },
                 input,
@@ -192,8 +188,8 @@ impl Debug for FilterValueExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FilterValueExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for FilterValueExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         match IndexExpr::lex_with(input, parser) {
             Ok((expr, rest)) => Ok((FilterValueExpr::Index(expr), rest)),
             Err(index_err) => match LogicalExpr::lex_quantifier(input, parser) {
@@ -265,8 +261,8 @@ impl Debug for FilterValueAst {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FilterValueAst {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for FilterValueAst {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (op, rest) = FilterValueExpr::lex_with(input.trim(), parser)?;
         if let FilterValueExpr::Index(expr) = &op
             && expr.map_each_count() > 0

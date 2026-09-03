@@ -1,6 +1,6 @@
 use crate::ast::parse::{FilterParser, ParseError, ParserSettings};
 use crate::ast::{FilterAst, FilterValueAst};
-use crate::functions::FunctionDefinition;
+use crate::functions::{ErasedFunctionDefinition, FunctionDefinition};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, span, take_while};
 use crate::list_matcher::ListDefinition;
 use crate::types::{GetType, RhsValue, Type};
@@ -318,7 +318,7 @@ impl<'s> FunctionRef<'s> {
     }
 
     #[inline]
-    pub(crate) fn as_definition(&self) -> &'s dyn FunctionDefinition {
+    pub(crate) fn as_definition(&self) -> &'s dyn ErasedFunctionDefinition {
         &*self.scheme.inner.functions[self.index].1
     }
 
@@ -394,7 +394,7 @@ impl Function {
     }
 
     #[inline]
-    pub(crate) fn as_definition(&self) -> &dyn FunctionDefinition {
+    pub(crate) fn as_definition(&self) -> &dyn ErasedFunctionDefinition {
         &*self.scheme.inner.functions[self.index].1
     }
 
@@ -627,7 +627,7 @@ struct FieldDefinition {
 #[derive(Default, Debug)]
 pub struct SchemeBuilder {
     fields: Vec<FieldDefinition>,
-    functions: Vec<(IdentifierName, Box<dyn FunctionDefinition>)>,
+    functions: Vec<(IdentifierName, Box<dyn ErasedFunctionDefinition>)>,
     items: HashMap<IdentifierName, SchemeItem, FnvBuildHasher>,
 
     list_types: HashMap<Type, usize, FnvBuildHasher>,
