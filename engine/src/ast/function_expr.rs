@@ -14,7 +14,7 @@ use crate::functions::{
 use crate::lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
 use crate::lhs_types::Array;
 use crate::scheme::Function;
-use crate::types::{GetType, LhsValue, RhsValue, Type};
+use crate::types::{GetType, LhsValue, LiteralValue, Type};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
 use std::iter::once;
@@ -26,7 +26,7 @@ pub enum FunctionCallArgExpr {
     /// A sub-expression which evaluates to a value.
     IndexExpr(IndexExpr),
     /// A literal value.
-    Literal(RhsValue),
+    Literal(LiteralValue),
     /// A sub-expression which evaluates to either `true`/`false`
     /// or a list of `true`/`false`. It compiles to a [`CompiledExpr`]
     /// and is coerced into a [`CompiledValueExpr`]`.
@@ -141,7 +141,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr {
             let c2 = chars.next();
             let c3 = chars.next();
             if c == '"' || (c == 'r' && (c2 == Some('#') || c2 == Some('"'))) {
-                return RhsValue::lex_with(input, Type::Bytes)
+                return LiteralValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input));
             } else if c == '('
                 || UnaryOp::lex(input).is_ok()
@@ -187,16 +187,16 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FunctionCallArgExpr {
             }
         }
 
-        RhsValue::lex_with(input, Type::Ip)
+        LiteralValue::lex_with(input, Type::Ip)
             .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             .or_else(|_| {
-                RhsValue::lex_with(input, Type::Int)
+                LiteralValue::lex_with(input, Type::Int)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
             // try to parse Bytes after Int because digit literals < 255 are wrongly
             // interpreted as Bytes
             .or_else(|_| {
-                RhsValue::lex_with(input, Type::Bytes)
+                LiteralValue::lex_with(input, Type::Bytes)
                     .map(|(literal, input)| (FunctionCallArgExpr::Literal(literal), input))
             })
             .map_err(|_| (LexErrorKind::EOF, _initial_input))
@@ -584,7 +584,7 @@ mod tests {
     };
     use crate::rhs_types::{BytesExpr, BytesFormat};
     use crate::scheme::{FieldIndex, IndexAccessError, Scheme};
-    use crate::types::{RhsValues, Type, TypeMismatchError};
+    use crate::types::{LiteralSet, Type, TypeMismatchError};
     use std::convert::TryFrom;
     use std::sync::LazyLock;
 
@@ -756,8 +756,8 @@ mod tests {
                         ),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Int(1)),
-                    FunctionCallArgExpr::Literal(RhsValue::Int(2)),
+                    FunctionCallArgExpr::Literal(LiteralValue::Int(1)),
+                    FunctionCallArgExpr::Literal(LiteralValue::Int(2)),
                 ],
                 context: None,
             },
@@ -831,8 +831,8 @@ mod tests {
                         ),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Int(1)),
-                    FunctionCallArgExpr::Literal(RhsValue::Int(2)),
+                    FunctionCallArgExpr::Literal(LiteralValue::Int(1)),
+                    FunctionCallArgExpr::Literal(LiteralValue::Int(2)),
                 ],
                 context: None,
             },
@@ -1079,7 +1079,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("test".to_owned().into())
+                    rhs: LiteralValue::Bytes("test".to_owned().into())
                 }
             })),
             ""
@@ -1193,7 +1193,7 @@ mod tests {
                                 ),
                                 indexes: vec![FieldIndex::MapEach],
                             },
-                            op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
+                            op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                                 "Cookie".to_owned().into(),
                                 "Cookies".to_owned().into(),
                             ])),
@@ -1250,7 +1250,7 @@ mod tests {
                                 ),
                                 indexes: vec![FieldIndex::MapEach],
                             },
-                            op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
+                            op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                                 "Cookie".to_owned().into(),
                                 "Cookies".to_owned().into(),
                             ])),
@@ -1301,8 +1301,8 @@ mod tests {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a r##raw## string".as_bytes(), BytesFormat::Raw(0)))),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a new r##raw## string".as_bytes(), BytesFormat::Raw(0))))
+                    FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a r##raw## string".as_bytes(), BytesFormat::Raw(0)))),
+                    FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a new r##raw## string".as_bytes(), BytesFormat::Raw(0))))
                 ],
                 context: None,
             },
@@ -1342,8 +1342,8 @@ mod tests {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
                         indexes: vec![],
                     }),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3)))),
-                    FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new("this is a new r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3))))
+                    FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3)))),
+                    FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a new r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3))))
                 ],
                 context: None,
             },

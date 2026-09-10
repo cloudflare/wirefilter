@@ -17,7 +17,7 @@ use std::iter::once;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use thiserror::Error;
 
-fn lex_rhs_values<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
+fn lex_literal_set<'i, T: Lex<'i>>(input: &'i str) -> LexResult<'i, Vec<T>> {
     let mut input = expect(input, "{")?;
     let mut res = Vec::new();
     loop {
@@ -170,12 +170,12 @@ macro_rules! specialized_try_from {
     };
 }
 
-// This macro generates `Type`, `LhsValue`, `RhsValue`, `RhsValues`.
+// This macro generates `Type`, `LhsValue`, `LiteralValue`, `LiteralSet`.
 //
 // Before the parenthesis is the variant for the `Type` enum (`Type::Ip`).
 // First argument is the corresponding `LhsValue` variant (`LhsValue::Ip(IpAddr)`).
-// Second argument is the corresponding `RhsValue` variant (`RhsValue::Ip(IpAddr)`).
-// Third argument is the corresponding `RhsValues` variant (`RhsValues::Ip(Vec<IpRange>)`) for the curly bracket syntax. eg `num in {1, 5}`
+// Second argument is the corresponding `LiteralValue` variant (`LiteralValue::Ip(IpAddr)`).
+// Third argument is the corresponding `LiteralSet` variant (`LiteralSet::Ip(Vec<IpRange>)`) for the curly bracket syntax. eg `num in {1, 5}`
 //
 // ```
 // declare_types! {
@@ -209,7 +209,7 @@ macro_rules! declare_types {
     };
 
     // This is the entry point for the macro.
-    ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $rhs_ty:ty | $multi_rhs_ty:ty ) , )*) => {
+    ($($(# $attrs:tt)* $name:ident $([$val_ty:ty])? ( $(# $lhs_attrs:tt)* $lhs_ty:ty | $literal_ty:ty | $literal_set_ty:ty ) , )*) => {
         /// Enumeration of supported types for field values.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Hash, PartialOrd, Ord)]
         pub enum Type {
@@ -257,29 +257,29 @@ macro_rules! declare_types {
         })*
 
         declare_types! {
-            /// An RHS value parsed from a filter string.
+            /// A literal value parsed from a filter string.
             #[derive(PartialEq, Eq, Clone, Hash, Serialize)]
             #[serde(untagged)]
-            enum RhsValue {
-                $($(# $attrs)* $name($rhs_ty),)*
+            enum LiteralValue {
+                $($(# $attrs)* $name($literal_ty),)*
             }
         }
 
-        impl<'i> LexWith<'i, Type> for RhsValue {
+        impl<'i> LexWith<'i, Type> for LiteralValue {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(replace_underscore!($name $(($val_ty))?) => {
-                        let (value, input) = <$rhs_ty>::lex(input)?;
-                        (RhsValue::$name(value), input)
+                        let (value, input) = <$literal_ty>::lex(input)?;
+                        (LiteralValue::$name(value), input)
                     })*
                 })
             }
         }
 
-        impl<'a> PartialOrd<RhsValue> for LhsValue<'a> {
-            fn partial_cmp(&self, other: &RhsValue) -> Option<Ordering> {
+        impl<'a> PartialOrd<LiteralValue> for LhsValue<'a> {
+            fn partial_cmp(&self, other: &LiteralValue) -> Option<Ordering> {
                 match (self, other) {
-                    $((LhsValue::$name(lhs), RhsValue::$name(rhs)) => {
+                    $((LhsValue::$name(lhs), LiteralValue::$name(rhs)) => {
                         lhs.strict_partial_cmp(rhs)
                     },)*
                     _ => None,
@@ -287,12 +287,12 @@ macro_rules! declare_types {
             }
         }
 
-        $(impl<'a> TryFrom<RhsValue> for $rhs_ty {
+        $(impl<'a> TryFrom<LiteralValue> for $literal_ty {
             type Error = TypeMismatchError;
 
-            fn try_from(value: RhsValue) -> Result<$rhs_ty, TypeMismatchError> {
+            fn try_from(value: LiteralValue) -> Result<$literal_ty, TypeMismatchError> {
                 match value {
-                    RhsValue::$name(value) => Ok(value),
+                    LiteralValue::$name(value) => Ok(value),
                     _ => Err(TypeMismatchError {
                         expected: specialized_try_from!($name).into(),
                         actual: value.get_type(),
@@ -301,12 +301,12 @@ macro_rules! declare_types {
             }
         })*
 
-        $(impl<'a> TryFrom<&'a RhsValue> for &'a $rhs_ty {
+        $(impl<'a> TryFrom<&'a LiteralValue> for &'a $literal_ty {
             type Error = TypeMismatchError;
 
-            fn try_from(value: &'a RhsValue) -> Result<&'a $rhs_ty, TypeMismatchError> {
+            fn try_from(value: &'a LiteralValue) -> Result<&'a $literal_ty, TypeMismatchError> {
                 match value {
-                    RhsValue::$name(value) => Ok(value),
+                    LiteralValue::$name(value) => Ok(value),
                     _ => Err(TypeMismatchError {
                         expected: specialized_try_from!($name).into(),
                         actual: value.get_type(),
@@ -322,34 +322,34 @@ macro_rules! declare_types {
             /// only same-typed values in a list.
             #[derive(PartialEq, Eq, Clone, Hash, Serialize)]
             #[serde(untagged)]
-            enum RhsValues {
-                $($(# $attrs)* $name(Vec<$multi_rhs_ty>),)*
+            enum LiteralSet {
+                $($(# $attrs)* $name(Vec<$literal_set_ty>),)*
             }
         }
 
-        impl From<RhsValue> for RhsValues {
-            fn from(rhs: RhsValue) -> Self {
-                match rhs {
-                    $(RhsValue::$name(rhs) => {
+        impl From<LiteralValue> for LiteralSet {
+            fn from(literal: LiteralValue) -> Self {
+                match literal {
+                    $(LiteralValue::$name(literal) => {
                         #[allow(unreachable_code)]
-                        RhsValues::$name(vec![rhs.into()])
+                        LiteralSet::$name(vec![literal.into()])
                     })*
                 }
             }
         }
 
-        impl RhsValues {
+        impl LiteralSet {
             /// Appends a value to the back of the collection.
-            pub fn push(&mut self, rhs: RhsValue) -> Result<(), TypeMismatchError> {
+            pub fn push(&mut self, literal: LiteralValue) -> Result<(), TypeMismatchError> {
                 match self {
-                    $(RhsValues::$name(vec) => match rhs {
-                        RhsValue::$name(rhs) => {
+                    $(LiteralSet::$name(vec) => match literal {
+                        LiteralValue::$name(literal) => {
                             #[allow(unreachable_code)]
-                            Ok(vec.push(rhs.into()))
+                            Ok(vec.push(literal.into()))
                         }
                         _ => Err(TypeMismatchError {
                             expected: self.get_type().into(),
-                            actual: rhs.get_type(),
+                            actual: literal.get_type(),
                         }),
                     },)*
                 }
@@ -358,8 +358,8 @@ macro_rules! declare_types {
             /// Moves all the values of `other` into `self`, leaving `other` empty.
             pub fn append(&mut self, other: &mut Self) -> Result<(), TypeMismatchError> {
                 match self {
-                    $(RhsValues::$name(vec) => match other {
-                        RhsValues::$name(other) => Ok(vec.append(other)),
+                    $(LiteralSet::$name(vec) => match other {
+                        LiteralSet::$name(other) => Ok(vec.append(other)),
                         _ => Err(TypeMismatchError {
                             expected: self.get_type().into(),
                             actual: other.get_type(),
@@ -371,8 +371,8 @@ macro_rules! declare_types {
             /// Extends the collection with the values of another collection.
             pub fn extend(&mut self, other: Self) -> Result<(), TypeMismatchError> {
                 match self {
-                    $(RhsValues::$name(vec) => match other {
-                        RhsValues::$name(other) => Ok(vec.extend(other)),
+                    $(LiteralSet::$name(vec) => match other {
+                        LiteralSet::$name(other) => Ok(vec.extend(other)),
                         _ => Err(TypeMismatchError {
                             expected: self.get_type().into(),
                             actual: other.get_type(),
@@ -382,12 +382,12 @@ macro_rules! declare_types {
             }
         }
 
-        impl<'i> LexWith<'i, Type> for RhsValues {
+        impl<'i> LexWith<'i, Type> for LiteralSet {
             fn lex_with(input: &str, ty: Type) -> LexResult<'_, Self> {
                 Ok(match ty {
                     $(replace_underscore!($name $(($val_ty))?) => {
-                        let (value, input) = lex_rhs_values(input)?;
-                        (RhsValues::$name(value), input)
+                        let (value, input) = lex_literal_set(input)?;
+                        (LiteralSet::$name(value), input)
                     })*
                 })
             }
@@ -461,10 +461,10 @@ impl PartialEq<&LhsValue<'_>> for LhsValue<'_> {
     }
 }
 
-impl StrictPartialOrd<RhsValue> for LhsValue<'_> {}
+impl StrictPartialOrd<LiteralValue> for LhsValue<'_> {}
 
-impl PartialEq<RhsValue> for LhsValue<'_> {
-    fn eq(&self, other: &RhsValue) -> bool {
+impl PartialEq<LiteralValue> for LhsValue<'_> {
+    fn eq(&self, other: &LiteralValue) -> bool {
         self.strict_partial_cmp(other) == Some(Ordering::Equal)
     }
 }
@@ -649,28 +649,28 @@ impl<'a> TryFrom<&'a LhsValue<'a>> for &'a [u8] {
     }
 }
 
-impl<'a> From<&'a RhsValue> for LhsValue<'a> {
-    fn from(rhs_value: &'a RhsValue) -> Self {
-        match rhs_value {
-            RhsValue::Ip(ip) => LhsValue::Ip(*ip),
-            RhsValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Borrowed(bytes)),
-            RhsValue::Int(integer) => LhsValue::Int(*integer),
-            RhsValue::Bool(b) => match *b {},
-            RhsValue::Array(a) => match *a {},
-            RhsValue::Map(m) => match *m {},
+impl<'a> From<&'a LiteralValue> for LhsValue<'a> {
+    fn from(literal: &'a LiteralValue) -> Self {
+        match literal {
+            LiteralValue::Ip(ip) => LhsValue::Ip(*ip),
+            LiteralValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Borrowed(bytes)),
+            LiteralValue::Int(integer) => LhsValue::Int(*integer),
+            LiteralValue::Bool(b) => match *b {},
+            LiteralValue::Array(a) => match *a {},
+            LiteralValue::Map(m) => match *m {},
         }
     }
 }
 
-impl From<RhsValue> for LhsValue<'_> {
-    fn from(rhs_value: RhsValue) -> Self {
-        match rhs_value {
-            RhsValue::Ip(ip) => LhsValue::Ip(ip),
-            RhsValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Owned(bytes.into())),
-            RhsValue::Int(integer) => LhsValue::Int(integer),
-            RhsValue::Bool(b) => match b {},
-            RhsValue::Array(a) => match a {},
-            RhsValue::Map(m) => match m {},
+impl From<LiteralValue> for LhsValue<'_> {
+    fn from(literal: LiteralValue) -> Self {
+        match literal {
+            LiteralValue::Ip(ip) => LhsValue::Ip(ip),
+            LiteralValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Owned(bytes.into())),
+            LiteralValue::Int(integer) => LhsValue::Int(integer),
+            LiteralValue::Bool(b) => match b {},
+            LiteralValue::Array(a) => match a {},
+            LiteralValue::Map(m) => match m {},
         }
     }
 }

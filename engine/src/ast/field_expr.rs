@@ -11,7 +11,7 @@ use crate::rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard};
 use crate::scheme::{Field, Identifier, List};
 use crate::searcher::{EmptySearcher, MemmemSearcher};
 use crate::strict_partial_ord::StrictPartialOrd;
-use crate::types::{GetType, LhsValue, RhsValue, RhsValues, Type};
+use crate::types::{GetType, LhsValue, LiteralSet, LiteralValue, Type};
 use crate::{ExecutionContext, Scheme};
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
@@ -130,7 +130,7 @@ pub enum ComparisonOpExpr {
         /// * "lt" | "<"
         op: OrderingOp,
         /// Right-hand side literal
-        rhs: RhsValue,
+        rhs: LiteralValue,
     },
 
     /// Integer comparison
@@ -160,7 +160,7 @@ pub enum ComparisonOpExpr {
 
     /// "in {...}" comparison
     #[serde(serialize_with = "serialize_one_of")]
-    OneOf(RhsValues),
+    OneOf(LiteralSet),
 
     /// "contains {...}" comparison
     #[serde(serialize_with = "serialize_contains_one_of")]
@@ -216,7 +216,7 @@ fn serialize_strict_wildcard<S: Serializer>(
     serialize_op_rhs("Strict Wildcard", rhs, ser)
 }
 
-fn serialize_one_of<S: Serializer>(rhs: &RhsValues, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_one_of<S: Serializer>(rhs: &LiteralSet, ser: S) -> Result<S::Ok, S::Error> {
     serialize_op_rhs("OneOf", rhs, ser)
 }
 
@@ -353,14 +353,14 @@ impl ComparisonExpr {
                             input,
                         )
                     } else {
-                        let (rhs, input) = RhsValues::lex_with(input, lhs_type)?;
+                        let (rhs, input) = LiteralSet::lex_with(input, lhs_type)?;
                         (ComparisonOpExpr::OneOf(rhs), input)
                     }
                 }
                 (Type::Ip, ComparisonOp::Ordering(op))
                 | (Type::Bytes, ComparisonOp::Ordering(op))
                 | (Type::Int, ComparisonOp::Ordering(op)) => {
-                    let (rhs, input) = RhsValue::lex_with(input, lhs_type)?;
+                    let (rhs, input) = LiteralValue::lex_with(input, lhs_type)?;
                     (ComparisonOpExpr::Ordering { op, rhs }, input)
                 }
                 (Type::Int, ComparisonOp::Int(op)) => {
@@ -468,7 +468,7 @@ impl Expr for ComparisonExpr {
                 macro_rules! gen_ordering {
                     ($op:tt, $def:ident) => {
                         match rhs {
-                            RhsValue::Bytes(bytes) => {
+                            LiteralValue::Bytes(bytes) => {
                                 struct BytesOp(BytesExpr);
 
                                 impl<U> Compare<U> for BytesOp {
@@ -480,7 +480,7 @@ impl Expr for ComparisonExpr {
 
                                 lhs.compile_with(compiler, $def, BytesOp(bytes))
                             }
-                            RhsValue::Int(int) => {
+                            LiteralValue::Int(int) => {
                                 struct IntOp(i64);
 
                                 impl<U> Compare<U> for IntOp {
@@ -492,7 +492,7 @@ impl Expr for ComparisonExpr {
 
                                 lhs.compile_with(compiler, $def, IntOp(int))
                             }
-                            RhsValue::Ip(ip) => {
+                            LiteralValue::Ip(ip) => {
                                 struct IpOp {
                                     op: OrderingOp,
                                     ip: IpAddr,
@@ -507,7 +507,7 @@ impl Expr for ComparisonExpr {
 
                                 lhs.compile_with(compiler, $def, IpOp { op, ip })
                             }
-                            RhsValue::Bool(_) | RhsValue::Array(_) | RhsValue::Map(_) => unreachable!(),
+                            LiteralValue::Bool(_) | LiteralValue::Array(_) | LiteralValue::Map(_) => unreachable!(),
                         }
                     };
                 }
@@ -691,7 +691,7 @@ impl Expr for ComparisonExpr {
                 lhs.compile_with(compiler, false, wildcard)
             }
             ComparisonOpExpr::OneOf(values) => match values {
-                RhsValues::Ip(ranges) => {
+                LiteralSet::Ip(ranges) => {
                     let mut v4 = Vec::new();
                     let mut v6 = Vec::new();
                     for range in ranges.into_iter() {
@@ -724,7 +724,7 @@ impl Expr for ComparisonExpr {
 
                     lhs.compile_with(compiler, false, OneOfIp { v4, v6 })
                 }
-                RhsValues::Int(values) => {
+                LiteralSet::Int(values) => {
                     let values: RangeSet<_> = values.into_iter().map(Into::into).collect();
 
                     struct OneOfInt(RangeSet<i64>);
@@ -742,7 +742,7 @@ impl Expr for ComparisonExpr {
 
                     lhs.compile_with(compiler, false, OneOfInt(values))
                 }
-                RhsValues::Bytes(values) => {
+                LiteralSet::Bytes(values) => {
                     let values: BTreeSet<Box<[u8]>> = values.into_iter().map(Into::into).collect();
 
                     struct Contains(BTreeSet<Box<[u8]>>);
@@ -760,9 +760,9 @@ impl Expr for ComparisonExpr {
 
                     lhs.compile_with(compiler, false, Contains(values))
                 }
-                RhsValues::Bool(_) => unreachable!(),
-                RhsValues::Map(_) => unreachable!(),
-                RhsValues::Array(_) => unreachable!(),
+                LiteralSet::Bool(_) => unreachable!(),
+                LiteralSet::Map(_) => unreachable!(),
+                LiteralSet::Array(_) => unreachable!(),
             },
             ComparisonOpExpr::ContainsOneOf(_values) => {
                 unreachable!("Node should not be constructed as there is no syntax to do so")
@@ -1094,7 +1094,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThanEqual,
-                    rhs: RhsValue::Ip(IpAddr::from([
+                    rhs: LiteralValue::Ip(IpAddr::from([
                         0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
                     ]))
                 },
@@ -1149,7 +1149,7 @@ mod tests {
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::GreaterThanEqual,
-                        rhs: RhsValue::Bytes(
+                        rhs: LiteralValue::Bytes(
                             vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()
                         ),
                     },
@@ -1187,7 +1187,7 @@ mod tests {
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::LessThan,
-                        rhs: RhsValue::Bytes(vec![0x12, 0x13].into()),
+                        rhs: LiteralValue::Bytes(vec![0x12, 0x13].into()),
                     },
                 }
             );
@@ -1211,7 +1211,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1281,7 +1281,7 @@ mod tests {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
                     indexes: vec![],
                 },
-                op: ComparisonOpExpr::OneOf(RhsValues::Int(vec![
+                op: ComparisonOpExpr::OneOf(LiteralSet::Int(vec![
                     80.into(),
                     443.into(),
                     (2082..=2083).into()
@@ -1336,7 +1336,7 @@ mod tests {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                     indexes: vec![],
                 },
-                op: ComparisonOpExpr::OneOf(RhsValues::Bytes(
+                op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(
                     ["example.org", "example.com",]
                         .iter()
                         .map(|s| (*s).to_string().into())
@@ -1383,7 +1383,7 @@ mod tests {
                     identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
                     indexes: vec![],
                 },
-                op: ComparisonOpExpr::OneOf(RhsValues::Ip(vec![
+                op: ComparisonOpExpr::OneOf(LiteralSet::Ip(vec![
                     IpRange::Cidr(IpCidr::new([127, 0, 0, 0].into(), 8).unwrap()),
                     IpRange::Cidr(IpCidr::new_host([0, 0, 0, 0, 0, 0, 0, 1].into())),
                     IpRange::Explicit(ExplicitIpRange::V4(
@@ -1509,7 +1509,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThan,
-                    rhs: RhsValue::Int(8000)
+                    rhs: LiteralValue::Int(8000)
                 },
             }
         );
@@ -1625,7 +1625,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1681,7 +1681,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1730,7 +1730,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1766,7 +1766,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1802,7 +1802,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1838,7 +1838,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1881,7 +1881,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -1929,7 +1929,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
+                            FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 ".org".to_owned()
                             ))),
                         ],
@@ -1939,7 +1939,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("example.org".to_owned().into())
+                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
                 }
             }
         );
@@ -2007,7 +2007,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("three".to_owned().into())
+                    rhs: LiteralValue::Bytes("three".to_owned().into())
                 }
             }
         );
@@ -2069,7 +2069,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
+                            FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2079,7 +2079,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("three-cf".to_owned().into())
+                    rhs: LiteralValue::Bytes("three-cf".to_owned().into())
                 }
             }
         );
@@ -2138,7 +2138,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
+                            FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2146,7 +2146,7 @@ mod tests {
                     }),
                     indexes: vec![FieldIndex::ArrayIndex(2)],
                 },
-                op: ComparisonOpExpr::OneOf(RhsValues::Bytes(vec![
+                op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                     "one-cf".to_owned().into(),
                     "two-cf".to_owned().into(),
                     "three-cf".to_owned().into()
@@ -2291,7 +2291,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("three".to_owned().into())
+                    rhs: LiteralValue::Bytes("three".to_owned().into())
                 }
             }
         );
@@ -2325,7 +2325,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("three".to_owned().into())
+                    rhs: LiteralValue::Bytes("three".to_owned().into())
                 }
             }
         );
@@ -2384,7 +2384,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
                                 indexes: vec![FieldIndex::MapEach],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::from(
+                            FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
                         ],
@@ -2394,7 +2394,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("three-cf".to_owned().into())
+                    rhs: LiteralValue::Bytes("three-cf".to_owned().into())
                 }
             }
         );
@@ -2457,7 +2457,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::GreaterThan,
-                    rhs: RhsValue::Int(3),
+                    rhs: LiteralValue::Int(3),
                 }
             }
         );
@@ -2732,7 +2732,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
                 }
             }
         );
@@ -2759,7 +2759,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
                 }
             }
         );
@@ -2786,7 +2786,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes("[5][5]".to_owned().into())
+                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
                 }
             }
         );
@@ -2863,7 +2863,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes(BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(3))),
+                    rhs: LiteralValue::Bytes(BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(3))),
                 },
             }
         );
@@ -3019,7 +3019,7 @@ mod tests {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
                                 indexes: vec![],
                             }),
-                            FunctionCallArgExpr::Literal(RhsValue::Bytes(BytesExpr::new(
+                            FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new(
                                 "cd".as_bytes(),
                                 BytesFormat::Raw(1)
                             )))
@@ -3030,7 +3030,10 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: RhsValue::Bytes(BytesExpr::new("abcd".as_bytes(), BytesFormat::Raw(2)))
+                    rhs: LiteralValue::Bytes(BytesExpr::new(
+                        "abcd".as_bytes(),
+                        BytesFormat::Raw(2)
+                    ))
                 }
             }
         );

@@ -122,6 +122,6 @@ pub use self::scheme::{
     SchemeBuilder, SchemeMismatchError, UnknownFieldError,
 };
 pub use self::types::{
-    CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, RhsValue, RhsValues, Type,
-    TypeMismatchError,
+    CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue,
+    Type, TypeMismatchError,
 };
