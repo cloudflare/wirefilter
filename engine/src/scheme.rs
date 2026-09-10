@@ -3,7 +3,7 @@ use crate::ast::{FilterAst, FilterValueAst};
 use crate::functions::FunctionDefinition;
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, span, take_while};
 use crate::list_matcher::ListDefinition;
-use crate::types::{GetType, RhsValue, Type};
+use crate::types::{GetType, LiteralValue, Type};
 use fnv::FnvBuildHasher;
 use serde::de::Visitor;
 use serde::ser::SerializeMap;
@@ -56,9 +56,9 @@ impl<'i> Lex<'i> for FieldIndex {
         // The token inside an [] can be either an integer index into an Array
         // or a string key into a Map. The token is a key into a Map if it
         // starts and ends with "\"", otherwise an integer index or an error.
-        let (rhs, rest) = match expect(input, "\"") {
-            Ok(_) => RhsValue::lex_with(input, Type::Bytes),
-            Err(_) => RhsValue::lex_with(input, Type::Int).map_err(|_| {
+        let (literal, rest) = match expect(input, "\"") {
+            Ok(_) => LiteralValue::lex_with(input, Type::Bytes),
+            Err(_) => LiteralValue::lex_with(input, Type::Int).map_err(|_| {
                 (
                     LexErrorKind::ExpectedLiteral(
                         "expected quoted utf8 string or positive integer",
@@ -68,15 +68,15 @@ impl<'i> Lex<'i> for FieldIndex {
             }),
         }?;
 
-        match rhs {
-            RhsValue::Int(i) => match u32::try_from(i) {
+        match literal {
+            LiteralValue::Int(i) => match u32::try_from(i) {
                 Ok(u) => Ok((FieldIndex::ArrayIndex(u), rest)),
                 Err(_) => Err((
                     LexErrorKind::ExpectedLiteral("expected positive integer as index"),
                     input,
                 )),
             },
-            RhsValue::Bytes(b) => match String::from_utf8(b.into()) {
+            LiteralValue::Bytes(b) => match String::from_utf8(b.into()) {
                 Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
                 Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
             },

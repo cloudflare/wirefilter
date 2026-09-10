@@ -4,7 +4,7 @@ pub use self::concat::ConcatFunction;
 use crate::ParserSettings;
 use crate::filter::CompiledValueResult;
 use crate::types::{
-    ExpectedType, ExpectedTypeList, GetType, LhsValue, RhsValue, Type, TypeMismatchError,
+    ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralValue, Type, TypeMismatchError,
 };
 use std::any::Any;
 use std::convert::TryFrom;
@@ -174,7 +174,7 @@ impl From<FunctionArgInvalidConstantError> for FunctionParamError {
 #[derive(Clone, Debug)]
 pub enum FunctionParam<'a> {
     /// Contant function parameter (literal value)
-    Constant(&'a RhsValue),
+    Constant(&'a LiteralValue),
     /// Variable function parameter (field, or complex expressions)
     Variable(Type),
 }
@@ -196,7 +196,7 @@ impl GetType for FunctionParam<'_> {
 
 impl<'a> FunctionParam<'a> {
     /// Returns the underlying value if the current parameter is a constant, otherwise an error.
-    pub fn as_constant(&self) -> Result<&'a RhsValue, FunctionArgKindMismatchError> {
+    pub fn as_constant(&self) -> Result<&'a LiteralValue, FunctionArgKindMismatchError> {
         match self {
             Self::Constant(value) => Ok(value),
             Self::Variable(_) => Err(FunctionArgKindMismatchError {
@@ -255,7 +255,7 @@ impl<'a> FunctionParam<'a> {
     /// Checks that the parameter is a constant of a certain type
     /// and call the closure `op` to verify its value
     pub fn expect_const_value<
-        U: TryFrom<&'a RhsValue, Error = TypeMismatchError>,
+        U: TryFrom<&'a LiteralValue, Error = TypeMismatchError>,
         F: FnOnce(U) -> Result<(), String>,
     >(
         &self,
