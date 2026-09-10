@@ -118,8 +118,8 @@ pub use self::rhs_types::{
 };
 pub use self::scheme::{
     Field, FieldIndex, FieldRedefinitionError, FieldRef, Function, FunctionRedefinitionError,
-    FunctionRef, IdentifierRedefinitionError, IndexAccessError, List, ListRef, Scheme,
-    SchemeBuilder, SchemeMismatchError, UnknownFieldError,
+    FunctionRef, IdentifierRedefinitionError, IdentifierRegistrationError, IndexAccessError, List,
+    ListRef, Scheme, SchemeBuilder, SchemeMismatchError, UnknownFieldError,
 };
 pub use self::types::{
     CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue,

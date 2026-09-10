@@ -888,6 +888,19 @@ mod ffi_test {
         wirefilter_build_scheme(builder)
     }
 
+    #[test]
+    fn reject_invalid_field_identifier() {
+        let mut builder = wirefilter_create_scheme_builder();
+        let name = "2http.host";
+
+        assert!(!wirefilter_add_type_field_to_scheme(
+            &mut builder,
+            name.as_ptr().cast(),
+            name.len(),
+            Type::Bytes.into(),
+        ));
+    }
+
     fn create_execution_context<'e, 's: 'e>(scheme: &'s Scheme) -> Box<ExecutionContext<'e>> {
         let mut exec_context = wirefilter_create_execution_context(scheme);
         let invalid_key = &b"\xc3\x28"[..];
