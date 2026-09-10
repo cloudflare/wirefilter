@@ -1,4 +1,4 @@
-use super::field_expr::{ComparisonExpr, ComparisonOpExpr};
+use super::field_expr::{ComparisonExpr, ComparisonOpExpr, ScalarExpr, ScalarIntExpr};
 use super::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
 use super::index_expr::IndexExpr;
 use super::logical_expr::LogicalExpr;
@@ -39,6 +39,18 @@ pub trait Visitor<'a>: Sized {
     #[inline]
     fn visit_index_expr(&mut self, node: &'a IndexExpr) {
         self.visit_value_expr(node)
+    }
+
+    /// Visit [`ScalarExpr`] node.
+    #[inline]
+    fn visit_scalar_expr(&mut self, node: &'a ScalarExpr) {
+        self.visit_index_expr(node.as_index_expr())
+    }
+
+    /// Visit [`ScalarIntExpr`] node.
+    #[inline]
+    fn visit_scalar_int_expr(&mut self, node: &'a ScalarIntExpr) {
+        self.visit_index_expr(node.as_index_expr())
     }
 
     /// Visit [`FunctionCallExpr`] node.
@@ -104,6 +116,18 @@ pub trait VisitorMut<'a>: Sized {
     #[inline]
     fn visit_index_expr(&mut self, node: &'a mut IndexExpr) {
         self.visit_value_expr(node)
+    }
+
+    /// Visit [`ScalarExpr`] node without exposing its validated inner expression.
+    #[inline]
+    fn visit_scalar_expr(&mut self, node: &'a mut ScalarExpr) {
+        node.walk_mut(self)
+    }
+
+    /// Visit [`ScalarIntExpr`] node without exposing its validated inner expression.
+    #[inline]
+    fn visit_scalar_int_expr(&mut self, node: &'a mut ScalarIntExpr) {
+        node.walk_mut(self)
     }
 
     /// Visit [`FunctionCallExpr`] node.

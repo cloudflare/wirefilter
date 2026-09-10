@@ -511,7 +511,6 @@ fn is_valid_identifier(name: &str) -> bool {
                 .any(|b| b.is_ascii_alphabetic() || b == b'_')
         })
 }
-
 #[derive(Clone, Copy, Debug)]
 enum SchemeItem {
     Field(usize),
@@ -772,11 +771,11 @@ impl SchemeBuilder {
         }
     }
 
-    /// Configures the behavior of not equal comparison against a nil value.
+    /// Configures `!=` when exactly one comparison operand is nil.
     ///
-    /// Default behavior is to return `true` for `nil != <value>`.
-    /// By calling this method with `false`, this behavior can be
-    /// changed so that `nil != <value>` returns `false` instead.
+    /// By default, both `nil != <value>` and `<value> != nil` return `true`.
+    /// Passing `false` makes both return `false`. Two nil operands always
+    /// compare equal, regardless of this setting.
     pub fn set_nil_not_equal_behavior(&mut self, behavior: bool) {
         self.nil_not_equal_is_false = !behavior;
     }
@@ -1118,11 +1117,11 @@ fn test_parse_error() {
         assert_eq!(
             err,
             ParseError {
-                kind: LexErrorKind::ExpectedName("digit"),
+                kind: LexErrorKind::UnknownIdentifier,
                 input: "num == true or",
                 line_number: 1,
                 span_start: 7,
-                span_len: 7
+                span_len: 4
             }
         );
         assert_eq!(
@@ -1131,7 +1130,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (2:8):
                 num == true or
-                       ^^^^^^^ expected digit
+                       ^^^^ unknown identifier
                 "#
             )
         );

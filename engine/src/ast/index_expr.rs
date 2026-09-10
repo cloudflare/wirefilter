@@ -303,6 +303,20 @@ impl IndexExpr {
             .count()
     }
 
+    /// Returns the type produced by evaluating this expression.
+    ///
+    /// Unlike [`GetType::get_type`], this accounts for `MapEach` accesses. An
+    /// expression containing one or more `MapEach` accesses produces a
+    /// flattened array of the indexed element type.
+    pub(crate) fn output_type(&self) -> Type {
+        let ty = self.get_type();
+        if self.map_each_count() == 0 {
+            ty
+        } else {
+            Type::Array(ty.into())
+        }
+    }
+
     /// Returns the associated identifier (field or function call).
     pub fn identifier(&self) -> &IdentifierExpr {
         &self.identifier
@@ -844,6 +858,7 @@ mod tests {
 
         assert_eq!(expr.map_each_count(), 1);
         assert_eq!(expr.get_type(), Type::Bytes);
+        assert_eq!(expr.output_type(), Type::Array(Type::Bytes.into()));
 
         let filter = "test2[*][0]".to_string();
 
@@ -857,6 +872,7 @@ mod tests {
 
         assert_eq!(expr.map_each_count(), 1);
         assert_eq!(expr.get_type(), Type::Bytes);
+        assert_eq!(expr.output_type(), Type::Array(Type::Bytes.into()));
 
         let filter = "test2[*][*]".to_string();
 
@@ -870,6 +886,7 @@ mod tests {
 
         assert_eq!(expr.map_each_count(), 2);
         assert_eq!(expr.get_type(), Type::Bytes);
+        assert_eq!(expr.output_type(), Type::Array(Type::Bytes.into()));
 
         let filter = "test2[0][*][*]".to_string();
 

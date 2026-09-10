@@ -274,7 +274,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for FilterValueAst {
             Err((
                 LexErrorKind::TypeMismatch(TypeMismatchError {
                     expected: expr.get_type().into(),
-                    actual: Type::Array(expr.get_type().into()),
+                    actual: expr.output_type(),
                 }),
                 input,
             ))

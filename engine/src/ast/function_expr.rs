@@ -573,7 +573,9 @@ impl<'i> LexWith<'i, &FilterParser<'_>> for FunctionCallExpr {
 mod tests {
     use super::*;
     use crate::SimpleFunctionArgKind;
-    use crate::ast::field_expr::{ComparisonExpr, ComparisonOpExpr, IdentifierExpr, OrderingOp};
+    use crate::ast::field_expr::{
+        ComparisonExpr, ComparisonOpExpr, ComparisonRhs, IdentifierExpr, OrderingOp,
+    };
     use crate::ast::logical_expr::{
         LogicalExpr, LogicalOp, ParenthesizedExpr, QuantifierArgExpr, QuantifierOp,
     };
@@ -1079,7 +1081,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("test".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("test".to_owned().into()))
                 }
             })),
             ""
