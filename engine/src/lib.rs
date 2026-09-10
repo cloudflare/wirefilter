@@ -80,7 +80,8 @@ mod strict_partial_ord;
 mod types;
 
 pub use self::ast::field_expr::{
-    ComparisonExpr, ComparisonOpExpr, IdentifierExpr, IntOp, OrderingOp,
+    ComparisonExpr, ComparisonOpExpr, ComparisonRhs, IdentifierExpr, IntOp, IntRhs, OrderingOp,
+    ScalarExpr, ScalarIntExpr,
 };
 pub use self::ast::function_expr::{FunctionCallArgExpr, FunctionCallExpr};
 pub use self::ast::index_expr::{Compare, IndexExpr};

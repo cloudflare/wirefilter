@@ -4,14 +4,17 @@ use super::parse::FilterParser;
 use super::visitor::{Visitor, VisitorMut};
 use crate::ast::index_expr::{Compare, IndexExpr};
 use crate::compiler::Compiler;
-use crate::filter::CompiledExpr;
+use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
+use crate::lhs_types::TypedArray;
 use crate::range_set::RangeSet;
 use crate::rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard};
 use crate::scheme::{Field, Identifier, List};
 use crate::searcher::{EmptySearcher, MemmemSearcher};
 use crate::strict_partial_ord::StrictPartialOrd;
-use crate::types::{GetType, LhsValue, LiteralSet, LiteralValue, Type};
+use crate::types::{
+    ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue, Type, TypeMismatchError,
+};
 use crate::{ExecutionContext, Scheme};
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
@@ -110,6 +113,293 @@ lex_enum!(ComparisonOp {
     BytesOp => Bytes,
 });
 
+/// A scalar byte, integer, or IP expression backed by an [`IndexExpr`].
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct ScalarExpr(IndexExpr);
+
+impl ScalarExpr {
+    /// Returns the underlying indexed expression.
+    pub fn as_index_expr(&self) -> &IndexExpr {
+        &self.0
+    }
+
+    /// Consumes this expression and returns the underlying indexed expression.
+    pub fn into_index_expr(self) -> IndexExpr {
+        self.0
+    }
+
+    pub(crate) fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
+        super::ValueExpr::walk_mut(&mut self.0, visitor);
+    }
+}
+
+impl TryFrom<IndexExpr> for ScalarExpr {
+    type Error = TypeMismatchError;
+
+    fn try_from(expr: IndexExpr) -> Result<Self, Self::Error> {
+        let actual = expr.output_type();
+        if matches!(actual, Type::Bytes | Type::Int | Type::Ip) {
+            Ok(Self(expr))
+        } else {
+            let mut expected = ExpectedTypeList::default();
+            expected.insert(Type::Bytes);
+            expected.insert(Type::Int);
+            expected.insert(Type::Ip);
+            Err(TypeMismatchError { expected, actual })
+        }
+    }
+}
+
+impl From<ScalarExpr> for IndexExpr {
+    fn from(expr: ScalarExpr) -> Self {
+        expr.into_index_expr()
+    }
+}
+
+impl GetType for ScalarExpr {
+    fn get_type(&self) -> Type {
+        self.0.get_type()
+    }
+}
+
+impl Serialize for ScalarExpr {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+/// A scalar integer expression backed by an [`IndexExpr`].
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct ScalarIntExpr(ScalarExpr);
+
+impl ScalarIntExpr {
+    /// Returns the underlying indexed expression.
+    pub fn as_index_expr(&self) -> &IndexExpr {
+        self.0.as_index_expr()
+    }
+
+    /// Consumes this expression and returns the underlying indexed expression.
+    pub fn into_index_expr(self) -> IndexExpr {
+        self.0.into_index_expr()
+    }
+
+    pub(crate) fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
+        self.0.walk_mut(visitor);
+    }
+}
+
+impl TryFrom<IndexExpr> for ScalarIntExpr {
+    type Error = TypeMismatchError;
+
+    fn try_from(expr: IndexExpr) -> Result<Self, Self::Error> {
+        let actual = expr.output_type();
+        if actual == Type::Int {
+            Ok(Self(ScalarExpr(expr)))
+        } else {
+            Err(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual,
+            })
+        }
+    }
+}
+
+impl From<ScalarIntExpr> for ScalarExpr {
+    fn from(expr: ScalarIntExpr) -> Self {
+        expr.0
+    }
+}
+
+impl TryFrom<ScalarExpr> for ScalarIntExpr {
+    type Error = TypeMismatchError;
+
+    fn try_from(expr: ScalarExpr) -> Result<Self, Self::Error> {
+        let actual = expr.get_type();
+        if actual == Type::Int {
+            Ok(Self(expr))
+        } else {
+            Err(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual,
+            })
+        }
+    }
+}
+
+impl From<ScalarIntExpr> for IndexExpr {
+    fn from(expr: ScalarIntExpr) -> Self {
+        expr.into_index_expr()
+    }
+}
+
+impl GetType for ScalarIntExpr {
+    fn get_type(&self) -> Type {
+        Type::Int
+    }
+}
+
+impl Serialize for ScalarIntExpr {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+/// A right-hand side operand of an integer-specific comparison.
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum IntRhs {
+    /// An integer literal.
+    Literal(i64),
+    /// A dynamically evaluated scalar integer expression.
+    Index(ScalarIntExpr),
+}
+
+impl GetType for IntRhs {
+    fn get_type(&self) -> Type {
+        Type::Int
+    }
+}
+
+fn serialize_index_expr_operand<S: Serializer>(
+    expr: &IndexExpr,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+
+    let mut out = serializer.serialize_struct("ComparisonRhs", 2)?;
+    out.serialize_field("kind", "IndexExpr")?;
+    out.serialize_field("value", expr)?;
+    out.end()
+}
+
+impl Serialize for IntRhs {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Literal(value) => value.serialize(serializer),
+            Self::Index(expr) => serialize_index_expr_operand(expr.as_index_expr(), serializer),
+        }
+    }
+}
+
+/// A right-hand side operand of an ordering comparison.
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum ComparisonRhs {
+    /// A literal operand.
+    Literal(LiteralValue),
+    /// A dynamically evaluated indexed expression.
+    Index(ScalarExpr),
+}
+
+impl From<LiteralValue> for ComparisonRhs {
+    fn from(value: LiteralValue) -> Self {
+        Self::Literal(value)
+    }
+}
+
+impl From<ScalarIntExpr> for ComparisonRhs {
+    fn from(expr: ScalarIntExpr) -> Self {
+        Self::Index(expr.into())
+    }
+}
+
+impl From<ScalarExpr> for ComparisonRhs {
+    fn from(expr: ScalarExpr) -> Self {
+        Self::Index(expr)
+    }
+}
+
+impl GetType for ComparisonRhs {
+    fn get_type(&self) -> Type {
+        match self {
+            Self::Literal(value) => value.get_type(),
+            Self::Index(expr) => expr.get_type(),
+        }
+    }
+}
+
+impl Serialize for ComparisonRhs {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Literal(value) => value.serialize(serializer),
+            Self::Index(expr) => serialize_index_expr_operand(expr.as_index_expr(), serializer),
+        }
+    }
+}
+
+impl ComparisonRhs {
+    fn lex_int<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
+        IntRhs::lex(input, parser).map(|(rhs, rest)| {
+            let rhs = match rhs {
+                IntRhs::Literal(value) => Self::Literal(LiteralValue::Int(value)),
+                IntRhs::Index(expr) => Self::Index(expr.into()),
+            };
+            (rhs, rest)
+        })
+    }
+
+    fn lex_typed<'i>(
+        input: &'i str,
+        parser: &FilterParser<'_>,
+        expected: Type,
+    ) -> LexResult<'i, Self> {
+        match LiteralValue::lex_with(input, expected) {
+            Ok((value, rest)) => return Ok((Self::Literal(value), rest)),
+            Err(error)
+                if !input
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_alphabetic() || *byte == b'_') =>
+            {
+                return Err(error);
+            }
+            Err(_) => {}
+        }
+
+        let (expr, rest) = IndexExpr::lex_with(input, parser)?;
+
+        let actual = expr.output_type();
+        if actual == expected {
+            Ok((Self::Index(ScalarExpr(expr)), rest))
+        } else {
+            Err((
+                LexErrorKind::TypeMismatch(TypeMismatchError {
+                    expected: expected.into(),
+                    actual,
+                }),
+                span(input, rest),
+            ))
+        }
+    }
+
+    fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
+        if let Self::Index(expr) = self {
+            visitor.visit_scalar_expr(expr);
+        }
+    }
+
+    fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
+        if let Self::Index(expr) = self {
+            visitor.visit_scalar_expr(expr);
+        }
+    }
+}
+
+impl IntRhs {
+    fn lex<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
+        if !input
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || *byte == b'_')
+        {
+            return i64::lex(input).map(|(value, rest)| (Self::Literal(value), rest));
+        }
+
+        let (expr, rest) = IndexExpr::lex_with(input, parser)?;
+        ScalarIntExpr::try_from(expr)
+            .map(|expr| (Self::Index(expr), rest))
+            .map_err(|mismatch| (LexErrorKind::TypeMismatch(mismatch), span(input, rest)))
+    }
+}
+
 /// Operator and right-hand side expression of a
 /// comparison expression.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
@@ -129,8 +419,8 @@ pub enum ComparisonOpExpr {
         /// * "gt" | ">"
         /// * "lt" | "<"
         op: OrderingOp,
-        /// Right-hand side literal
-        rhs: LiteralValue,
+        /// Right-hand side operand
+        rhs: ComparisonRhs,
     },
 
     /// Integer comparison
@@ -138,8 +428,8 @@ pub enum ComparisonOpExpr {
         /// Integer comparison operator:
         /// * "&" | "bitwise_and"
         op: IntOp,
-        /// Right-hand side integer value
-        rhs: i64,
+        /// Right-hand side integer operand
+        rhs: IntRhs,
     },
 
     /// "contains" comparison
@@ -358,13 +648,16 @@ impl ComparisonExpr {
                     }
                 }
                 (Type::Ip, ComparisonOp::Ordering(op))
-                | (Type::Bytes, ComparisonOp::Ordering(op))
-                | (Type::Int, ComparisonOp::Ordering(op)) => {
-                    let (rhs, input) = LiteralValue::lex_with(input, lhs_type)?;
+                | (Type::Bytes, ComparisonOp::Ordering(op)) => {
+                    let (rhs, input) = ComparisonRhs::lex_typed(input, parser, lhs_type)?;
+                    (ComparisonOpExpr::Ordering { op, rhs }, input)
+                }
+                (Type::Int, ComparisonOp::Ordering(op)) => {
+                    let (rhs, input) = ComparisonRhs::lex_int(input, parser)?;
                     (ComparisonOpExpr::Ordering { op, rhs }, input)
                 }
                 (Type::Int, ComparisonOp::Int(op)) => {
-                    let (rhs, input) = i64::lex(input)?;
+                    let (rhs, input) = IntRhs::lex(input, parser)?;
                     (ComparisonOpExpr::Int { op, rhs }, input)
                 }
                 (Type::Bytes, ComparisonOp::Bytes(op)) => match op {
@@ -424,15 +717,68 @@ impl<const STRICT: bool, U> Compare<U> for Wildcard<STRICT> {
     }
 }
 
+fn compile_dynamic_comparison<C, F>(
+    lhs: IndexExpr,
+    rhs: IndexExpr,
+    compare: F,
+    missing_lhs_default: bool,
+    compiler: &mut C,
+) -> CompiledExpr<C::U>
+where
+    C: Compiler,
+    F: for<'l, 'r> Fn(&LhsValue<'l>, &LhsValue<'r>) -> bool + Copy + Send + Sync + 'static,
+{
+    let lhs_is_mapped = lhs.map_each_count() > 0;
+    let lhs = compiler.compile_index_expr(lhs);
+    let rhs = compiler.compile_index_expr(rhs);
+
+    if lhs_is_mapped {
+        CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+            let Ok(LhsValue::Array(lhs)) = lhs.execute(ctx) else {
+                return TypedArray::default();
+            };
+
+            match rhs.execute(ctx) {
+                Ok(rhs) => TypedArray::from_iter(lhs.into_iter().map(|lhs| compare(&lhs, &rhs))),
+                _ => TypedArray::from_iter(lhs.into_iter().map(|_| false)),
+            }
+        }))
+    } else {
+        CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+            match (lhs.execute(ctx), rhs.execute(ctx)) {
+                (Ok(lhs), Ok(rhs)) => compare(&lhs, &rhs),
+                (Err(_), Ok(_)) => missing_lhs_default,
+                _ => false,
+            }
+        }))
+    }
+}
+
 impl Expr for ComparisonExpr {
     #[inline]
     fn walk<'a, V: Visitor<'a>>(&'a self, visitor: &mut V) {
-        visitor.visit_index_expr(&self.lhs)
+        visitor.visit_index_expr(&self.lhs);
+        match &self.op {
+            ComparisonOpExpr::Ordering { rhs, .. } => rhs.walk(visitor),
+            ComparisonOpExpr::Int {
+                rhs: IntRhs::Index(rhs),
+                ..
+            } => visitor.visit_scalar_int_expr(rhs),
+            _ => {}
+        }
     }
 
     #[inline]
     fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V) {
-        visitor.visit_index_expr(&mut self.lhs)
+        visitor.visit_index_expr(&mut self.lhs);
+        match &mut self.op {
+            ComparisonOpExpr::Ordering { rhs, .. } => rhs.walk_mut(visitor),
+            ComparisonOpExpr::Int {
+                rhs: IntRhs::Index(rhs),
+                ..
+            } => visitor.visit_scalar_int_expr(rhs),
+            _ => {}
+        }
     }
 
     fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
@@ -465,6 +811,53 @@ impl Expr for ComparisonExpr {
                 }
             }
             ComparisonOpExpr::Ordering { op, rhs } => {
+                let rhs = match rhs {
+                    ComparisonRhs::Literal(rhs) => rhs,
+                    ComparisonRhs::Index(rhs) => {
+                        let missing_lhs_default =
+                            op == OrderingOp::NotEqual && nil_not_equal_behavior;
+                        let rhs_type = rhs.get_type();
+                        let rhs = rhs.into();
+                        return match rhs_type {
+                            Type::Bytes => compile_dynamic_comparison(
+                                lhs,
+                                rhs,
+                                move |lhs, rhs| {
+                                    op.matches(
+                                        cast_value!(lhs, Bytes)
+                                            .as_ref()
+                                            .cmp(cast_value!(rhs, Bytes).as_ref()),
+                                    )
+                                },
+                                missing_lhs_default,
+                                compiler,
+                            ),
+                            Type::Int => compile_dynamic_comparison(
+                                lhs,
+                                rhs,
+                                move |lhs, rhs| {
+                                    op.matches(cast_value!(lhs, Int).cmp(cast_value!(rhs, Int)))
+                                },
+                                missing_lhs_default,
+                                compiler,
+                            ),
+                            Type::Ip => compile_dynamic_comparison(
+                                lhs,
+                                rhs,
+                                move |lhs, rhs| {
+                                    op.matches_opt(
+                                        cast_value!(lhs, Ip)
+                                            .strict_partial_cmp(cast_value!(rhs, Ip)),
+                                    )
+                                },
+                                missing_lhs_default,
+                                compiler,
+                            ),
+                            _ => unreachable!(),
+                        };
+                    }
+                };
+
                 macro_rules! gen_ordering {
                     ($op:tt, $def:ident) => {
                         match rhs {
@@ -525,6 +918,19 @@ impl Expr for ComparisonExpr {
                 op: IntOp::BitwiseAnd,
                 rhs,
             } => {
+                let rhs = match rhs {
+                    IntRhs::Literal(rhs) => rhs,
+                    IntRhs::Index(rhs) => {
+                        return compile_dynamic_comparison(
+                            lhs,
+                            rhs.into(),
+                            |lhs, rhs| cast_value!(lhs, Int) & cast_value!(rhs, Int) != 0,
+                            false,
+                            compiler,
+                        );
+                    }
+                };
+
                 struct BitwiseAnd(i64);
 
                 impl<U> Compare<U> for BitwiseAnd {
@@ -819,6 +1225,14 @@ mod tests {
     use std::iter::once;
     use std::net::IpAddr;
     use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    static COUNTING_LIMIT_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_limit_function<'a>(_: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+        COUNTING_LIMIT_CALLS.fetch_add(1, AtomicOrdering::Relaxed);
+        Some(LhsValue::Int(443))
+    }
 
     fn echo_function<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()
@@ -959,6 +1373,22 @@ mod tests {
             map.bytes.arr: Map(Array(Bytes)),
             http.parts: Array(Array(Bytes)),
         };
+        builder.add_field("ab", Type::Ip).unwrap();
+        builder.add_field("ab.cd", Type::Bytes).unwrap();
+        builder.add_field("ab.cdint", Type::Int).unwrap();
+        builder.add_field("r", Type::Bytes).unwrap();
+        builder
+            .add_optional_field("http.other_host", Type::Bytes)
+            .unwrap();
+        builder
+            .add_field("ip.addrs", Type::Array(Type::Ip.into()))
+            .unwrap();
+        builder.add_optional_field("ip.limit", Type::Ip).unwrap();
+        builder.add_optional_field("tcp.limit", Type::Int).unwrap();
+        builder.add_optional_field("_tcp_limit", Type::Int).unwrap();
+        builder
+            .add_optional_field("tcp.optional", Type::Int)
+            .unwrap();
         builder
             .add_function(
                 "echo",
@@ -969,6 +1399,20 @@ mod tests {
                     }],
                     opt_params: vec![],
                     return_type: Type::Bytes,
+                    implementation: SimpleFunctionImpl::new(echo_function),
+                },
+            )
+            .unwrap();
+        builder
+            .add_function(
+                "echo_ip",
+                SimpleFunctionDefinition {
+                    params: vec![SimpleFunctionParam {
+                        arg_kind: SimpleFunctionArgKind::Field,
+                        val_type: Type::Ip,
+                    }],
+                    opt_params: vec![],
+                    return_type: Type::Ip,
                     implementation: SimpleFunctionImpl::new(echo_function),
                 },
             )
@@ -1044,6 +1488,17 @@ mod tests {
                 },
             )
             .unwrap();
+        builder
+            .add_function(
+                "counting_limit",
+                SimpleFunctionDefinition {
+                    params: vec![],
+                    opt_params: vec![],
+                    return_type: Type::Int,
+                    implementation: SimpleFunctionImpl::new(counting_limit_function),
+                },
+            )
+            .unwrap();
         builder.add_list(Type::Int, NumMListDefinition {}).unwrap();
         builder.build()
     });
@@ -1100,9 +1555,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThanEqual,
-                    rhs: LiteralValue::Ip(IpAddr::from([
+                    rhs: ComparisonRhs::Literal(LiteralValue::Ip(IpAddr::from([
                         0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80
-                    ]))
+                    ])))
                 },
             }
         );
@@ -1167,9 +1622,9 @@ mod tests {
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::GreaterThanEqual,
-                        rhs: LiteralValue::Bytes(
+                        rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
                             vec![0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80].into()
-                        ),
+                        )),
                     },
                 }
             );
@@ -1205,7 +1660,7 @@ mod tests {
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::LessThan,
-                        rhs: LiteralValue::Bytes(vec![0x12, 0x13].into()),
+                        rhs: ComparisonRhs::Literal(LiteralValue::Bytes(vec![0x12, 0x13].into(),)),
                     },
                 }
             );
@@ -1229,7 +1684,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1266,7 +1723,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Int {
                     op: IntOp::BitwiseAnd,
-                    rhs: 1,
+                    rhs: IntRhs::Literal(1),
                 }
             }
         );
@@ -1527,7 +1984,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThan,
-                    rhs: LiteralValue::Int(8000)
+                    rhs: ComparisonRhs::Literal(LiteralValue::Int(8000))
                 },
             }
         );
@@ -1549,6 +2006,591 @@ mod tests {
 
         ctx.set_field_value(field("tcp.port"), 8080).unwrap();
         assert_eq!(expr.execute_one(ctx), false);
+    }
+
+    #[test]
+    fn test_dynamic_int_comparison_parsing_and_serialization() {
+        let expr = assert_ok!(
+            FilterParser::new(&SCHEME).lex_as("tcp.port < _tcp_limit"),
+            ComparisonExpr {
+                lhs: IndexExpr {
+                    identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
+                    indexes: vec![],
+                },
+                op: ComparisonOpExpr::Ordering {
+                    op: OrderingOp::LessThan,
+                    rhs: ComparisonRhs::Index(ScalarExpr(IndexExpr {
+                        identifier: IdentifierExpr::Field(field("_tcp_limit").to_owned()),
+                        indexes: vec![],
+                    })),
+                },
+            }
+        );
+
+        assert_json!(
+            expr,
+            {
+                "lhs": "tcp.port",
+                "op": "LessThan",
+                "rhs": {
+                    "kind": "IndexExpr",
+                    "value": "_tcp_limit",
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn test_dynamic_int_ordering_operators() {
+        let cases = [
+            ("tcp.port == tcp.limit", false),
+            ("tcp.port != tcp.limit", true),
+            ("tcp.port < tcp.limit", true),
+            ("tcp.port <= tcp.limit", true),
+            ("tcp.port > tcp.limit", false),
+            ("tcp.port >= tcp.limit", false),
+        ];
+
+        for (source, expected) in cases {
+            let expr = FilterParser::new(&SCHEME)
+                .lex_as::<ComparisonExpr>(source)
+                .unwrap()
+                .0
+                .compile();
+            let ctx = &mut ExecutionContext::new(&SCHEME);
+            ctx.set_field_value(field("tcp.port"), 5).unwrap();
+            ctx.set_field_value(field("tcp.limit"), 7).unwrap();
+            assert_eq!(expr.execute_one(ctx), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn test_dynamic_bytes_ordering_operators() {
+        let cases = [
+            ("http.host == http.other_host", "Equal", false),
+            ("http.host != http.other_host", "NotEqual", true),
+            ("http.host < http.other_host", "LessThan", true),
+            ("http.host <= http.other_host", "LessThanEqual", true),
+            ("http.host > http.other_host", "GreaterThan", false),
+            ("http.host >= http.other_host", "GreaterThanEqual", false),
+        ];
+
+        for (source, serialized_op, expected) in cases {
+            let expr = FilterParser::new(&SCHEME)
+                .lex_as::<ComparisonExpr>(source)
+                .unwrap()
+                .0;
+            assert_json!(
+                expr,
+                {
+                    "lhs": "http.host",
+                    "op": serialized_op,
+                    "rhs": {
+                        "kind": "IndexExpr",
+                        "value": "http.other_host",
+                    },
+                }
+            );
+
+            let expr = expr.compile();
+            let ctx = &mut ExecutionContext::new(&SCHEME);
+            ctx.set_field_value(field("http.host"), "alpha").unwrap();
+            ctx.set_field_value(field("http.other_host"), "beta")
+                .unwrap();
+            assert_eq!(expr.execute_one(ctx), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn test_dynamic_bytes_dotted_identifier() {
+        let dynamic = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("http.host == ab.cd")
+            .unwrap()
+            .0;
+        assert_json!(
+            dynamic,
+            {
+                "lhs": "http.host",
+                "op": "Equal",
+                "rhs": {
+                    "kind": "IndexExpr",
+                    "value": "ab.cd",
+                },
+            }
+        );
+
+        let dynamic = dynamic.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.host"), &[0xab, 0xcd][..])
+            .unwrap();
+        ctx.set_field_value(field("ab.cd"), &[0x00, 0x00][..])
+            .unwrap();
+        assert!(!dynamic.execute_one(ctx));
+    }
+
+    #[test]
+    fn test_dynamic_bytes_literal_prefix_ambiguities() {
+        let hex = SCHEME.parse("http.host == ab:cd").unwrap().compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.host"), &[0xab, 0xcd][..])
+            .unwrap();
+        ctx.set_field_value(field("ab"), "192.0.2.1".parse::<IpAddr>().unwrap())
+            .unwrap();
+        assert_eq!(hex.execute(ctx), Ok(true));
+
+        let raw = SCHEME
+            .parse(r#"http.host == r"literal""#)
+            .unwrap()
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.host"), "literal").unwrap();
+        ctx.set_field_value(field("r"), "field value").unwrap();
+        assert_eq!(raw.execute(ctx), Ok(true));
+
+        let field_expr = SCHEME.parse("http.host == r and ssl").unwrap().compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.host"), "field value")
+            .unwrap();
+        ctx.set_field_value(field("r"), "field value").unwrap();
+        ctx.set_field_value(field("ssl"), true).unwrap();
+        assert_eq!(field_expr.execute(ctx), Ok(true));
+    }
+
+    #[test]
+    fn test_dynamic_ip_ordering_operators() {
+        let cases = [
+            ("ip.addr == ip.limit", false),
+            ("ip.addr != ip.limit", true),
+            ("ip.addr < ip.limit", true),
+            ("ip.addr <= ip.limit", true),
+            ("ip.addr > ip.limit", false),
+            ("ip.addr >= ip.limit", false),
+        ];
+
+        for (source, expected) in cases {
+            let expr = FilterParser::new(&SCHEME)
+                .lex_as::<ComparisonExpr>(source)
+                .unwrap()
+                .0
+                .compile();
+            let ctx = &mut ExecutionContext::new(&SCHEME);
+            ctx.set_field_value(field("ip.addr"), "192.0.2.1".parse::<IpAddr>().unwrap())
+                .unwrap();
+            ctx.set_field_value(field("ip.limit"), "192.0.2.2".parse::<IpAddr>().unwrap())
+                .unwrap();
+            assert_eq!(expr.execute_one(ctx), expected, "{source}");
+        }
+
+        let cross_family = [
+            ("ip.addr == ip.limit", false),
+            ("ip.addr != ip.limit", true),
+            ("ip.addr < ip.limit", false),
+            ("ip.addr <= ip.limit", false),
+            ("ip.addr > ip.limit", false),
+            ("ip.addr >= ip.limit", false),
+        ];
+        for (source, expected) in cross_family {
+            let expr = SCHEME.parse(source).unwrap().compile();
+            let ctx = &mut ExecutionContext::new(&SCHEME);
+            ctx.set_field_value(field("ip.addr"), "192.0.2.1".parse::<IpAddr>().unwrap())
+                .unwrap();
+            ctx.set_field_value(field("ip.limit"), "2001:db8::1".parse::<IpAddr>().unwrap())
+                .unwrap();
+            assert_eq!(expr.execute(ctx), Ok(expected), "{source}");
+        }
+    }
+
+    #[test]
+    fn test_dynamic_ip_literal_ambiguity() {
+        assert!(SCHEME.parse("ip.addr == 192.0.2.1or ssl").is_ok());
+
+        let expr = SCHEME.parse("ip.addr == ab::cd").unwrap().compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("ip.addr"), "ab::cd".parse::<IpAddr>().unwrap())
+            .unwrap();
+        ctx.set_field_value(field("ab"), "192.0.2.1".parse::<IpAddr>().unwrap())
+            .unwrap();
+        assert_eq!(expr.execute(ctx), Ok(true));
+    }
+
+    #[test]
+    fn test_dynamic_int_bitwise_and() {
+        let expr = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.port & tcp.limit")
+            .unwrap()
+            .0;
+        assert_json!(
+            expr,
+            {
+                "lhs": "tcp.port",
+                "op": "BitwiseAnd",
+                "rhs": {
+                    "kind": "IndexExpr",
+                    "value": "tcp.limit",
+                },
+            }
+        );
+        let expr = expr.compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+
+        ctx.set_field_value(field("tcp.port"), 0b1010).unwrap();
+        ctx.set_field_value(field("tcp.limit"), 0b0100).unwrap();
+        assert_eq!(expr.execute_one(ctx), false);
+
+        ctx.set_field_value(field("tcp.limit"), 0b0010).unwrap();
+        assert_eq!(expr.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_dynamic_int_index_and_function_rhs() {
+        let indexed = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.port == tcp.ports[0]")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("tcp.port"), 443).unwrap();
+        ctx.set_field_value(field("tcp.ports"), Array::from_iter([443, 80]))
+            .unwrap();
+        assert_eq!(indexed.execute_one(ctx), true);
+
+        let function = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.port == len(http.host)")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("tcp.port"), 11).unwrap();
+        ctx.set_field_value(field("http.host"), "example.org")
+            .unwrap();
+        assert_eq!(function.execute_one(ctx), true);
+    }
+
+    #[test]
+    fn test_dynamic_bytes_and_ip_index_and_function_rhs() {
+        let bytes_indexed = SCHEME
+            .parse("http.host == http.cookies[0]")
+            .unwrap()
+            .compile();
+        let bytes_function = SCHEME
+            .parse("http.host == echo(http.other_host)")
+            .unwrap()
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.host"), "value").unwrap();
+        ctx.set_field_value(field("http.cookies"), Array::from_iter(["value"]))
+            .unwrap();
+        ctx.set_field_value(field("http.other_host"), "value")
+            .unwrap();
+        assert_eq!(bytes_indexed.execute(ctx), Ok(true));
+        assert_eq!(bytes_function.execute(ctx), Ok(true));
+
+        let ip_indexed = SCHEME.parse("ip.addr == ip.addrs[0]").unwrap().compile();
+        let ip_function = SCHEME
+            .parse("ip.addr == echo_ip(ip.limit)")
+            .unwrap()
+            .compile();
+        let addr = "192.0.2.1".parse::<IpAddr>().unwrap();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("ip.addr"), addr).unwrap();
+        ctx.set_field_value(field("ip.addrs"), Array::from_iter([addr]))
+            .unwrap();
+        ctx.set_field_value(field("ip.limit"), addr).unwrap();
+        assert_eq!(ip_indexed.execute(ctx), Ok(true));
+        assert_eq!(ip_function.execute(ctx), Ok(true));
+    }
+
+    #[test]
+    fn test_dynamic_rhs_type_validation() {
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.port == http.host")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual: Type::Bytes,
+            })
+        );
+
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.port == tcp.ports[*]")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual: Type::Array(Type::Int.into()),
+            })
+        );
+
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("http.host == tcp.limit")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bytes.into(),
+                actual: Type::Int,
+            })
+        );
+
+        // A dotted identifier is type-checked as a whole, not as a byte literal.
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("http.host == ab.cdint")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bytes.into(),
+                actual: Type::Int,
+            })
+        );
+
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("ip.addr == http.host")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Ip.into(),
+                actual: Type::Bytes,
+            })
+        );
+
+        let (kind, _) = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("http.host == http.cookies[*]")
+            .unwrap_err();
+        assert_eq!(
+            kind,
+            LexErrorKind::TypeMismatch(TypeMismatchError {
+                expected: Type::Bytes.into(),
+                actual: Type::Array(Type::Bytes.into()),
+            })
+        );
+    }
+
+    #[test]
+    fn test_scalar_expr_validation_and_conversion() {
+        let index = IndexExpr {
+            identifier: IdentifierExpr::Field(field("tcp.limit").to_owned()),
+            indexes: vec![],
+        };
+        let scalar = ScalarExpr::try_from(index.clone()).unwrap();
+        assert_eq!(scalar.as_index_expr(), &index);
+        assert_eq!(scalar.get_type(), Type::Int);
+
+        let int_scalar = ScalarIntExpr::try_from(scalar.clone()).unwrap();
+        assert_eq!(int_scalar.as_index_expr(), &index);
+        assert_eq!(ScalarExpr::from(int_scalar.clone()), scalar);
+        assert_eq!(IndexExpr::from(int_scalar.clone()), index);
+        assert_eq!(IntRhs::Index(int_scalar).get_type(), Type::Int);
+        assert_eq!(IntRhs::Literal(42).get_type(), Type::Int);
+        assert_eq!(IndexExpr::from(scalar), index);
+
+        let bytes = IndexExpr {
+            identifier: IdentifierExpr::Field(field("http.host").to_owned()),
+            indexes: vec![],
+        };
+        let scalar_bytes = ScalarExpr::try_from(bytes.clone()).unwrap();
+        assert_eq!(scalar_bytes.get_type(), Type::Bytes);
+        assert_eq!(
+            ScalarIntExpr::try_from(scalar_bytes),
+            Err(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual: Type::Bytes,
+            })
+        );
+
+        let mut expected = ExpectedTypeList::default();
+        expected.insert(Type::Bytes);
+        expected.insert(Type::Int);
+        expected.insert(Type::Ip);
+
+        let ip = IndexExpr {
+            identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
+            indexes: vec![],
+        };
+        let scalar_ip = ScalarExpr::try_from(ip.clone()).unwrap();
+        assert_eq!(scalar_ip.get_type(), Type::Ip);
+        assert_eq!(
+            ScalarIntExpr::try_from(scalar_ip.clone()),
+            Err(TypeMismatchError {
+                expected: Type::Int.into(),
+                actual: Type::Ip,
+            })
+        );
+        assert_eq!(IndexExpr::from(scalar_ip), ip);
+
+        let bool_expr = IndexExpr {
+            identifier: IdentifierExpr::Field(field("ssl").to_owned()),
+            indexes: vec![],
+        };
+        assert_eq!(
+            ScalarExpr::try_from(bool_expr),
+            Err(TypeMismatchError {
+                expected: expected.clone(),
+                actual: Type::Bool,
+            })
+        );
+
+        let mapped = IndexExpr {
+            identifier: IdentifierExpr::Field(field("tcp.ports").to_owned()),
+            indexes: vec![FieldIndex::MapEach],
+        };
+        assert_eq!(
+            ScalarExpr::try_from(mapped),
+            Err(TypeMismatchError {
+                expected,
+                actual: Type::Array(Type::Int.into()),
+            })
+        );
+    }
+
+    #[test]
+    fn test_scalar_expr_mutable_visitor_preserves_invariants() {
+        struct AddMapEach;
+
+        impl<'a> VisitorMut<'a> for AddMapEach {
+            fn visit_index_expr(&mut self, expr: &'a mut IndexExpr) {
+                expr.indexes.push(FieldIndex::MapEach);
+            }
+        }
+
+        let index = IndexExpr {
+            identifier: IdentifierExpr::Field(field("tcp.limit").to_owned()),
+            indexes: vec![],
+        };
+        let mut scalar = ScalarExpr::try_from(index.clone()).unwrap();
+        AddMapEach.visit_scalar_expr(&mut scalar);
+        assert_eq!(scalar.as_index_expr(), &index);
+
+        let mut scalar_int = ScalarIntExpr::try_from(index.clone()).unwrap();
+        AddMapEach.visit_scalar_int_expr(&mut scalar_int);
+        assert_eq!(scalar_int.as_index_expr(), &index);
+    }
+
+    #[test]
+    fn test_dynamic_int_missing_values() {
+        let expr = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.optional != tcp.limit")
+            .unwrap()
+            .0
+            .compile();
+
+        let rhs_only = &mut ExecutionContext::new(&SCHEME);
+        rhs_only.set_field_value(field("tcp.limit"), 7).unwrap();
+        assert_eq!(expr.execute_one(rhs_only), true);
+
+        let lhs_only = &mut ExecutionContext::new(&SCHEME);
+        lhs_only.set_field_value(field("tcp.optional"), 5).unwrap();
+        assert_eq!(expr.execute_one(lhs_only), false);
+
+        let neither = &mut ExecutionContext::new(&SCHEME);
+        assert_eq!(expr.execute_one(neither), false);
+    }
+
+    #[test]
+    fn test_dynamic_not_equal_missing_lhs_with_nil_behavior_false() {
+        let mut builder = SchemeBuilder::new();
+        builder.add_optional_field("lhs", Type::Int).unwrap();
+        builder.add_optional_field("rhs", Type::Int).unwrap();
+        builder.set_nil_not_equal_behavior(false);
+        let scheme = builder.build();
+        let expr = scheme.parse("lhs != rhs").unwrap().compile();
+        let ctx = &mut ExecutionContext::new(&scheme);
+        ctx.set_field_value(scheme.get_field("rhs").unwrap(), 1)
+            .unwrap();
+        assert_eq!(expr.execute(ctx), Ok(false));
+    }
+
+    #[test]
+    fn test_dynamic_int_mapped_lhs_broadcast() {
+        let expr = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.ports[*] >= tcp.limit")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("tcp.ports"), Array::from_iter([80, 443, 8080]))
+            .unwrap();
+        ctx.set_field_value(field("tcp.limit"), 443).unwrap();
+        assert_eq!(expr.execute_vec(ctx), [false, true, true]);
+
+        let missing_rhs = &mut ExecutionContext::new(&SCHEME);
+        missing_rhs
+            .set_field_value(field("tcp.ports"), Array::from_iter([80, 443, 8080]))
+            .unwrap();
+        assert_eq!(expr.execute_vec(missing_rhs), [false, false, false]);
+    }
+
+    #[test]
+    fn test_dynamic_bytes_and_ip_mapped_lhs_broadcast() {
+        let bytes = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("http.cookies[*] >= http.other_host")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("http.cookies"), Array::from_iter(["alpha", "beta"]))
+            .unwrap();
+        ctx.set_field_value(field("http.other_host"), "beta")
+            .unwrap();
+        assert_eq!(bytes.execute_vec(ctx), [false, true]);
+
+        let missing_rhs = &mut ExecutionContext::new(&SCHEME);
+        missing_rhs
+            .set_field_value(field("http.cookies"), Array::from_iter(["alpha", "beta"]))
+            .unwrap();
+        assert_eq!(bytes.execute_vec(missing_rhs), [false, false]);
+
+        let ips = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("ip.addrs[*] < ip.limit")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(
+            field("ip.addrs"),
+            Array::from_iter([
+                "192.0.2.1".parse::<IpAddr>().unwrap(),
+                "192.0.2.3".parse::<IpAddr>().unwrap(),
+            ]),
+        )
+        .unwrap();
+        ctx.set_field_value(field("ip.limit"), "192.0.2.2".parse::<IpAddr>().unwrap())
+            .unwrap();
+        assert_eq!(ips.execute_vec(ctx), [true, false]);
+    }
+
+    #[test]
+    fn test_dynamic_int_mapped_lhs_evaluates_rhs_once() {
+        COUNTING_LIMIT_CALLS.store(0, AtomicOrdering::Relaxed);
+        let expr = FilterParser::new(&SCHEME)
+            .lex_as::<ComparisonExpr>("tcp.ports[*] >= counting_limit()")
+            .unwrap()
+            .0
+            .compile();
+        let ctx = &mut ExecutionContext::new(&SCHEME);
+        ctx.set_field_value(field("tcp.ports"), Array::from_iter([80, 443, 8080]))
+            .unwrap();
+
+        assert_eq!(expr.execute_vec(ctx), [false, true, true]);
+        assert_eq!(COUNTING_LIMIT_CALLS.load(AtomicOrdering::Relaxed), 1);
+
+        assert_eq!(expr.execute_vec(ctx), [false, true, true]);
+        assert_eq!(COUNTING_LIMIT_CALLS.load(AtomicOrdering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_dynamic_int_rhs_is_visited() {
+        let ast = SCHEME.parse("tcp.port == tcp.limit").unwrap();
+        assert_eq!(ast.uses("tcp.port"), Ok(true));
+        assert_eq!(ast.uses("tcp.limit"), Ok(true));
+        assert_eq!(ast.uses("http.host"), Ok(false));
+
+        let ast = SCHEME.parse("tcp.port & tcp.limit").unwrap();
+        assert_eq!(ast.uses("tcp.limit"), Ok(true));
     }
 
     #[test]
@@ -1643,7 +2685,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1699,7 +2743,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1748,7 +2794,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1784,7 +2832,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1820,7 +2870,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1856,7 +2908,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1899,7 +2953,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -1957,7 +3013,9 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("example.org".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(
+                        "example.org".to_owned().into()
+                    ))
                 }
             }
         );
@@ -2025,7 +3083,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("three".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("three".to_owned().into()))
                 }
             }
         );
@@ -2097,7 +3155,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("three-cf".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("three-cf".to_owned().into()))
                 }
             }
         );
@@ -2309,7 +3367,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("three".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("three".to_owned().into()))
                 }
             }
         );
@@ -2343,7 +3401,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("three".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("three".to_owned().into()))
                 }
             }
         );
@@ -2412,7 +3470,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("three-cf".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("three-cf".to_owned().into()))
                 }
             }
         );
@@ -2475,7 +3533,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::GreaterThan,
-                    rhs: LiteralValue::Int(3),
+                    rhs: ComparisonRhs::Literal(LiteralValue::Int(3)),
                 }
             }
         );
@@ -2750,7 +3808,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("[5][5]".to_owned().into()))
                 }
             }
         );
@@ -2777,7 +3835,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("[5][5]".to_owned().into()))
                 }
             }
         );
@@ -2804,7 +3862,7 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes("[5][5]".to_owned().into())
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes("[5][5]".to_owned().into()))
                 }
             }
         );
@@ -2881,7 +3939,10 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes(BytesExpr::new("ab".as_bytes(), BytesFormat::Raw(3))),
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(BytesExpr::new(
+                        "ab".as_bytes(),
+                        BytesFormat::Raw(3),
+                    ))),
                 },
             }
         );
@@ -3048,10 +4109,10 @@ mod tests {
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
-                    rhs: LiteralValue::Bytes(BytesExpr::new(
+                    rhs: ComparisonRhs::Literal(LiteralValue::Bytes(BytesExpr::new(
                         "abcd".as_bytes(),
                         BytesFormat::Raw(2)
-                    ))
+                    )))
                 }
             }
         );

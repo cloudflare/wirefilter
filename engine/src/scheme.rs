@@ -511,7 +511,6 @@ fn is_valid_identifier(name: &str) -> bool {
                 .any(|b| b.is_ascii_alphabetic() || b == b'_')
         })
 }
-
 #[derive(Clone, Copy, Debug)]
 enum SchemeItem {
     Field(usize),
@@ -1118,11 +1117,11 @@ fn test_parse_error() {
         assert_eq!(
             err,
             ParseError {
-                kind: LexErrorKind::ExpectedName("digit"),
+                kind: LexErrorKind::UnknownIdentifier,
                 input: "num == true or",
                 line_number: 1,
                 span_start: 7,
-                span_len: 7
+                span_len: 4
             }
         );
         assert_eq!(
@@ -1131,7 +1130,7 @@ fn test_parse_error() {
                 r#"
                 Filter parsing error (2:8):
                 num == true or
-                       ^^^^^^^ expected digit
+                       ^^^^ unknown identifier
                 "#
             )
         );
