@@ -178,7 +178,6 @@ fn write_char(vec: &mut Vec<u8>, c: char) {
 enum ByteSeparator {
     Colon,
     Dash,
-    Dot,
 }
 
 impl Lex<'_> for ByteSeparator {
@@ -187,7 +186,6 @@ impl Lex<'_> for ByteSeparator {
         match sep {
             ":" => Ok((ByteSeparator::Colon, rest)),
             "-" => Ok((ByteSeparator::Dash, rest)),
-            "." => Ok((ByteSeparator::Dot, rest)),
             _ => Err((LexErrorKind::ExpectedName("byte separator"), sep)),
         }
     }
@@ -345,9 +343,15 @@ mod test {
     #[test]
     fn test() {
         assert_ok!(
-            BytesExpr::lex("01:2e:f3-77.12;"),
+            BytesExpr::lex("01:2e:f3-77:12;"),
             BytesExpr::from(vec![0x01, 0x2E, 0xF3, 0x77, 0x12]),
             ";"
+        );
+
+        assert_err!(
+            BytesExpr::lex("10.10.10.10"),
+            LexErrorKind::ExpectedName("byte separator"),
+            "."
         );
 
         assert_ok!(
