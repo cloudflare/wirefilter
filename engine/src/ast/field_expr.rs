@@ -1085,6 +1085,12 @@ mod tests {
 
     #[test]
     fn test_ip_compare() {
+        assert!(
+            FilterParser::new(&SCHEME)
+                .lex_as::<ComparisonExpr>("ip.addr == 10.10.10.10")
+                .is_ok()
+        );
+
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as("ip.addr <= 10:20:30:40:50:60:70:80"),
             ComparisonExpr {
@@ -1138,6 +1144,18 @@ mod tests {
 
     #[test]
     fn test_bytes_compare() {
+        assert_err!(
+            FilterParser::new(&SCHEME).lex_as::<ComparisonExpr>("http.host == 10.10.10.10"),
+            LexErrorKind::ExpectedName("byte separator"),
+            "."
+        );
+
+        assert!(
+            FilterParser::new(&SCHEME)
+                .lex_as::<ComparisonExpr>(r#"http.host == "10.10.10.10""#)
+                .is_ok()
+        );
+
         // just check that parsing doesn't conflict with IPv6
         {
             let expr = assert_ok!(
