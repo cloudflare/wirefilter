@@ -16,6 +16,7 @@ edition = "2024"
 publish = true
 
 [workspace.dependencies]
+arcstr = "1.2.0"
 backtrace = "0.3.76"
 cbindgen = "0.29.4"
 cfg-if = "1.0.4"

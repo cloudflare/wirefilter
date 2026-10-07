@@ -117,13 +117,13 @@ pub struct FunctionArgKindMismatchError {
 #[derive(Debug, PartialEq, Eq, Error)]
 #[error("invalid argument: {msg:?}")]
 pub struct FunctionArgInvalidConstantError {
-    msg: String,
+    msg: Box<str>,
 }
 
 impl FunctionArgInvalidConstantError {
     /// Returns a new invalid constant error.
     #[inline]
-    pub fn new(msg: String) -> Self {
+    pub fn new(msg: Box<str>) -> Self {
         Self { msg }
     }
 }
@@ -131,7 +131,7 @@ impl FunctionArgInvalidConstantError {
 impl From<String> for FunctionArgInvalidConstantError {
     #[inline]
     fn from(msg: String) -> Self {
-        Self::new(msg)
+        Self::new(msg.into_boxed_str())
     }
 }
 
@@ -264,7 +264,9 @@ impl<'a> FunctionParam<'a> {
         match self {
             Self::Constant(value) => {
                 op(U::try_from(value).map_err(FunctionParamError::TypeMismatch)?).map_err(|msg| {
-                    FunctionParamError::InvalidConstant(FunctionArgInvalidConstantError { msg })
+                    FunctionParamError::InvalidConstant(FunctionArgInvalidConstantError {
+                        msg: msg.into_boxed_str(),
+                    })
                 })
             }
             Self::Variable(_) => Err(FunctionParamError::KindMismatch(
@@ -484,9 +486,9 @@ pub struct SimpleFunctionOptParam {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SimpleFunctionDefinition {
     /// List of mandatory arguments.
-    pub params: Vec<SimpleFunctionParam>,
+    pub params: Box<[SimpleFunctionParam]>,
     /// List of optional arguments that can be specified after manatory ones.
-    pub opt_params: Vec<SimpleFunctionOptParam>,
+    pub opt_params: Box<[SimpleFunctionOptParam]>,
     /// Function return type.
     pub return_type: Type,
     /// Actual implementation that will be called at runtime.
@@ -543,7 +545,7 @@ impl FunctionDefinition for SimpleFunctionDefinition {
                 (implementation.0)(args)
             })
         } else {
-            let opt_args: Vec<Result<LhsValue<'static>, Type>> = opt_params
+            let opt_args: Box<[Result<LhsValue<'static>, Type>]> = opt_params
                 .iter()
                 .map(|opt_param| Ok(opt_param.default_value.clone()))
                 .collect();

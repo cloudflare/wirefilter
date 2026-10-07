@@ -136,14 +136,14 @@ impl Serialize for Regex {
 pub enum Error {
     /// A syntax error.
     #[error("{0}")]
-    Syntax(String),
+    Syntax(Box<str>),
     /// The compiled regex exceeded the configured
     /// regex compiled size limit.
     #[error("Compiled regex exceeds size limit of {0} bytes.")]
     CompiledTooBig(usize),
     /// An uncategorized error.
     #[error("{0}")]
-    Other(String),
+    Other(Box<str>),
 }
 
 impl<U> Compare<U> for Regex {

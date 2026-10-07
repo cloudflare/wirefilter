@@ -26,7 +26,7 @@ impl Lex<'_> for ListName {
                         if res.is_empty() {
                             return Err((
                                 LexErrorKind::InvalidListName {
-                                    name: c.to_string(),
+                                    name: c.to_string().into_boxed_str(),
                                 },
                                 input,
                             ));
@@ -37,7 +37,12 @@ impl Lex<'_> for ListName {
                 },
                 None => {
                     if res.is_empty() {
-                        return Err((LexErrorKind::InvalidListName { name: res }, input));
+                        return Err((
+                            LexErrorKind::InvalidListName {
+                                name: res.into_boxed_str(),
+                            },
+                            input,
+                        ));
                     } else {
                         break;
                     }
@@ -46,7 +51,12 @@ impl Lex<'_> for ListName {
         }
 
         if res.as_bytes().first() == Some(&b'.') || res.as_bytes().last() == Some(&b'.') {
-            return Err((LexErrorKind::InvalidListName { name: res }, input));
+            return Err((
+                LexErrorKind::InvalidListName {
+                    name: res.into_boxed_str(),
+                },
+                input,
+            ));
         }
 
         Ok((res.into(), rest))
@@ -100,9 +110,7 @@ mod test {
     fn invalid_char() {
         assert_err!(
             ListName::lex("$;"),
-            LexErrorKind::InvalidListName {
-                name: ";".to_string(),
-            },
+            LexErrorKind::InvalidListName { name: ";".into() },
             ";"
         );
     }
@@ -111,9 +119,7 @@ mod test {
     fn eof_after_dollar() {
         assert_err!(
             ListName::lex("$"),
-            LexErrorKind::InvalidListName {
-                name: "".to_string(),
-            },
+            LexErrorKind::InvalidListName { name: "".into() },
             ""
         );
     }
@@ -131,16 +137,14 @@ mod test {
     fn special_char_at_start() {
         assert_err!(
             ListName::lex("$."),
-            LexErrorKind::InvalidListName {
-                name: ".".to_string(),
-            },
+            LexErrorKind::InvalidListName { name: ".".into() },
             "."
         );
 
         assert_err!(
             ListName::lex("$.abc"),
             LexErrorKind::InvalidListName {
-                name: ".abc".to_string(),
+                name: ".abc".into(),
             },
             ".abc"
         );
@@ -150,16 +154,14 @@ mod test {
     fn special_char_at_end() {
         assert_err!(
             ListName::lex("$."),
-            LexErrorKind::InvalidListName {
-                name: ".".to_string(),
-            },
+            LexErrorKind::InvalidListName { name: ".".into() },
             "."
         );
 
         assert_err!(
             ListName::lex("$abc."),
             LexErrorKind::InvalidListName {
-                name: "abc.".to_string(),
+                name: "abc.".into(),
             },
             "abc."
         );

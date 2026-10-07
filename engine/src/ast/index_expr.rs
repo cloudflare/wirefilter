@@ -25,7 +25,7 @@ pub struct IndexExpr {
     /// The accessed identifier.
     pub identifier: IdentifierExpr,
     /// The list of indexes access.
-    pub indexes: Vec<FieldIndex>,
+    pub indexes: Box<[FieldIndex]>,
 }
 
 #[allow(clippy::manual_ok_err)]
@@ -127,11 +127,14 @@ impl ValueExpr for IndexExpr {
     }
 }
 
-fn simplify_indexes(mut indexes: Vec<FieldIndex>) -> Box<[FieldIndex]> {
+fn simplify_indexes(indexes: Box<[FieldIndex]>) -> Box<[FieldIndex]> {
     if Some(&FieldIndex::MapEach) == indexes.last() {
+        let mut indexes = indexes.into_vec();
         indexes.pop();
+        indexes.into_boxed_slice()
+    } else {
+        indexes
     }
-    indexes.into_boxed_slice()
 }
 
 /// Interface used to implement comparison against a value.
@@ -403,7 +406,7 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for IndexExpr {
         Ok((
             IndexExpr {
                 identifier,
-                indexes,
+                indexes: indexes.into_boxed_slice(),
             },
             input,
         ))
@@ -582,11 +585,11 @@ mod tests {
             .add_function(
                 "array",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Array(Type::Bytes.into()),
                     implementation: SimpleFunctionImpl::new(array_function),
                 },
@@ -596,11 +599,11 @@ mod tests {
             .add_function(
                 "array2",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Array(Type::Array(Type::Bytes.into()).into()),
                     implementation: SimpleFunctionImpl::new(array2_function),
                 },
@@ -617,7 +620,7 @@ mod tests {
                 FilterParser::new(&SCHEME).lex_as(&filter),
                 IndexExpr {
                     identifier: IdentifierExpr::Field(SCHEME.get_field("test").unwrap().to_owned()),
-                    indexes: vec![FieldIndex::ArrayIndex(i)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(i)]),
                 }
             );
         }
@@ -642,7 +645,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"map["a"]"#),
             IndexExpr {
                 identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap().to_owned()),
-                indexes: vec![FieldIndex::MapKey("a".to_string())],
+                indexes: Box::new([FieldIndex::MapKey("a".into())]),
             }
         );
 
@@ -650,7 +653,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"map["😍"]"#),
             IndexExpr {
                 identifier: IdentifierExpr::Field(SCHEME.get_field("map").unwrap().to_owned()),
-                indexes: vec![FieldIndex::MapKey("😍".to_string())],
+                indexes: Box::new([FieldIndex::MapKey("😍".into())]),
             }
         );
     }
@@ -677,15 +680,15 @@ mod tests {
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                     function: SCHEME.get_function("array").unwrap().to_owned(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("test").unwrap().to_owned()
                         ),
-                        indexes: vec![FieldIndex::ArrayIndex(0)],
-                    })],
+                        indexes: Box::new([FieldIndex::ArrayIndex(0)]),
+                    })]),
                     context: None
                 }),
-                indexes: vec![FieldIndex::ArrayIndex(0)],
+                indexes: Box::new([FieldIndex::ArrayIndex(0)]),
             }
         );
 
@@ -707,15 +710,15 @@ mod tests {
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                     function: SCHEME.get_function("array").unwrap().to_owned(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("test").unwrap().to_owned()
                         ),
-                        indexes: vec![FieldIndex::ArrayIndex(0)],
-                    })],
+                        indexes: Box::new([FieldIndex::ArrayIndex(0)]),
+                    })]),
                     context: None
                 }),
-                indexes: vec![FieldIndex::MapEach],
+                indexes: Box::new([FieldIndex::MapEach]),
             }
         );
 
@@ -740,15 +743,15 @@ mod tests {
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                     function: SCHEME.get_function("array2").unwrap().to_owned(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("test").unwrap().to_owned()
                         ),
-                        indexes: vec![FieldIndex::ArrayIndex(0)],
-                    })],
+                        indexes: Box::new([FieldIndex::ArrayIndex(0)]),
+                    })]),
                     context: None
                 }),
-                indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
+                indexes: Box::new([FieldIndex::MapEach, FieldIndex::MapEach]),
             }
         );
 
@@ -776,15 +779,15 @@ mod tests {
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                     function: SCHEME.get_function("array2").unwrap().to_owned(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("test").unwrap().to_owned()
                         ),
-                        indexes: vec![FieldIndex::ArrayIndex(0)],
-                    })],
+                        indexes: Box::new([FieldIndex::ArrayIndex(0)]),
+                    })]),
                     context: None
                 }),
-                indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(0)],
+                indexes: Box::new([FieldIndex::MapEach, FieldIndex::ArrayIndex(0)]),
             }
         );
 
@@ -812,15 +815,15 @@ mod tests {
             IndexExpr {
                 identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                     function: SCHEME.get_function("array2").unwrap().to_owned(),
-                    args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                    args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("test").unwrap().to_owned()
                         ),
-                        indexes: vec![FieldIndex::ArrayIndex(0)],
-                    })],
+                        indexes: Box::new([FieldIndex::ArrayIndex(0)]),
+                    })]),
                     context: None
                 }),
-                indexes: vec![FieldIndex::ArrayIndex(0), FieldIndex::MapEach],
+                indexes: Box::new([FieldIndex::ArrayIndex(0), FieldIndex::MapEach]),
             }
         );
 
@@ -852,7 +855,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
                 identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
-                indexes: vec![FieldIndex::ArrayIndex(0), FieldIndex::MapEach],
+                indexes: Box::new([FieldIndex::ArrayIndex(0), FieldIndex::MapEach]),
             }
         );
 
@@ -866,7 +869,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
                 identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
-                indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(0)],
+                indexes: Box::new([FieldIndex::MapEach, FieldIndex::ArrayIndex(0)]),
             }
         );
 
@@ -880,7 +883,7 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(&filter),
             IndexExpr {
                 identifier: IdentifierExpr::Field(SCHEME.get_field("test2").unwrap().to_owned()),
-                indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
+                indexes: Box::new([FieldIndex::MapEach, FieldIndex::MapEach]),
             }
         );
 

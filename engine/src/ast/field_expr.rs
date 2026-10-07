@@ -1401,11 +1401,11 @@ mod tests {
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(echo_function),
                 },
@@ -1415,11 +1415,11 @@ mod tests {
             .add_function(
                 "echo_ip",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Ip,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Ip,
                     implementation: SimpleFunctionImpl::new(echo_function),
                 },
@@ -1429,11 +1429,11 @@ mod tests {
             .add_function(
                 "lowercase",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(lowercase_function),
                 },
@@ -1443,8 +1443,8 @@ mod tests {
             .add_function(
                 "concat",
                 SimpleFunctionDefinition {
-                    params: vec![],
-                    opt_params: vec![
+                    params: Box::new([]),
+                    opt_params: Box::new([
                         SimpleFunctionOptParam {
                             arg_kind: SimpleFunctionArgKind::Field,
                             default_value: "".into(),
@@ -1453,7 +1453,7 @@ mod tests {
                             arg_kind: SimpleFunctionArgKind::Literal,
                             default_value: "".into(),
                         },
-                    ],
+                    ]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(concat_function),
                 },
@@ -1463,7 +1463,7 @@ mod tests {
             .add_function(
                 "concat_fields",
                 SimpleFunctionDefinition {
-                    params: vec![
+                    params: Box::new([
                         SimpleFunctionParam {
                             arg_kind: SimpleFunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -1472,8 +1472,8 @@ mod tests {
                             arg_kind: SimpleFunctionArgKind::Field,
                             val_type: Type::Bytes,
                         },
-                    ],
-                    opt_params: vec![],
+                    ]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(concat_function),
                 },
@@ -1486,11 +1486,11 @@ mod tests {
             .add_function(
                 "len",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Int,
                     implementation: SimpleFunctionImpl::new(len_function),
                 },
@@ -1500,8 +1500,8 @@ mod tests {
             .add_function(
                 "counting_limit",
                 SimpleFunctionDefinition {
-                    params: vec![],
-                    opt_params: vec![],
+                    params: Box::new([]),
+                    opt_params: Box::new([]),
                     return_type: Type::Int,
                     implementation: SimpleFunctionImpl::new(counting_limit_function),
                 },
@@ -1522,7 +1522,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("ssl").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::IsTrue
             }
@@ -1559,7 +1559,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThanEqual,
@@ -1626,7 +1626,7 @@ mod tests {
                 ComparisonExpr {
                     lhs: IndexExpr {
                         identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::GreaterThanEqual,
@@ -1664,7 +1664,7 @@ mod tests {
                 ComparisonExpr {
                     lhs: IndexExpr {
                         identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     },
                     op: ComparisonOpExpr::Ordering {
                         op: OrderingOp::LessThan,
@@ -1688,7 +1688,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -1727,7 +1727,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Int {
                     op: IntOp::BitwiseAnd,
@@ -1762,7 +1762,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::OneOf(LiteralSet::Int(vec![
                     80.into(),
@@ -1817,7 +1817,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(
                     ["example.org", "example.com",]
@@ -1864,7 +1864,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::OneOf(LiteralSet::Ip(vec![
                     IpRange::Cidr(IpCidr::new([127, 0, 0, 0].into(), 8).unwrap()),
@@ -1920,7 +1920,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into())
             }
@@ -1954,7 +1954,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Contains(vec![0x6F, 0x72, 0x67].into()),
             }
@@ -1988,7 +1988,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThan,
@@ -2023,13 +2023,13 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::LessThan,
                     rhs: ComparisonRhs::Index(ScalarExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(field("_tcp_limit").to_owned()),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     })),
                 },
             }
@@ -2382,7 +2382,7 @@ mod tests {
     fn test_scalar_expr_validation_and_conversion() {
         let index = IndexExpr {
             identifier: IdentifierExpr::Field(field("tcp.limit").to_owned()),
-            indexes: vec![],
+            indexes: Box::new([]),
         };
         let scalar = ScalarExpr::try_from(index.clone()).unwrap();
         assert_eq!(scalar.as_index_expr(), &index);
@@ -2398,7 +2398,7 @@ mod tests {
 
         let bytes = IndexExpr {
             identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-            indexes: vec![],
+            indexes: Box::new([]),
         };
         let scalar_bytes = ScalarExpr::try_from(bytes.clone()).unwrap();
         assert_eq!(scalar_bytes.get_type(), Type::Bytes);
@@ -2417,7 +2417,7 @@ mod tests {
 
         let ip = IndexExpr {
             identifier: IdentifierExpr::Field(field("ip.addr").to_owned()),
-            indexes: vec![],
+            indexes: Box::new([]),
         };
         let scalar_ip = ScalarExpr::try_from(ip.clone()).unwrap();
         assert_eq!(scalar_ip.get_type(), Type::Ip);
@@ -2432,7 +2432,7 @@ mod tests {
 
         let bool_expr = IndexExpr {
             identifier: IdentifierExpr::Field(field("ssl").to_owned()),
-            indexes: vec![],
+            indexes: Box::new([]),
         };
         assert_eq!(
             ScalarExpr::try_from(bool_expr),
@@ -2444,7 +2444,7 @@ mod tests {
 
         let mapped = IndexExpr {
             identifier: IdentifierExpr::Field(field("tcp.ports").to_owned()),
-            indexes: vec![FieldIndex::MapEach],
+            indexes: Box::new([FieldIndex::MapEach]),
         };
         assert_eq!(
             ScalarExpr::try_from(mapped),
@@ -2461,13 +2461,15 @@ mod tests {
 
         impl<'a> VisitorMut<'a> for AddMapEach {
             fn visit_index_expr(&mut self, expr: &'a mut IndexExpr) {
-                expr.indexes.push(FieldIndex::MapEach);
+                let mut indexes = std::mem::take(&mut expr.indexes).into_vec();
+                indexes.push(FieldIndex::MapEach);
+                expr.indexes = indexes.into_boxed_slice();
             }
         }
 
         let index = IndexExpr {
             identifier: IdentifierExpr::Field(field("tcp.limit").to_owned()),
-            indexes: vec![],
+            indexes: Box::new([]),
         };
         let mut scalar = ScalarExpr::try_from(index.clone()).unwrap();
         AddMapEach.visit_scalar_expr(&mut scalar);
@@ -2805,7 +2807,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(0)]),
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into()),
             }
@@ -2832,7 +2834,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
-                    indexes: vec![FieldIndex::MapKey("host".to_string())],
+                    indexes: Box::new([FieldIndex::MapKey("host".into())]),
                 },
                 op: ComparisonOpExpr::Contains("abc".to_owned().into()),
             }
@@ -2880,13 +2882,13 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("echo").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                             identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                            indexes: vec![],
-                        })],
+                            indexes: Box::new([]),
+                        })]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -2938,13 +2940,13 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("lowercase").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                             identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                            indexes: vec![],
-                        })],
+                            indexes: Box::new([]),
+                        })]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -2995,7 +2997,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(0)]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3033,7 +3035,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(0)]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
@@ -3071,7 +3073,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
-                    indexes: vec![FieldIndex::MapKey("missing".into())],
+                    indexes: Box::new([FieldIndex::MapKey("missing".into())]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3109,7 +3111,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
-                    indexes: vec![FieldIndex::MapKey("missing".into())],
+                    indexes: Box::new([FieldIndex::MapKey("missing".into())]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::NotEqual,
@@ -3148,13 +3150,13 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                             identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                            indexes: vec![],
-                        })],
+                            indexes: Box::new([]),
+                        })]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3203,18 +3205,18 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                                indexes: vec![],
+                                indexes: Box::new([]),
                             }),
                             FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 ".org".to_owned()
                             ))),
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3270,21 +3272,21 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("filter").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                                indexes: vec![],
+                                indexes: Box::new([]),
                             }),
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(
                                     field("array.of.bool").to_owned()
                                 ),
-                                indexes: vec![],
+                                indexes: Box::new([]),
                             }),
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![FieldIndex::ArrayIndex(0)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(0)]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3345,18 +3347,18 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                                indexes: vec![FieldIndex::MapEach],
+                                indexes: Box::new([FieldIndex::MapEach]),
                             }),
                             FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![FieldIndex::ArrayIndex(2)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(2)]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3414,18 +3416,18 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
-                                indexes: vec![FieldIndex::MapEach],
+                                indexes: Box::new([FieldIndex::MapEach]),
                             }),
                             FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![FieldIndex::ArrayIndex(2)],
+                    indexes: Box::new([FieldIndex::ArrayIndex(2)]),
                 },
                 op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                     "one-cf".to_owned().into(),
@@ -3568,7 +3570,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3602,7 +3604,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.headers").to_owned()),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3660,18 +3662,18 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                                indexes: vec![FieldIndex::MapEach],
+                                indexes: Box::new([FieldIndex::MapEach]),
                             }),
                             FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::from(
                                 "-cf".to_owned()
                             ))),
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -3728,13 +3730,13 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("len").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                             identifier: IdentifierExpr::Field(field("http.cookies").to_owned()),
-                            indexes: vec![FieldIndex::MapEach],
-                        }),],
+                            indexes: Box::new([FieldIndex::MapEach]),
+                        }),]),
                         context: None,
                     }),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::GreaterThan,
@@ -3860,7 +3862,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::InList {
                     list: list.to_owned(),
@@ -3894,7 +3896,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("tcp.port").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::InList {
                     list: list.to_owned(),
@@ -3929,7 +3931,7 @@ mod tests {
                     ComparisonExpr {
                         lhs: IndexExpr {
                             identifier: IdentifierExpr::Field(field("tcp.ports").to_owned()),
-                            indexes: vec![FieldIndex::MapEach],
+                            indexes: Box::new([FieldIndex::MapEach]),
                         },
                         op: ComparisonOpExpr::InList {
                             list: list.to_owned(),
@@ -4009,7 +4011,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
-                    indexes: vec![FieldIndex::MapEach, FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach, FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -4036,7 +4038,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
-                    indexes: vec![FieldIndex::ArrayIndex(5), FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::ArrayIndex(5), FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -4063,7 +4065,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.parts").to_owned()),
-                    indexes: vec![FieldIndex::MapEach, FieldIndex::ArrayIndex(5)],
+                    indexes: Box::new([FieldIndex::MapEach, FieldIndex::ArrayIndex(5)]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -4140,7 +4142,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -4178,7 +4180,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Matches(r),
             }
@@ -4213,7 +4215,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Wildcard(wildcard),
             }
@@ -4258,7 +4260,7 @@ mod tests {
             ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::StrictWildcard(wildcard),
             }
@@ -4298,19 +4300,19 @@ mod tests {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("concat").unwrap().to_owned(),
-                        args: vec![
+                        args: Box::new([
                             FunctionCallArgExpr::IndexExpr(IndexExpr {
                                 identifier: IdentifierExpr::Field(field("http.host").to_owned()),
-                                indexes: vec![],
+                                indexes: Box::new([]),
                             }),
                             FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new(
                                 "cd".as_bytes(),
                                 BytesFormat::Raw(1)
                             )))
-                        ],
+                        ]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,

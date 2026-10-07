@@ -41,7 +41,7 @@ pub enum FieldIndex {
     ArrayIndex(u32),
 
     /// Key into a Map
-    MapKey(String),
+    MapKey(Box<str>),
 
     /// Map each element by applying a function or a comparison
     MapEach,
@@ -77,7 +77,7 @@ impl<'i> Lex<'i> for FieldIndex {
                 )),
             },
             LiteralValue::Bytes(b) => match String::from_utf8(b.into()) {
-                Ok(s) => Ok((FieldIndex::MapKey(s), rest)),
+                Ok(s) => Ok((FieldIndex::MapKey(s.into_boxed_str()), rest)),
                 Err(_) => Err((LexErrorKind::ExpectedLiteral("expected utf8 string"), input)),
             },
             _ => unreachable!(),
@@ -471,12 +471,12 @@ pub struct UnknownFunctionError;
 /// An error that occurs when previously defined field gets redefined.
 #[derive(Debug, PartialEq, Eq, Error)]
 #[error("attempt to redefine field {0}")]
-pub struct FieldRedefinitionError(String);
+pub struct FieldRedefinitionError(Box<str>);
 
 /// An error that occurs when previously defined function gets redefined.
 #[derive(Debug, PartialEq, Eq, Error)]
 #[error("attempt to redefine function {0}")]
-pub struct FunctionRedefinitionError(String);
+pub struct FunctionRedefinitionError(Box<str>);
 
 /// An error that occurs when trying to redefine a field or function.
 #[derive(Debug, PartialEq, Eq, Error)]
@@ -495,7 +495,7 @@ pub enum IdentifierRedefinitionError {
 pub enum IdentifierRegistrationError {
     /// The identifier does not follow the syntax accepted for registration.
     #[error("invalid identifier {0}")]
-    InvalidIdentifier(String),
+    InvalidIdentifier(Box<str>),
 
     /// The identifier is already registered as a field or function.
     #[error("{0}")]
@@ -675,18 +675,18 @@ impl SchemeBuilder {
         optional: bool,
     ) -> Result<(), IdentifierRegistrationError> {
         if !is_valid_identifier(&name) {
-            return Err(IdentifierRegistrationError::InvalidIdentifier(
-                name.to_string(),
-            ));
+            return Err(IdentifierRegistrationError::InvalidIdentifier(Box::from(
+                name.as_ref(),
+            )));
         }
 
         match self.items.entry(name) {
             Entry::Occupied(entry) => Err(match entry.get() {
                 SchemeItem::Field(_) => IdentifierRedefinitionError::Field(FieldRedefinitionError(
-                    entry.key().to_string(),
+                    Box::from(entry.key().as_ref()),
                 )),
                 SchemeItem::Function(_) => IdentifierRedefinitionError::Function(
-                    FunctionRedefinitionError(entry.key().to_string()),
+                    FunctionRedefinitionError(Box::from(entry.key().as_ref())),
                 ),
             }
             .into()),
@@ -729,18 +729,18 @@ impl SchemeBuilder {
     ) -> Result<(), IdentifierRegistrationError> {
         let name = name.as_ref();
         if !is_valid_identifier(name) {
-            return Err(IdentifierRegistrationError::InvalidIdentifier(
-                name.to_string(),
-            ));
+            return Err(IdentifierRegistrationError::InvalidIdentifier(Box::from(
+                name,
+            )));
         }
 
         match self.items.entry(name.into()) {
             Entry::Occupied(entry) => Err(match entry.get() {
                 SchemeItem::Field(_) => IdentifierRedefinitionError::Field(FieldRedefinitionError(
-                    entry.key().to_string(),
+                    Box::from(entry.key().as_ref()),
                 )),
                 SchemeItem::Function(_) => IdentifierRedefinitionError::Function(
-                    FunctionRedefinitionError(entry.key().to_string()),
+                    FunctionRedefinitionError(Box::from(entry.key().as_ref())),
                 ),
             }
             .into()),
@@ -782,8 +782,23 @@ impl SchemeBuilder {
 
     /// Build a new [`Scheme`] from this builder.
     pub fn build(self) -> Scheme {
+        let Self {
+            fields,
+            functions,
+            items,
+            list_types,
+            lists,
+            nil_not_equal_is_false,
+        } = self;
         Scheme {
-            inner: Arc::new(self),
+            inner: Arc::new(SchemeData {
+                fields: fields.into_boxed_slice(),
+                functions: functions.into_boxed_slice(),
+                items,
+                list_types,
+                lists: lists.into_boxed_slice(),
+                nil_not_equal_is_false,
+            }),
         }
     }
 }
@@ -808,7 +823,17 @@ impl<N: AsRef<str>> FromIterator<(N, Type)> for SchemeBuilder {
 /// in ambiguous contexts.
 #[derive(Clone, Debug)]
 pub struct Scheme {
-    inner: Arc<SchemeBuilder>,
+    inner: Arc<SchemeData>,
+}
+
+#[derive(Debug)]
+struct SchemeData {
+    fields: Box<[FieldDefinition]>,
+    functions: Box<[(IdentifierName, Box<dyn FunctionDefinition>)]>,
+    items: HashMap<IdentifierName, SchemeItem, FnvBuildHasher>,
+    list_types: HashMap<Type, usize, FnvBuildHasher>,
+    lists: Box<[(Type, Box<dyn ListDefinition>)]>,
+    nil_not_equal_is_false: bool,
 }
 
 impl PartialEq for Scheme {

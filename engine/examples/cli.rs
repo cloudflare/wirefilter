@@ -27,14 +27,14 @@ fn main() {
         .add_function(
             "panic",
             SimpleFunctionDefinition {
-                params: vec![SimpleFunctionParam {
+                params: Box::new([SimpleFunctionParam {
                     arg_kind: SimpleFunctionArgKind::Field,
                     val_type: Type::Bytes,
-                }],
-                opt_params: vec![SimpleFunctionOptParam {
+                }]),
+                opt_params: Box::new([SimpleFunctionOptParam {
                     arg_kind: SimpleFunctionArgKind::Literal,
                     default_value: "".into(),
-                }],
+                }]),
                 return_type: Type::Bytes,
                 implementation: SimpleFunctionImpl::new(panic_function),
             },

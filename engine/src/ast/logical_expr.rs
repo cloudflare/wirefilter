@@ -925,7 +925,7 @@ fn test() {
             LogicalExpr::Comparison(ComparisonExpr {
                 lhs: IndexExpr {
                     identifier: IdentifierExpr::Field(scheme.get_field("at").unwrap().to_owned()),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::IsTrue
             })

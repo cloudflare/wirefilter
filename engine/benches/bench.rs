@@ -210,11 +210,11 @@ fn bench_string_function_comparison(c: &mut Criterion) {
             (
                 "lowercase",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(lowercase),
                 },
@@ -222,11 +222,11 @@ fn bench_string_function_comparison(c: &mut Criterion) {
             (
                 "uppercase",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(uppercase),
                 },
