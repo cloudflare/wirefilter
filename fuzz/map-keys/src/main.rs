@@ -56,11 +56,11 @@ fn first_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
 // function are true.
 pub static FIRST_FN: LazyLock<SimpleFunctionDefinition> =
     LazyLock::new(|| SimpleFunctionDefinition {
-        params: vec![SimpleFunctionParam {
+        params: Box::new([SimpleFunctionParam {
             arg_kind: SimpleFunctionArgKind::Field,
             val_type: Type::Map(Type::Bytes.into()),
-        }],
-        opt_params: vec![],
+        }]),
+        opt_params: Box::new([]),
         return_type: Type::Bytes,
         implementation: SimpleFunctionImpl::new(first_impl),
     });

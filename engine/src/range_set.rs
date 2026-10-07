@@ -6,7 +6,7 @@ use std::ops::RangeInclusive;
 /// RangeSet provides a set-like interface that allows to search for items while
 /// being constructed from and storing inclusive ranges in a compact fashion.
 pub struct RangeSet<T> {
-    ranges: Vec<RangeInclusive<T>>,
+    ranges: Box<[RangeInclusive<T>]>,
 }
 
 impl<T: Ord + Copy> From<Vec<RangeInclusive<T>>> for RangeSet<T> {
@@ -26,7 +26,9 @@ impl<T: Ord + Copy> From<Vec<RangeInclusive<T>>> for RangeSet<T> {
                 false
             }
         });
-        RangeSet { ranges }
+        RangeSet {
+            ranges: ranges.into_boxed_slice(),
+        }
     }
 }
 

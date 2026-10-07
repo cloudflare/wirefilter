@@ -148,7 +148,7 @@ pub enum LexErrorKind {
     #[error("invalid list name {name:?}")]
     InvalidListName {
         /// Name of the list
-        name: String,
+        name: Box<str>,
     },
 
     /// Maximum nesting depth exceeded while parsing.

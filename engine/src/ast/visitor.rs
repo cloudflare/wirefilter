@@ -260,11 +260,11 @@ mod tests {
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(|args| args.next()?.ok()),
                 },

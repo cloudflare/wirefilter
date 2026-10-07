@@ -1,23 +1,24 @@
-use crate::{FilterParser, RegexFormat};
-use thiserror::Error;
-
-/// Dummy regex error.
-#[derive(Debug, PartialEq, Error)]
-pub enum Error {}
+use super::Error;
+use crate::{ParserSettings, RegexFormat};
+use arcstr::ArcStr;
 
 /// Dummy regex wrapper that can only store a pattern
 /// but not actually be used for matching.
 #[derive(Clone)]
 pub struct Regex {
-    pattern: String,
+    pattern: ArcStr,
     format: RegexFormat,
 }
 
 impl Regex {
     /// Creates a new dummy regex.
-    pub fn new(pattern: &str, format: RegexFormat, _: &FilterParser<'_>) -> Result<Self, Error> {
+    pub fn new(
+        pattern: impl Into<ArcStr>,
+        format: RegexFormat,
+        _: &ParserSettings,
+    ) -> Result<Self, Error> {
         Ok(Self {
-            pattern: pattern.to_string(),
+            pattern: pattern.into(),
             format,
         })
     }
@@ -29,7 +30,13 @@ impl Regex {
 
     /// Returns the original string of this dummy regex wrapper.
     pub fn as_str(&self) -> &str {
-        self.pattern.as_str()
+        &self.pattern
+    }
+
+    /// Returns the shared pattern of this dummy regex wrapper.
+    #[inline]
+    pub fn pattern(&self) -> &ArcStr {
+        &self.pattern
     }
 
     /// Returns the format behind the regex

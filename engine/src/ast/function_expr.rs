@@ -228,7 +228,7 @@ impl<'a> From<&'a FunctionCallArgExpr> for FunctionParam<'a> {
 pub struct FunctionCallExpr {
     #[serde(rename = "name")]
     pub(crate) function: Function,
-    pub(crate) args: Vec<FunctionCallArgExpr>,
+    pub(crate) args: Box<[FunctionCallArgExpr]>,
     #[serde(skip)]
     pub(crate) context: Option<FunctionDefinitionContext>,
 }
@@ -297,6 +297,7 @@ impl ValueExpr for FunctionCallExpr {
 
         if map_each_count > 0 {
             let first = args.remove(0);
+            let args = args.into_boxed_slice();
 
             #[inline(always)]
             fn compute<'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
@@ -381,6 +382,7 @@ impl ValueExpr for FunctionCallExpr {
                 })
             }
         } else {
+            let args = args.into_boxed_slice();
             CompiledValueExpr::new(move |ctx| {
                 match call(&mut args.iter().map(|arg| arg.execute(ctx))) {
                     Some(value) => {
@@ -397,7 +399,7 @@ impl ValueExpr for FunctionCallExpr {
 impl FunctionCallExpr {
     pub(crate) fn new(
         function: Function,
-        args: Vec<FunctionCallArgExpr>,
+        args: Box<[FunctionCallArgExpr]>,
         context: Option<FunctionDefinitionContext>,
     ) -> Self {
         Self {
@@ -500,7 +502,8 @@ impl FunctionCallExpr {
 
         input = expect(input, ")")?;
 
-        let function_call = FunctionCallExpr::new(function.to_owned(), args, ctx);
+        let function_call =
+            FunctionCallExpr::new(function.to_owned(), args.into_boxed_slice(), ctx);
 
         Ok((function_call, input))
     }
@@ -670,11 +673,11 @@ mod tests {
             .add_function(
                 "echo",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![
+                    }]),
+                    opt_params: Box::new([
                         SimpleFunctionOptParam {
                             arg_kind: SimpleFunctionArgKind::Literal,
                             default_value: LhsValue::Int(10),
@@ -683,7 +686,7 @@ mod tests {
                             arg_kind: SimpleFunctionArgKind::Literal,
                             default_value: LhsValue::Int(1),
                         },
-                    ],
+                    ]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(echo_function),
                 },
@@ -693,11 +696,11 @@ mod tests {
             .add_function(
                 "lower",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bytes,
                     implementation: SimpleFunctionImpl::new(lower_function),
                 },
@@ -707,7 +710,7 @@ mod tests {
             .add_function(
                 "regex_replace",
                 SimpleFunctionDefinition {
-                    params: vec![
+                    params: Box::new([
                         SimpleFunctionParam {
                             arg_kind: SimpleFunctionArgKind::Field,
                             val_type: Type::Bytes,
@@ -720,8 +723,8 @@ mod tests {
                             arg_kind: SimpleFunctionArgKind::Literal,
                             val_type: Type::Bytes,
                         },
-                    ],
-                    opt_params: vec![],
+                    ]),
+                    opt_params: Box::new([]),
                     return_type: Type::Bool,
                     implementation: SimpleFunctionImpl::new(regex_replace),
                 },
@@ -731,11 +734,11 @@ mod tests {
             .add_function(
                 "len",
                 SimpleFunctionDefinition {
-                    params: vec![SimpleFunctionParam {
+                    params: Box::new([SimpleFunctionParam {
                         arg_kind: SimpleFunctionArgKind::Field,
                         val_type: Type::Bytes,
-                    }],
-                    opt_params: vec![],
+                    }]),
+                    opt_params: Box::new([]),
                     return_type: Type::Int,
                     implementation: SimpleFunctionImpl::new(len_function),
                 },
@@ -751,16 +754,16 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"echo ( http.host, 1, 2 );"#),
             FunctionCallExpr {
                 function: SCHEME.get_function("echo").unwrap().to_owned(),
-                args: vec![
+                args: Box::new([
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("http.host").unwrap().to_owned()
                         ),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     }),
                     FunctionCallArgExpr::Literal(LiteralValue::Int(1)),
                     FunctionCallArgExpr::Literal(LiteralValue::Int(2)),
-                ],
+                ]),
                 context: None,
             },
             ";"
@@ -794,12 +797,12 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("echo ( http.host );"),
             FunctionCallExpr {
                 function: SCHEME.get_function("echo").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                     identifier: IdentifierExpr::Field(
                         SCHEME.get_field("http.host").unwrap().to_owned()
                     ),
-                    indexes: vec![],
-                })],
+                    indexes: Box::new([]),
+                })]),
                 context: None,
             },
             ";"
@@ -826,16 +829,16 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as(r#"echo (http.host,1,2);"#),
             FunctionCallExpr {
                 function: SCHEME.get_function("echo").unwrap().to_owned(),
-                args: vec![
+                args: Box::new([
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(
                             SCHEME.get_field("http.host").unwrap().to_owned()
                         ),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     }),
                     FunctionCallArgExpr::Literal(LiteralValue::Int(1)),
                     FunctionCallArgExpr::Literal(LiteralValue::Int(2)),
-                ],
+                ]),
                 context: None,
             },
             ";"
@@ -894,17 +897,18 @@ mod tests {
                 args: [FunctionCallArgExpr::IndexExpr(IndexExpr {
                     identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                         function: SCHEME.get_function("echo").unwrap().to_owned(),
-                        args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                        args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                             identifier: IdentifierExpr::Field(
                                 SCHEME.get_field("http.host").unwrap().to_owned()
                             ),
-                            indexes: vec![],
-                        })],
+                            indexes: Box::new([]),
+                        })]),
                         context: None,
                     }),
-                    indexes: vec![],
+                    indexes: Box::new([]),
                 })]
-                .to_vec(),
+                .to_vec()
+                .into_boxed_slice(),
                 context: None,
             },
             ";"
@@ -953,7 +957,7 @@ mod tests {
                                                 .unwrap()
                                                 .to_owned()
                                         ),
-                                        indexes: vec![],
+                                        indexes: Box::new([]),
                                     },
                                     op: ComparisonOpExpr::IsTrue,
                                 }),
@@ -965,7 +969,7 @@ mod tests {
                                                 .unwrap()
                                                 .to_owned()
                                         ),
-                                        indexes: vec![],
+                                        indexes: Box::new([]),
                                     },
                                     op: ComparisonOpExpr::IsTrue,
                                 })
@@ -1006,15 +1010,15 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("echo ( http.request.headers.names[*] );"),
             FunctionCallExpr {
                 function: SCHEME.get_function("echo").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                     identifier: IdentifierExpr::Field(
                         SCHEME
                             .get_field("http.request.headers.names")
                             .unwrap()
                             .to_owned()
                     ),
-                    indexes: vec![FieldIndex::MapEach],
-                })],
+                    indexes: Box::new([FieldIndex::MapEach]),
+                })]),
                 context: None,
             },
             ";"
@@ -1040,12 +1044,12 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("echo ( http.headers[*] );"),
             FunctionCallExpr {
                 function: SCHEME.get_function("echo").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                     identifier: IdentifierExpr::Field(
                         SCHEME.get_field("http.headers").unwrap().to_owned()
                     ),
-                    indexes: vec![FieldIndex::MapEach],
-                })],
+                    indexes: Box::new([FieldIndex::MapEach]),
+                })]),
                 context: None,
             },
             ";"
@@ -1077,7 +1081,7 @@ mod tests {
                             .unwrap()
                             .to_owned()
                     ),
-                    indexes: vec![FieldIndex::MapEach],
+                    indexes: Box::new([FieldIndex::MapEach]),
                 },
                 op: ComparisonOpExpr::Ordering {
                     op: OrderingOp::Equal,
@@ -1097,18 +1101,18 @@ mod tests {
                         lhs: IndexExpr {
                             identifier: IdentifierExpr::FunctionCallExpr(FunctionCallExpr {
                                 function: SCHEME.get_function("lower").unwrap().to_owned(),
-                                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                                args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                                     identifier: IdentifierExpr::Field(
                                         SCHEME
                                             .get_field("http.request.headers.names")
                                             .unwrap()
                                             .to_owned()
                                     ),
-                                    indexes: vec![FieldIndex::MapEach],
-                                })],
+                                    indexes: Box::new([FieldIndex::MapEach]),
+                                })]),
                                 context: None,
                             }),
-                            indexes: vec![FieldIndex::MapEach],
+                            indexes: Box::new([FieldIndex::MapEach]),
                         },
                         op: ComparisonOpExpr::Contains("c".to_string().into(),)
                     }
@@ -1156,15 +1160,15 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("len(http.request.headers.names[*])"),
             FunctionCallExpr {
                 function: SCHEME.get_function("len").unwrap().to_owned(),
-                args: vec![FunctionCallArgExpr::IndexExpr(IndexExpr {
+                args: Box::new([FunctionCallArgExpr::IndexExpr(IndexExpr {
                     identifier: IdentifierExpr::Field(
                         SCHEME
                             .get_field("http.request.headers.names")
                             .unwrap()
                             .to_owned()
                     ),
-                    indexes: vec![FieldIndex::MapEach],
-                })],
+                    indexes: Box::new([FieldIndex::MapEach]),
+                })]),
                 context: None,
             },
             ""
@@ -1193,7 +1197,7 @@ mod tests {
                                         .unwrap()
                                         .to_owned()
                                 ),
-                                indexes: vec![FieldIndex::MapEach],
+                                indexes: Box::new([FieldIndex::MapEach]),
                             },
                             op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                                 "Cookie".to_owned().into(),
@@ -1250,7 +1254,7 @@ mod tests {
                                         .unwrap()
                                         .to_owned()
                                 ),
-                                indexes: vec![FieldIndex::MapEach],
+                                indexes: Box::new([FieldIndex::MapEach]),
                             },
                             op: ComparisonOpExpr::OneOf(LiteralSet::Bytes(vec![
                                 "Cookie".to_owned().into(),
@@ -1298,14 +1302,14 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("regex_replace(http.host, r\"this is a r##raw## string\", r\"this is a new r##raw## string\") eq \"test\""),
             FunctionCallExpr {
                 function: SCHEME.get_function("regex_replace").unwrap().to_owned(),
-                args: vec![
+                args: Box::new([
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     }),
                     FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a r##raw## string".as_bytes(), BytesFormat::Raw(0)))),
                     FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a new r##raw## string".as_bytes(), BytesFormat::Raw(0))))
-                ],
+                ]),
                 context: None,
             },
             " eq \"test\""
@@ -1339,14 +1343,14 @@ mod tests {
             FilterParser::new(&SCHEME).lex_as("regex_replace(http.host, r###\"this is a r##\"raw\"## string\"###, r###\"this is a new r##\"raw\"## string\"###) eq \"test\""),
             FunctionCallExpr {
                 function: SCHEME.get_function("regex_replace").unwrap().to_owned(),
-                args: vec![
+                args: Box::new([
                     FunctionCallArgExpr::IndexExpr(IndexExpr {
                         identifier: IdentifierExpr::Field(SCHEME.get_field("http.host").unwrap().to_owned()),
-                        indexes: vec![],
+                        indexes: Box::new([]),
                     }),
                     FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3)))),
                     FunctionCallArgExpr::Literal(LiteralValue::Bytes(BytesExpr::new("this is a new r##\"raw\"## string".as_bytes(), BytesFormat::Raw(3))))
-                ],
+                ]),
                 context: None,
             },
             " eq \"test\""
@@ -1491,7 +1495,7 @@ mod tests {
             FilterParser::new(&SCHEME)
                 .lex_as::<FunctionCallExpr>("echo ( http.headers[*][\"host\"] );"),
             LexErrorKind::InvalidIndexAccess(IndexAccessError {
-                index: FieldIndex::MapKey("host".to_string()),
+                index: FieldIndex::MapKey("host".into()),
                 actual: Type::Bytes,
             }),
             "[\"host\"]"

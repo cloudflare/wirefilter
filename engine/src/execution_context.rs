@@ -29,8 +29,8 @@ pub enum SetFieldValueError {
 #[derive(Debug, PartialEq, Eq, Error)]
 #[error("Invalid list matcher {matcher} for list {list}")]
 pub struct InvalidListMatcherError {
-    matcher: String,
-    list: String,
+    matcher: Box<str>,
+    list: Box<str>,
 }
 
 /// An execution context stores an associated [`struct@crate::Scheme`] and a
