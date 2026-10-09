@@ -1,4 +1,5 @@
 use super::{FilterAst, FilterValueAst};
+use crate::functions::{FunctionDefinition, FunctionSettings};
 use crate::lex::{LexErrorKind, LexResult, LexWith, complete};
 use crate::scheme::Scheme;
 use std::cmp::{max, min};
@@ -109,6 +110,9 @@ pub struct ParserSettings {
     /// Maximum nesting depth allowed while parsing.
     /// Default: 128
     pub max_nesting_depth: u16,
+    /// Settings for custom functions registered by embedders.
+    /// Default: empty
+    pub function_settings: FunctionSettings,
 }
 
 impl Default for ParserSettings {
@@ -121,7 +125,20 @@ impl Default for ParserSettings {
             regex_dfa_size_limit: 2 * (1 << 20),
             wildcard_star_limit: usize::MAX,
             max_nesting_depth: 128,
+            function_settings: FunctionSettings::default(),
         }
+    }
+}
+
+impl ParserSettings {
+    /// Sets settings shared by every registration of function definition type `F`.
+    ///
+    /// This replaces any previously configured value for `F`.
+    pub fn set_function_settings<F: FunctionDefinition + 'static>(
+        &mut self,
+        settings: F::Settings,
+    ) {
+        self.function_settings.set::<F>(settings);
     }
 }
 
@@ -130,7 +147,6 @@ impl Default for ParserSettings {
 pub struct FilterParser<'s> {
     pub(crate) scheme: &'s Scheme,
     pub(crate) settings: ParserSettings,
-    current_nesting_depth: u16,
 }
 
 impl<'s> FilterParser<'s> {
@@ -140,18 +156,13 @@ impl<'s> FilterParser<'s> {
         Self {
             scheme,
             settings: ParserSettings::default(),
-            current_nesting_depth: 0,
         }
     }
 
     /// Creates a new parser with the specified settings.
     #[inline]
     pub fn with_settings(scheme: &'s Scheme, settings: ParserSettings) -> Self {
-        Self {
-            scheme,
-            settings,
-            current_nesting_depth: 0,
-        }
+        Self { scheme, settings }
     }
 
     /// Returns the [`Scheme`](struct@Scheme) for which this parser has been constructor for.
@@ -160,31 +171,18 @@ impl<'s> FilterParser<'s> {
         self.scheme
     }
 
+    /// Creates a parsing context borrowing this parser.
     #[inline]
-    pub(crate) fn lex_as<'i, L: for<'p> LexWith<'i, &'p FilterParser<'s>>>(
-        &self,
-        input: &'i str,
-    ) -> LexResult<'i, L> {
-        L::lex_with(input, self)
+    pub fn context(&self) -> ParserContext<'_> {
+        ParserContext::new(self)
     }
 
     #[inline]
-    pub(crate) fn with_increased_nesting<'i>(
-        &self,
-        span: &'i str,
-    ) -> Result<Self, (LexErrorKind, &'i str)> {
-        if self.current_nesting_depth >= self.settings.max_nesting_depth {
-            Err((
-                LexErrorKind::NestingLimitExceeded {
-                    limit: self.settings.max_nesting_depth,
-                },
-                span,
-            ))
-        } else {
-            let mut nested = self.clone();
-            nested.current_nesting_depth += 1;
-            Ok(nested)
-        }
+    pub(crate) fn lex_as<'i, L>(&self, input: &'i str) -> LexResult<'i, L>
+    where
+        L: for<'p, 'c> LexWith<'i, &'p ParserContext<'c>>,
+    {
+        self.context().lex_as(input)
     }
 
     /// Parses a filter expression into an AST form.
@@ -249,5 +247,271 @@ impl<'s> FilterParser<'s> {
     #[inline]
     pub fn max_nesting_depth(&self) -> u16 {
         self.settings.max_nesting_depth
+    }
+
+    /// Sets settings shared by every registration of function definition type `F`.
+    ///
+    /// This replaces any previously configured value for `F`.
+    #[inline]
+    pub fn set_function_settings<F: FunctionDefinition + 'static>(
+        &mut self,
+        settings: F::Settings,
+    ) {
+        self.settings.set_function_settings::<F>(settings);
+    }
+}
+
+/// Read-only parser configuration and per-parse state used by lexer implementations.
+///
+/// Create a context with [`FilterParser::context`]. Nesting state is managed internally while
+/// parsing an expression.
+#[derive(Clone, Copy)]
+pub struct ParserContext<'a> {
+    parser: &'a FilterParser<'a>,
+    current_nesting_depth: u16,
+}
+
+impl<'a> ParserContext<'a> {
+    fn new(parser: &'a FilterParser<'a>) -> Self {
+        Self {
+            parser,
+            current_nesting_depth: 0,
+        }
+    }
+
+    pub(crate) fn lex_as<'i, L>(&self, input: &'i str) -> LexResult<'i, L>
+    where
+        L: for<'p> LexWith<'i, &'p Self>,
+    {
+        L::lex_with(input, self)
+    }
+
+    pub(crate) fn with_increased_nesting<'i>(
+        &self,
+        span: &'i str,
+    ) -> Result<Self, (LexErrorKind, &'i str)> {
+        if self.current_nesting_depth >= self.parser.settings.max_nesting_depth {
+            Err((
+                LexErrorKind::NestingLimitExceeded {
+                    limit: self.parser.settings.max_nesting_depth,
+                },
+                span,
+            ))
+        } else {
+            let mut nested = *self;
+            nested.current_nesting_depth += 1;
+            Ok(nested)
+        }
+    }
+
+    /// Returns the parser settings used by this context.
+    #[inline]
+    pub fn settings(&self) -> &ParserSettings {
+        self.parser.settings()
+    }
+
+    /// Returns the scheme used by this context.
+    #[inline]
+    pub fn scheme(&self) -> &Scheme {
+        self.parser.scheme()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        CompiledFunction, FunctionCallExpr, FunctionDefinition, FunctionDefinitionContext,
+        FunctionParam, FunctionParamError, SchemeBuilder, Type,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static FUNCTION_SETTINGS_CLONES: AtomicUsize = AtomicUsize::new(0);
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct CloneCountingFunctionSettings;
+
+    impl Clone for CloneCountingFunctionSettings {
+        fn clone(&self) -> Self {
+            FUNCTION_SETTINGS_CLONES.fetch_add(1, Ordering::Relaxed);
+            Self
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct TestFunctionSettings {
+        limit: usize,
+    }
+
+    #[derive(Debug)]
+    struct SettingsAwareFunction;
+
+    impl FunctionDefinition for SettingsAwareFunction {
+        type Settings = TestFunctionSettings;
+
+        fn context(&self, settings: &ParserSettings) -> Option<FunctionDefinitionContext> {
+            let settings = settings.function_settings.get::<Self>()?;
+            Some(FunctionDefinitionContext::new(settings.limit))
+        }
+
+        fn check_param(
+            &self,
+            _: &ParserSettings,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: &FunctionParam<'_>,
+            _: Option<&mut FunctionDefinitionContext>,
+        ) -> Result<(), FunctionParamError> {
+            unreachable!("settings_aware takes no arguments")
+        }
+
+        fn return_type(
+            &self,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<&FunctionDefinitionContext>,
+        ) -> Type {
+            Type::Bool
+        }
+
+        fn arg_count(&self) -> (usize, Option<usize>) {
+            (0, Some(0))
+        }
+
+        fn compile(
+            &self,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<FunctionDefinitionContext>,
+        ) -> CompiledFunction {
+            Box::new(|_| None)
+        }
+    }
+
+    #[derive(Debug)]
+    struct CloneCountingFunction;
+
+    impl FunctionDefinition for CloneCountingFunction {
+        type Settings = CloneCountingFunctionSettings;
+
+        fn check_param(
+            &self,
+            _: &ParserSettings,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: &FunctionParam<'_>,
+            _: Option<&mut FunctionDefinitionContext>,
+        ) -> Result<(), FunctionParamError> {
+            unreachable!("clone_counting takes no arguments")
+        }
+
+        fn return_type(
+            &self,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<&FunctionDefinitionContext>,
+        ) -> Type {
+            Type::Bool
+        }
+
+        fn arg_count(&self) -> (usize, Option<usize>) {
+            (0, Some(0))
+        }
+
+        fn compile(
+            &self,
+            _: &mut dyn ExactSizeIterator<Item = FunctionParam<'_>>,
+            _: Option<FunctionDefinitionContext>,
+        ) -> CompiledFunction {
+            Box::new(|_| None)
+        }
+    }
+
+    #[test]
+    fn nested_parsing_does_not_clone_function_settings() {
+        let mut builder = SchemeBuilder::new();
+        builder.add_field("flag", Type::Bool).unwrap();
+        let scheme = builder.build();
+        let mut parser = FilterParser::new(&scheme);
+        parser.set_function_settings::<CloneCountingFunction>(CloneCountingFunctionSettings);
+        FUNCTION_SETTINGS_CLONES.store(0, Ordering::Relaxed);
+
+        parser.parse("(((flag)))").unwrap();
+
+        assert_eq!(FUNCTION_SETTINGS_CLONES.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn function_context_receives_parser_settings() {
+        let mut builder = SchemeBuilder::new();
+        builder
+            .add_function("settings_aware", SettingsAwareFunction)
+            .unwrap();
+        let scheme = builder.build();
+
+        let parser = FilterParser::new(&scheme);
+        let (function, _) = parser
+            .lex_as::<FunctionCallExpr>("settings_aware()")
+            .unwrap();
+        assert!(function.context().is_none());
+
+        let mut parser = FilterParser::new(&scheme);
+        parser.set_function_settings::<SettingsAwareFunction>(TestFunctionSettings { limit: 42 });
+        let (function, _) = parser
+            .lex_as::<FunctionCallExpr>("settings_aware()")
+            .unwrap();
+        assert_eq!(
+            function.context().unwrap().downcast_ref::<usize>(),
+            Some(&42)
+        );
+    }
+
+    #[test]
+    fn function_settings_store_values_by_function_type() {
+        let mut settings = FunctionSettings::default();
+        assert!(settings.get::<SettingsAwareFunction>().is_none());
+        assert!(settings.get::<CloneCountingFunction>().is_none());
+
+        settings.set::<SettingsAwareFunction>(TestFunctionSettings { limit: 42 });
+        settings.set::<CloneCountingFunction>(CloneCountingFunctionSettings);
+        assert_eq!(
+            settings.get::<SettingsAwareFunction>(),
+            Some(&TestFunctionSettings { limit: 42 })
+        );
+        assert_eq!(
+            settings.get::<CloneCountingFunction>(),
+            Some(&CloneCountingFunctionSettings)
+        );
+
+        let original = settings.clone();
+        assert_eq!(settings, original);
+
+        settings.set::<SettingsAwareFunction>(TestFunctionSettings { limit: 7 });
+        assert_ne!(settings, original);
+        assert_eq!(
+            settings.get::<SettingsAwareFunction>(),
+            Some(&TestFunctionSettings { limit: 7 })
+        );
+        assert_eq!(
+            settings.get::<CloneCountingFunction>(),
+            Some(&CloneCountingFunctionSettings)
+        );
+    }
+
+    #[test]
+    fn registrations_of_same_function_type_share_settings() {
+        let mut builder = SchemeBuilder::new();
+        builder
+            .add_function("settings_aware_one", SettingsAwareFunction)
+            .unwrap();
+        builder
+            .add_function("settings_aware_two", SettingsAwareFunction)
+            .unwrap();
+        let scheme = builder.build();
+        let mut parser = FilterParser::new(&scheme);
+        parser.set_function_settings::<SettingsAwareFunction>(TestFunctionSettings { limit: 42 });
+
+        for name in ["settings_aware_one()", "settings_aware_two()"] {
+            let (function, _) = parser.lex_as::<FunctionCallExpr>(name).unwrap();
+            assert_eq!(
+                function.context().unwrap().downcast_ref::<usize>(),
+                Some(&42)
+            );
+        }
     }
 }

@@ -1,6 +1,7 @@
+use crate::ast::parse::ParserContext;
 use crate::lex::{LexErrorKind, LexResult, LexWith, span};
 use crate::rhs_types::bytes::lex_raw_string_as_str;
-use crate::{Compare, ExecutionContext, FilterParser, LhsValue};
+use crate::{Compare, ExecutionContext, FilterParser, LhsValue, ParserSettings};
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
@@ -59,16 +60,16 @@ impl Debug for Regex {
 
 fn lex_regex_from_raw_string<'i>(
     input: &'i str,
-    parser: &FilterParser<'_>,
+    settings: &ParserSettings,
 ) -> LexResult<'i, Regex> {
     let ((lexed, hashes), input) = lex_raw_string_as_str(input)?;
-    match Regex::new(lexed, RegexFormat::Raw(hashes), parser.settings()) {
+    match Regex::new(lexed, RegexFormat::Raw(hashes), settings) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), input)),
     }
 }
 
-fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Regex> {
+fn lex_regex_from_literal<'i>(input: &'i str, settings: &ParserSettings) -> LexResult<'i, Regex> {
     let mut regex_buf = String::new();
     let mut in_char_class = false;
     let (regex_str, input) = {
@@ -104,7 +105,7 @@ fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexR
             };
         }
     };
-    match Regex::new(&regex_buf, RegexFormat::Literal, parser.settings()) {
+    match Regex::new(&regex_buf, RegexFormat::Literal, settings) {
         Ok(regex) => Ok((regex, input)),
         Err(err) => Err((LexErrorKind::ParseRegex(err), regex_str)),
     }
@@ -112,15 +113,25 @@ fn lex_regex_from_literal<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexR
 
 impl<'i, 's> LexWith<'i, &FilterParser<'s>> for Regex {
     fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
-        if let Some(c) = input.as_bytes().first() {
-            match c {
-                b'"' => lex_regex_from_literal(&input[1..], parser),
-                b'r' => lex_regex_from_raw_string(&input[1..], parser),
-                _ => Err((LexErrorKind::ExpectedName("\" or r"), input)),
-            }
-        } else {
-            Err((LexErrorKind::EOF, input))
+        lex_regex(input, parser.settings())
+    }
+}
+
+impl<'i> LexWith<'i, &ParserContext<'_>> for Regex {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
+        lex_regex(input, parser.settings())
+    }
+}
+
+fn lex_regex<'i>(input: &'i str, settings: &ParserSettings) -> LexResult<'i, Regex> {
+    if let Some(c) = input.as_bytes().first() {
+        match c {
+            b'"' => lex_regex_from_literal(&input[1..], settings),
+            b'r' => lex_regex_from_raw_string(&input[1..], settings),
+            _ => Err((LexErrorKind::ExpectedName("\" or r"), input)),
         }
+    } else {
+        Err((LexErrorKind::EOF, input))
     }
 }
 
