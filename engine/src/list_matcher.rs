@@ -102,7 +102,7 @@ impl ListDefinition for AlwaysList {
 
 impl ListMatcher for AlwaysListMatcher {
     fn match_value(&self, _: &str, _: &LhsValue<'_>) -> bool {
-        false
+        true
     }
 
     fn clear(&mut self) {}

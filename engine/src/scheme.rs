@@ -2071,6 +2071,22 @@ fn test_scheme_json_rejects_invalid_identifier() {
 }
 
 #[test]
+fn test_always_list_matches() {
+    use crate::{AlwaysList, ExecutionContext};
+
+    let mut builder = Scheme! { num: Int };
+    builder.add_list(Type::Int, AlwaysList {}).unwrap();
+    let scheme = builder.build();
+
+    let filter = scheme.parse("num in $numbers").unwrap().compile();
+    let mut ctx = ExecutionContext::new(&scheme);
+    ctx.set_field_value(scheme.get_field("num").unwrap(), 42)
+        .unwrap();
+
+    assert_eq!(filter.execute(&ctx), Ok(true));
+}
+
+#[test]
 fn test_nil_not_equal_behavior_true() {
     use crate::{Array, ExecutionContext, Map};
 
