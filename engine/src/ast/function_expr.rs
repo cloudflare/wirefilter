@@ -292,12 +292,11 @@ impl ValueExpr for FunctionCallExpr {
                 .any(FunctionCallArgExpr::is_expensive_to_reevaluate);
         let mut args = args
             .into_iter()
-            .map(|arg| compiler.compile_function_call_arg_expr(arg))
-            .collect::<Vec<_>>();
+            .map(|arg| compiler.compile_function_call_arg_expr(arg));
 
         if map_each_count > 0 {
-            let first = args.remove(0);
-            let args = args.into_boxed_slice();
+            let first = args.next().unwrap();
+            let args = args.collect::<Box<[_]>>();
 
             #[inline(always)]
             fn compute<'a, I: ExactSizeIterator<Item = CompiledValueResult<'a>>>(
@@ -356,7 +355,10 @@ impl ValueExpr for FunctionCallExpr {
                     // re-evaluate, so evaluate all of them once per call and
                     // reuse them (cheaply cloned) for every element instead of
                     // re-executing the argument expressions for every element.
-                    let extra_args = args.iter().map(|arg| arg.execute(ctx)).collect::<Vec<_>>();
+                    let extra_args = args
+                        .iter()
+                        .map(|arg| arg.execute(ctx))
+                        .collect::<Box<[_]>>();
                     compute(
                         first.execute(ctx),
                         &call,
@@ -382,7 +384,7 @@ impl ValueExpr for FunctionCallExpr {
                 })
             }
         } else {
-            let args = args.into_boxed_slice();
+            let args = args.collect::<Box<[_]>>();
             CompiledValueExpr::new(move |ctx| {
                 match call(&mut args.iter().map(|arg| arg.execute(ctx))) {
                     Some(value) => {
