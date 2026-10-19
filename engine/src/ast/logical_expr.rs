@@ -412,8 +412,7 @@ impl Expr for LogicalExpr {
                                 CompiledExpr::One(one) => one,
                                 CompiledExpr::Vec(_) => unreachable!(),
                             })
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice();
+                            .collect::<Box<[_]>>();
                         match op {
                             LogicalOp::And => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
                                 first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
@@ -434,8 +433,7 @@ impl Expr for LogicalExpr {
                                 CompiledExpr::One(_) => unreachable!(),
                                 CompiledExpr::Vec(vec) => vec,
                             })
-                            .collect::<Vec<_>>()
-                            .into_boxed_slice();
+                            .collect::<Box<[_]>>();
                         match op {
                             LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
                                 let items = items.iter().map(|item| item.execute(ctx));
