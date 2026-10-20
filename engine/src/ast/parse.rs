@@ -97,12 +97,15 @@ impl Display for ParseError<'_> {
 /// Parser settings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParserSettings {
-    /// Approximate size of the cache used by the DFA of a regex.
-    /// Default: 10MB
-    pub regex_dfa_size_limit: usize,
     /// Approximate size limit of the compiled regular expression.
-    /// Default: 2MB
+    /// Default: 10MB
     pub regex_compiled_size_limit: usize,
+    /// Approximate size of the cache used by the DFA of a regex.
+    /// Default: 2MB
+    pub regex_dfa_size_limit: usize,
+    /// Capacity of the managed Cache pool.
+    /// Default: 8
+    pub regex_pool_capacity: usize,
     /// Maximum number of star metacharacters allowed in a wildcard.
     /// Default: unlimited
     pub wildcard_star_limit: usize,
@@ -119,6 +122,8 @@ impl Default for ParserSettings {
             regex_compiled_size_limit: 10 * (1 << 20),
             // Default value extracted from the regex crate.
             regex_dfa_size_limit: 2 * (1 << 20),
+            // Default value extracted from the regex crate.
+            regex_pool_capacity: 8,
             wildcard_star_limit: usize::MAX,
             max_nesting_depth: 128,
         }
@@ -225,6 +230,18 @@ impl<'s> FilterParser<'s> {
     #[inline]
     pub fn regex_get_dfa_size_limit(&self) -> usize {
         self.settings.regex_dfa_size_limit
+    }
+
+    /// Set capacity of the managed Cache pool.
+    #[inline]
+    pub fn regex_set_pool_capacity(&mut self, pool_capacity: usize) {
+        self.settings.regex_pool_capacity = pool_capacity;
+    }
+
+    /// Get capacity of the managed Cache pool.
+    #[inline]
+    pub fn regex_get_pool_capacity(&self) -> usize {
+        self.settings.regex_pool_capacity
     }
 
     /// Set the maximum number of star metacharacters allowed in a wildcard.

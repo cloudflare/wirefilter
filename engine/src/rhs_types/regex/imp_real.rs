@@ -15,7 +15,7 @@ pub struct Regex {
 impl Regex {
     /// Retrieves the syntax configuration that will be used to build the regex.
     #[inline]
-    fn syntax_config() -> regex_automata::util::syntax::Config {
+    pub fn syntax_config() -> regex_automata::util::syntax::Config {
         regex_automata::util::syntax::Config::new()
             .unicode(false)
             .utf8(false)
@@ -23,15 +23,15 @@ impl Regex {
 
     /// Retrieves the meta configuration that will be used to build the regex.
     #[inline]
-    fn meta_config(settings: &ParserSettings) -> regex_automata::meta::Config {
+    pub fn meta_config(settings: &ParserSettings) -> regex_automata::meta::Config {
         regex_automata::meta::Config::new()
             .match_kind(MatchKind::LeftmostFirst)
             .utf8_empty(false)
             .dfa(false)
-            .nfa_size_limit(Some(settings.regex_compiled_size_limit))
             .onepass(false)
-            .dfa_size_limit(Some(settings.regex_compiled_size_limit))
+            .nfa_size_limit(Some(settings.regex_compiled_size_limit))
             .hybrid_cache_capacity(settings.regex_dfa_size_limit)
+            .pool_capacity(settings.regex_pool_capacity)
             .which_captures(WhichCaptures::None)
     }
 
