@@ -2,7 +2,9 @@ use super::Expr;
 use super::field_expr::ComparisonExpr;
 use super::function_expr::FunctionCallArgExpr;
 use super::index_expr::IndexExpr;
+#[cfg(test)]
 use super::parse::FilterParser;
+use super::parse::ParserContext;
 use super::visitor::{Visitor, VisitorMut};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
@@ -119,8 +121,8 @@ impl GetType for QuantifierArgExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for QuantifierArgExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for QuantifierArgExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (arg, rest) = FunctionCallArgExpr::lex_with(input, parser)?;
         let arg = match arg {
             FunctionCallArgExpr::IndexExpr(index_expr) => Self::IndexExpr(index_expr),
@@ -208,7 +210,7 @@ impl LogicalExpr {
 
     pub(crate) fn lex_quantifier<'i>(
         input: &'i str,
-        parser: &FilterParser<'_>,
+        parser: &ParserContext<'_>,
     ) -> Option<LexResult<'i, (QuantifierOp, Box<QuantifierArgExpr>)>> {
         let (op, rest) = QuantifierOp::lex_call(input)?;
         let nested_parser = match parser.with_increased_nesting(skip_space(rest)) {
@@ -226,7 +228,7 @@ impl LogicalExpr {
         })())
     }
 
-    fn lex_simple_expr<'i>(input: &'i str, parser: &FilterParser<'_>) -> LexResult<'i, Self> {
+    fn lex_simple_expr<'i>(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         Ok(if let Ok(rest) = expect(input, "(") {
             let nested_parser = parser.with_increased_nesting(input)?;
             let input = skip_space(rest);
@@ -259,7 +261,7 @@ impl LogicalExpr {
 
     fn lex_more_with_precedence<'i>(
         self,
-        parser: &FilterParser<'_>,
+        parser: &ParserContext<'_>,
         min_prec: Option<LogicalOp>,
         mut lookahead: (Option<LogicalOp>, &'i str),
     ) -> LexResult<'i, Self> {
@@ -323,8 +325,8 @@ impl LogicalExpr {
     }
 }
 
-impl<'i, 's> LexWith<'i, &FilterParser<'s>> for LogicalExpr {
-    fn lex_with(input: &'i str, parser: &FilterParser<'s>) -> LexResult<'i, Self> {
+impl<'i> LexWith<'i, &ParserContext<'_>> for LogicalExpr {
+    fn lex_with(input: &'i str, parser: &ParserContext<'_>) -> LexResult<'i, Self> {
         let (lhs, input) = Self::lex_simple_expr(input, parser)?;
         let lookahead = Self::lex_combining_op(input);
         lhs.lex_more_with_precedence(parser, None, lookahead)
