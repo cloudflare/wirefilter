@@ -5,6 +5,7 @@
 //! their `execute` methods and aggregating results into a single boolean value
 //! as recursion unwinds.
 
+use crate::ast::logical_expr::QuantifierOp;
 use crate::execution_context::ExecutionContext;
 use crate::lhs_types::TypedArray;
 use crate::scheme::{Scheme, SchemeMismatchError};
@@ -50,13 +51,27 @@ type BoxedClosureToVecBool<U> = Box<
     dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult + Sync + Send + 'static,
 >;
 
+type BoolIter<'a> = Box<dyn Iterator<Item = bool> + 'a>;
+
+// Unlike Fn, this trait allows returned iterators to borrow the compiled node.
+trait BoolIterExpr<U>: Send + Sync {
+    fn execute_iter<'a>(&'a self, ctx: &'a ExecutionContext<'a, U>) -> BoolIter<'a>;
+    fn reduce(&self, ctx: &ExecutionContext<'_, U>, op: QuantifierOp) -> bool;
+    fn into_boxed_closure(self: Box<Self>) -> BoxedClosureToVecBool<U>;
+}
+
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-pub struct CompiledVecExpr<U = ()>(BoxedClosureToVecBool<U>);
+pub struct CompiledVecExpr<U = ()>(VecExprImpl<U>);
+
+enum VecExprImpl<U> {
+    Eager(BoxedClosureToVecBool<U>),
+    Lazy(Box<dyn BoolIterExpr<U>>),
+}
 
 impl<U> fmt::Debug for CompiledVecExpr<U> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledVecExpr")
-            .field(&((&*self.0) as *const _))
+            .field(&(&self.0 as *const _))
             .finish()
     }
 }
@@ -69,17 +84,104 @@ impl<U> CompiledVecExpr<U> {
         + Send
         + 'static,
     ) -> Self {
-        CompiledVecExpr(Box::new(closure))
+        Self(VecExprImpl::Eager(Box::new(closure)))
+    }
+
+    // Keep the public array API, but allow reductions to consume elements directly.
+    // Boxing here is a prototype tradeoff: allocations scale with expression size,
+    // rather than input length, at the cost of dynamic dispatch per element.
+    pub(crate) fn new_iter<T: Send + Sync + 'static>(
+        data: T,
+        make_iter: impl for<'a> Fn(&'a T, &'a ExecutionContext<'a, U>) -> BoolIter<'a>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self::new_iter_with_reduce(
+            (data, make_iter),
+            |(data, make_iter), ctx| make_iter(data, ctx),
+            |(data, make_iter), ctx, op| op.reduce_bool_iter(make_iter(data, ctx)),
+        )
+    }
+
+    // A fused reduction runs on a concrete iterator inside the compiled node,
+    // avoiding the iterator box and per-element virtual calls for quantifiers.
+    pub(crate) fn new_iter_with_reduce<T: Send + Sync + 'static>(
+        data: T,
+        make_iter: impl for<'a> Fn(&'a T, &'a ExecutionContext<'a, U>) -> BoolIter<'a>
+        + Send
+        + Sync
+        + 'static,
+        reduce: impl for<'a> Fn(&'a T, &'a ExecutionContext<'a, U>, QuantifierOp) -> bool
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        struct IterExpr<T, F, R>(T, F, R);
+        impl<U, T: Send + Sync + 'static, F, R> BoolIterExpr<U> for IterExpr<T, F, R>
+        where
+            F: for<'a> Fn(&'a T, &'a ExecutionContext<'a, U>) -> BoolIter<'a>
+                + Send
+                + Sync
+                + 'static,
+            R: for<'a> Fn(&'a T, &'a ExecutionContext<'a, U>, QuantifierOp) -> bool
+                + Send
+                + Sync
+                + 'static,
+        {
+            fn execute_iter<'a>(&'a self, ctx: &'a ExecutionContext<'a, U>) -> BoolIter<'a> {
+                (self.1)(&self.0, ctx)
+            }
+
+            fn reduce(&self, ctx: &ExecutionContext<'_, U>, op: QuantifierOp) -> bool {
+                (self.2)(&self.0, ctx, op)
+            }
+
+            fn into_boxed_closure(self: Box<Self>) -> BoxedClosureToVecBool<U> {
+                Box::new(move |ctx| self.execute_iter(ctx).collect())
+            }
+        }
+        Self(VecExprImpl::Lazy(Box::new(IterExpr(
+            data, make_iter, reduce,
+        ))))
+    }
+
+    pub(crate) fn reduce(&self, ctx: &ExecutionContext<'_, U>, op: QuantifierOp) -> bool {
+        match &self.0 {
+            VecExprImpl::Eager(closure) => op.reduce_bool_iter(
+                crate::lhs_types::Array::from(closure(ctx))
+                    .into_iter()
+                    .map(|value| bool::try_from(value).unwrap()),
+            ),
+            VecExprImpl::Lazy(expr) => expr.reduce(ctx, op),
+        }
+    }
+
+    pub(crate) fn execute_iter<'a>(&'a self, ctx: &'a ExecutionContext<'a, U>) -> BoolIter<'a> {
+        match &self.0 {
+            VecExprImpl::Eager(closure) => Box::new(
+                crate::lhs_types::Array::from(closure(ctx))
+                    .into_iter()
+                    .map(|value| bool::try_from(value).unwrap()),
+            ),
+            VecExprImpl::Lazy(expr) => expr.execute_iter(ctx),
+        }
     }
 
     /// Executes the closure against a provided context with values.
     pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> CompiledVecExprResult {
-        self.0(ctx)
+        match &self.0 {
+            VecExprImpl::Eager(closure) => closure(ctx),
+            VecExprImpl::Lazy(expr) => expr.execute_iter(ctx).collect(),
+        }
     }
 
     /// Extracts the underlying boxed closure.
     pub fn into_boxed_closure(self) -> BoxedClosureToVecBool<U> {
-        self.0
+        match self.0 {
+            VecExprImpl::Eager(closure) => closure,
+            VecExprImpl::Lazy(expr) => expr.into_boxed_closure(),
+        }
     }
 }
 
@@ -259,5 +361,36 @@ mod tests {
 
         is_send::<Filter<ExecutionContext<'_>>>();
         is_sync::<Filter<ExecutionContext<'_>>>();
+    }
+}
+
+#[cfg(test)]
+mod lazy_vec_tests {
+    use super::*;
+
+    #[test]
+    fn fused_reduction_does_not_construct_a_boxed_iterator() {
+        let scheme = crate::SchemeBuilder::new().build();
+        let ctx = ExecutionContext::<()>::new(&scheme);
+        let fused = CompiledVecExpr::new_iter_with_reduce(
+            [true, false],
+            |_, _| panic!("fused quantifiers must not request a boxed iterator"),
+            |values, _, op| op.reduce_bool_iter(values.iter().copied()),
+        );
+        assert!(fused.reduce(&ctx, QuantifierOp::Any));
+        assert!(!fused.reduce(&ctx, QuantifierOp::All));
+    }
+
+    #[test]
+    fn iterator_nodes_preserve_the_array_api() {
+        let scheme = crate::SchemeBuilder::new().build();
+        let ctx = ExecutionContext::<()>::new(&scheme);
+        let lazy = CompiledVecExpr::new_iter((), |(), _| Box::new([true, false].into_iter()));
+        assert_eq!(lazy.execute(&ctx), [true, false]);
+        assert_eq!(lazy.into_boxed_closure()(&ctx), [true, false]);
+
+        let eager = CompiledVecExpr::new(|_| [true, false].into_iter().collect());
+        assert_eq!(eager.execute_iter(&ctx).collect::<Vec<_>>(), [true, false]);
+        assert_eq!(eager.into_boxed_closure()(&ctx), [true, false]);
     }
 }

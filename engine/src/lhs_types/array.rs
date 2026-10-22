@@ -11,6 +11,7 @@ use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
 use std::fmt;
 use std::hash::{Hash, Hasher};
+#[cfg(test)]
 use std::hint::unreachable_unchecked;
 
 // Ideally, we would want to use Cow<'a, LhsValue<'a>> here
@@ -530,18 +531,11 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
     }
 }
 
+#[cfg(test)]
 impl TypedArray<'static, bool> {
     #[inline]
     pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = &bool> + '_ {
         self.as_vec_ref().iter().map(|value| match value {
-            LhsValue::Bool(b) => b,
-            _ => unsafe { unreachable_unchecked() },
-        })
-    }
-
-    #[inline]
-    pub(crate) fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut bool> + '_ {
-        self.as_vec_mut().iter_mut().map(|value| match value {
             LhsValue::Bool(b) => b,
             _ => unsafe { unreachable_unchecked() },
         })

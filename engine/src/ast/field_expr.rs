@@ -6,7 +6,6 @@ use crate::ast::index_expr::{Compare, IndexExpr};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::TypedArray;
 use crate::range_set::RangeSet;
 use crate::rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard};
 use crate::scheme::{Field, Identifier, List};
@@ -734,16 +733,19 @@ where
     let rhs = compiler.compile_index_expr(rhs);
 
     if lhs_is_mapped {
-        CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-            let Ok(LhsValue::Array(lhs)) = lhs.execute(ctx) else {
-                return TypedArray::default();
-            };
-
-            match rhs.execute(ctx) {
-                Ok(rhs) => TypedArray::from_iter(lhs.into_iter().map(|lhs| compare(&lhs, &rhs))),
-                Err(_) => TypedArray::from_iter(lhs.into_iter().map(|_| missing_one_default)),
-            }
-        }))
+        CompiledExpr::Vec(CompiledVecExpr::new_iter(
+            (lhs, rhs, compare),
+            move |(lhs, rhs, compare), ctx| {
+                let Ok(LhsValue::Array(lhs)) = lhs.execute(ctx) else {
+                    return Box::new(std::iter::empty());
+                };
+                let rhs = rhs.execute(ctx);
+                Box::new(lhs.into_iter().map(move |lhs| match &rhs {
+                    Ok(rhs) => compare(&lhs, rhs),
+                    Err(_) => missing_one_default,
+                }))
+            },
+        ))
     } else {
         CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
             match (lhs.execute(ctx), rhs.execute(ctx)) {

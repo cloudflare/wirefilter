@@ -6,13 +6,11 @@ use crate::compiler::Compiler;
 use crate::execution_context::ExecutionContext;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::{Array, Map, TypedArray};
+use crate::lhs_types::{Array, Map};
 use crate::scheme::{FieldIndex, IndexAccessError};
 use crate::types::{GetType, IntoIter, LhsValue, Type};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
-
-const BOOL_ARRAY: TypedArray<'_, bool> = TypedArray::new();
 
 /// IndexExpr is an expr that destructures an index into an IdentifierExpr.
 ///
@@ -143,6 +141,36 @@ pub trait Compare<U>: Send + Sync + 'static {
     fn compare<'e>(&self, value: &LhsValue<'e>, ctx: &'e ExecutionContext<'e, U>) -> bool;
 }
 
+// These concrete iterator pipelines are shared by the array API and fused
+// quantifier reductions. Only the array/compound-expression path boxes them.
+fn array_comparisons<'a, U>(
+    source: &'a CompiledValueExpr<U>,
+    indexes: &'a [FieldIndex],
+    comp: &'a impl Compare<U>,
+    ctx: &'a ExecutionContext<'a, U>,
+) -> impl Iterator<Item = bool> + 'a {
+    source
+        .execute(ctx)
+        .ok()
+        .and_then(|val| val.extract_nested(indexes))
+        .into_iter()
+        .flat_map(|val| val.into_iter())
+        .map(move |item| comp.compare(&item, ctx))
+}
+
+fn mapped_comparisons<'a, U>(
+    source: &'a CompiledValueExpr<U>,
+    indexes: &'a [FieldIndex],
+    comp: &'a impl Compare<U>,
+    ctx: &'a ExecutionContext<'a, U>,
+) -> impl Iterator<Item = bool> + 'a {
+    let mut iter = MapEachIterator::from_indexes(indexes);
+    if let Ok(value) = source.execute(ctx) {
+        iter.reset(value);
+    }
+    iter.map(move |item| comp.compare(&item, ctx))
+}
+
 impl IndexExpr {
     fn compile_one_with<C: Compiler>(
         self,
@@ -210,39 +238,22 @@ impl IndexExpr {
             indexes,
         } = self;
         let indexes = simplify_indexes(indexes);
-        match identifier {
-            IdentifierExpr::FunctionCallExpr(call) => {
-                let call = compiler.compile_function_call_expr(call);
-                CompiledVecExpr::new(move |ctx| {
-                    let comp = &comp;
-                    ok_ref(&call.execute(ctx))
-                        .and_then(|val| val.get_nested(&indexes))
-                        .map_or(
-                            BOOL_ARRAY,
-                            #[inline]
-                            |val: &LhsValue<'_>| {
-                                TypedArray::from_iter(
-                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
-                                )
-                            },
-                        )
-                })
-            }
-            IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let comp = &comp;
+        let source_type = identifier.get_type();
+        let source = match identifier {
+            IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
+            IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                 ctx.get_field_value_unchecked(&f)
-                    .and_then(|value| value.get_nested(&indexes))
-                    .map_or(
-                        BOOL_ARRAY,
-                        #[inline]
-                        |val: &LhsValue<'_>| {
-                            TypedArray::from_iter(
-                                val.iter().unwrap().map(|item| comp.compare(item, ctx)),
-                            )
-                        },
-                    )
+                    .map(LhsValue::as_ref)
+                    .ok_or(source_type)
             }),
-        }
+        };
+        CompiledVecExpr::new_iter_with_reduce(
+            (source, indexes, comp),
+            |(source, indexes, comp), ctx| Box::new(array_comparisons(source, indexes, comp, ctx)),
+            |(source, indexes, comp), ctx, op| {
+                op.reduce_bool_iter(array_comparisons(source, indexes, comp, ctx))
+            },
+        )
     }
 
     pub(crate) fn compile_iter_with<C: Compiler>(
@@ -254,32 +265,22 @@ impl IndexExpr {
             identifier,
             indexes,
         } = self;
-        match identifier {
-            IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                match ctx.get_field_value_unchecked(&f) {
-                    Some(value) => iter.reset(value.as_ref()),
-                    None => return TypedArray::default(),
-                };
-                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+        let source_type = identifier.get_type();
+        let source = match identifier {
+            IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
+            IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
+                ctx.get_field_value_unchecked(&f)
+                    .map(LhsValue::as_ref)
+                    .ok_or(source_type)
             }),
-            IdentifierExpr::FunctionCallExpr(call) => {
-                let call = compiler.compile_function_call_expr(call);
-                CompiledVecExpr::new(move |ctx| {
-                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    match call.execute(ctx) {
-                        Ok(val) => {
-                            iter.reset(val);
-                        }
-                        _ => {
-                            return TypedArray::default();
-                        }
-                    }
-
-                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
-                })
-            }
-        }
+        };
+        CompiledVecExpr::new_iter_with_reduce(
+            (source, indexes, comp),
+            |(source, indexes, comp), ctx| Box::new(mapped_comparisons(source, indexes, comp, ctx)),
+            |(source, indexes, comp), ctx, op| {
+                op.reduce_bool_iter(mapped_comparisons(source, indexes, comp, ctx))
+            },
+        )
     }
 
     /// Compiles an [`IndexExpr`] node into a [`CompiledExpr`] (boxed closure) using the

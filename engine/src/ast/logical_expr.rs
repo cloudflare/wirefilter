@@ -55,7 +55,7 @@ impl QuantifierOp {
         }
     }
 
-    fn reduce_bool_iter(self, values: impl IntoIterator<Item = bool>) -> bool {
+    pub(crate) fn reduce_bool_iter(self, values: impl IntoIterator<Item = bool>) -> bool {
         match self {
             Self::Any => values.into_iter().any(|value| value),
             Self::All => values.into_iter().all(|value| value),
@@ -375,9 +375,11 @@ impl Expr for LogicalExpr {
                     CompiledExpr::One(one) => {
                         CompiledExpr::One(CompiledOneExpr::new(move |ctx| !one.execute(ctx)))
                     }
-                    CompiledExpr::Vec(vec) => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                        vec.execute(ctx).iter().map(|item| !item).collect()
-                    })),
+                    CompiledExpr::Vec(vec) => {
+                        CompiledExpr::Vec(CompiledVecExpr::new_iter(vec, |vec, ctx| {
+                            Box::new(vec.execute_iter(ctx).map(|item| !item))
+                        }))
+                    }
                 }
             }
             LogicalExpr::Quantifier { op, arg } => match *arg {
@@ -394,9 +396,7 @@ impl Expr for LogicalExpr {
                     match arg {
                         CompiledExpr::One(_) => unreachable!(),
                         CompiledExpr::Vec(vec) => {
-                            CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                op.reduce_bool_iter(vec.execute(ctx).iter().copied())
-                            }))
+                            CompiledExpr::One(CompiledOneExpr::new(move |ctx| vec.reduce(ctx, op)))
                         }
                     }
                 }
@@ -434,53 +434,25 @@ impl Expr for LogicalExpr {
                                 CompiledExpr::Vec(vec) => vec,
                             })
                             .collect::<Box<[_]>>();
-                        match op {
-                            LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left = *left && *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
+                        CompiledExpr::Vec(CompiledVecExpr::new_iter(
+                            (first, items, op),
+                            |(first, items, op), ctx| {
+                                let mut output = first.execute_iter(ctx);
+                                for item in items.iter() {
+                                    let values = item.execute_iter(ctx);
+                                    let op = *op;
+                                    output =
+                                        Box::new(output.zip(values).map(move |(left, right)| {
+                                            match op {
+                                                LogicalOp::And => left && right,
+                                                LogicalOp::Or => left || right,
+                                                LogicalOp::Xor => left ^ right,
+                                            }
+                                        }));
                                 }
                                 output
-                            })),
-                            LogicalOp::Or => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left = *left || *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
-                                }
-                                output
-                            })),
-                            LogicalOp::Xor => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left ^= *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
-                                }
-                                output
-                            })),
-                        }
+                            },
+                        ))
                     }
                 }
             }
@@ -1204,5 +1176,219 @@ fn test() {
         let expr = expr.compile();
 
         assert_eq!(expr.execute_one(ctx), false);
+    }
+}
+
+#[cfg(test)]
+mod lazy_quantifier_tests {
+    use super::*;
+    use crate::ast::index_expr::Compare;
+    use crate::{Array, ExecutionContext};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct CountComparisons(Arc<AtomicUsize>);
+
+    impl Compare<()> for CountComparisons {
+        fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e>) -> bool {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            let LhsValue::Bool(value) = value else {
+                unreachable!()
+            };
+            *value
+        }
+    }
+
+    impl Compiler for CountComparisons {
+        type U = ();
+
+        fn compile_comparison_expr(&mut self, node: ComparisonExpr) -> CompiledExpr {
+            assert_eq!(node.op, super::super::field_expr::ComparisonOpExpr::IsTrue);
+            if node.lhs.get_type() == Type::Bool {
+                node.lhs
+                    .compile_with(self, false, CountComparisons(self.0.clone()))
+            } else {
+                CompiledExpr::Vec(
+                    node.lhs
+                        .compile_vec_with(self, CountComparisons(self.0.clone())),
+                )
+            }
+        }
+    }
+
+    #[test]
+    fn quantifiers_stop_evaluating_at_the_decisive_element() {
+        let scheme = Scheme! { values: Array(Bool), nested: Array(Array(Bool)) }.build();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value(
+            scheme.get_field("values").unwrap(),
+            Array::from_iter([true, false, true]),
+        )
+        .unwrap();
+        ctx.set_field_value(
+            scheme.get_field("nested").unwrap(),
+            Array::try_from_iter(
+                Type::Array(Type::Bool.into()),
+                [Array::from_iter([true, false]), Array::from_iter([true])],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        for (input, expected, comparisons) in [
+            ("any((values[*]))", true, 1),
+            ("all((values[*]))", false, 2),
+            ("any((not values[*]))", true, 2),
+            ("all((not values[*]))", false, 1),
+            ("any((values[*] and values[*]))", true, 2),
+            ("all((values[*] or values[*]))", false, 4),
+            ("any((values[*] xor values[*]))", false, 6),
+            ("any((nested[*][*]))", true, 1),
+            ("all((nested[*][*]))", false, 2),
+        ] {
+            let count = Arc::new(AtomicUsize::new(0));
+            let filter = scheme
+                .parse(input)
+                .unwrap()
+                .compile_with_compiler(&mut CountComparisons(count.clone()));
+            assert_eq!(filter.execute(&ctx).unwrap(), expected, "{input}");
+            assert_eq!(count.load(Ordering::Relaxed), comparisons, "{input}");
+            // Iterators must be fresh on every execution.
+            assert_eq!(filter.execute(&ctx).unwrap(), expected, "{input}");
+            assert_eq!(count.load(Ordering::Relaxed), comparisons * 2, "{input}");
+        }
+    }
+
+    #[test]
+    fn fused_comparisons_match_the_iterator_fallback() {
+        struct IteratorCompiler;
+        impl Compiler for IteratorCompiler {
+            type U = ();
+
+            fn compile_comparison_expr(&mut self, node: ComparisonExpr) -> CompiledExpr {
+                match node.compile_with_compiler(self) {
+                    CompiledExpr::Vec(vec) => {
+                        CompiledExpr::Vec(CompiledVecExpr::new_iter(vec, |vec, ctx| {
+                            vec.execute_iter(ctx)
+                        }))
+                    }
+                    one => one,
+                }
+            }
+        }
+
+        let scheme = Scheme! {
+            numbers: Array(Int),
+            strings: Map(Bytes),
+            nested: Array(Array(Int)),
+            missing: Map(Array(Int)),
+        }
+        .build();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value(
+            scheme.get_field("numbers").unwrap(),
+            Array::from_iter([1, 2, 3]),
+        )
+        .unwrap();
+        let strings = crate::Map::try_from_iter(
+            Type::Bytes,
+            [(b"a", "foo"), (b"b", "bar")]
+                .into_iter()
+                .map(|(key, value)| {
+                    Ok::<_, TypeMismatchError>((
+                        key.to_vec().into_boxed_slice(),
+                        LhsValue::from(value),
+                    ))
+                }),
+        )
+        .unwrap();
+        ctx.set_field_value(scheme.get_field("strings").unwrap(), strings)
+            .unwrap();
+        ctx.set_field_value(
+            scheme.get_field("nested").unwrap(),
+            Array::try_from_iter(
+                Type::Array(Type::Int.into()),
+                [
+                    Array::from_iter([1, 2]),
+                    Array::from_iter([] as [i64; 0]),
+                    Array::from_iter([3]),
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        ctx.set_field_value(
+            scheme.get_field("missing").unwrap(),
+            crate::Map::new(Type::Array(Type::Int.into())),
+        )
+        .unwrap();
+
+        for input in [
+            "any(numbers[*] == 2)",
+            "all(numbers[*] > 0)",
+            "any(numbers[*] > 5)",
+            "all(numbers[*] != 2)",
+            "any(numbers[*] in {2 4})",
+            "all(numbers[*] in {1 2 3})",
+            "any(nested[*][*] == 2)",
+            "all(nested[*][*] > 0)",
+            r#"any(missing["absent"][*] == 2)"#,
+            r#"all(missing["absent"][*] == 2)"#,
+            r#"any(strings[*] contains "oo")"#,
+            r#"all(strings[*] matches "[a-z]+")"#,
+            // Logical wrappers and combinations continue to use the fallback.
+            "any((not numbers[*] == 2))",
+            "all((numbers[*] > 0 and numbers[*] < 4))",
+        ] {
+            let ast = scheme.parse(input).unwrap();
+            let fused = ast.clone().compile();
+            let fallback = ast.compile_with_compiler(&mut IteratorCompiler);
+            assert_eq!(
+                fused.execute(&ctx).unwrap(),
+                fallback.execute(&ctx).unwrap(),
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn lazy_combining_preserves_shorter_input_and_empty_array_semantics() {
+        let scheme = Scheme! { a: Array(Bool), b: Array(Bool), empty: Array(Bool) }.build();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value(
+            scheme.get_field("a").unwrap(),
+            Array::from_iter([false, true]),
+        )
+        .unwrap();
+        ctx.set_field_value(scheme.get_field("b").unwrap(), Array::from_iter([false]))
+            .unwrap();
+        ctx.set_field_value(
+            scheme.get_field("empty").unwrap(),
+            Array::from_iter([] as [bool; 0]),
+        )
+        .unwrap();
+        for (input, expected) in [
+            ("any((a[*] or b[*]))", false),
+            ("any((b[*] or a[*]))", false),
+            ("all((not (a[*] and b[*])))", true),
+            ("any((a[*] xor b[*]))", false),
+            ("any((empty[*]))", false),
+            ("all((empty[*]))", true),
+            ("all((a[*] and empty[*]))", true),
+        ] {
+            assert_eq!(
+                scheme
+                    .parse(input)
+                    .unwrap()
+                    .compile()
+                    .execute(&ctx)
+                    .unwrap(),
+                expected,
+                "{input}"
+            );
+        }
     }
 }

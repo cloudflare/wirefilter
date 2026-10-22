@@ -1,5 +1,5 @@
 use crate::lex::{Lex, LexResult, LexWith, expect, skip_space};
-use crate::lhs_types::{Array, ArrayIntoIter, ArrayIter, Bytes, Map, MapIter, MapValuesIntoIter};
+use crate::lhs_types::{Array, ArrayIntoIter, Bytes, Map, MapValuesIntoIter};
 use crate::rhs_types::{
     BytesExpr, IntRange, IpRange, UninhabitedArray, UninhabitedBool, UninhabitedMap,
 };
@@ -768,15 +768,6 @@ impl<'a> LhsValue<'a> {
             .iter()
             .try_fold(self, |value, idx| value.extract(idx).unwrap())
     }
-
-    /// Returns an iterator over the Map or Array
-    pub(crate) fn iter(&'a self) -> Option<Iter<'a>> {
-        match self {
-            LhsValue::Array(array) => Some(Iter::IterArray(array.iter())),
-            LhsValue::Map(map) => Some(Iter::IterMap(map.iter())),
-            _ => None,
-        }
-    }
 }
 
 impl Serialize for LhsValue<'_> {
@@ -867,35 +858,6 @@ impl<'a> IntoIterator for LhsValue<'a> {
             LhsValue::Array(array) => IntoIter::IntoArray(array.into_iter()),
             LhsValue::Map(map) => IntoIter::IntoMap(map.into_values()),
             _ => unreachable!(),
-        }
-    }
-}
-
-pub(crate) enum Iter<'a> {
-    IterArray(ArrayIter<'a, 'a>),
-    IterMap(MapIter<'a, 'a>),
-}
-
-impl<'a> Iterator for Iter<'a> {
-    type Item = &'a LhsValue<'a>;
-
-    fn next(&mut self) -> Option<&'a LhsValue<'a>> {
-        match self {
-            Iter::IterArray(array) => array.next(),
-            Iter::IterMap(map) => map.next().map(|(_, v)| v),
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len(), Some(self.len()))
-    }
-}
-
-impl ExactSizeIterator for Iter<'_> {
-    fn len(&self) -> usize {
-        match self {
-            Iter::IterArray(array) => array.len(),
-            Iter::IterMap(map) => map.len(),
         }
     }
 }

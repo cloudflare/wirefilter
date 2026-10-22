@@ -2,7 +2,7 @@ mod array;
 mod bytes;
 mod map;
 
-pub use self::array::{Array, ArrayIntoIter, ArrayIter, TypedArray};
+pub use self::array::{Array, ArrayIntoIter, TypedArray};
 pub use self::bytes::Bytes;
 pub use self::map::{Map, MapIter, MapValuesIntoIter, TypedMap};
 use crate::types::LhsValue;
