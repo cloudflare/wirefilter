@@ -3,20 +3,25 @@ use super::array::InnerArray;
 use crate::TypeMismatchError;
 use crate::lhs_types::{AsRefIterator, Bytes};
 use crate::types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type};
+use foldhash::fast::RandomState;
 #[cfg(feature = "get-size2")]
 use get_size2::{GetSize, GetSizeTracker};
+use indexmap::IndexMap;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+// Keep keys sorted so iteration and hashing are independent of insertion order.
+type MapData<'a> = IndexMap<Box<[u8]>, LhsValue<'a>, RandomState>;
+
 #[derive(Debug, Clone)]
 pub(crate) enum InnerMap<'a> {
-    Owned(BTreeMap<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(&'a BTreeMap<Box<[u8]>, LhsValue<'a>>),
+    // Boxing avoids increasing the size of every LhsValue.
+    Owned(Box<MapData<'a>>),
+    Borrowed(&'a MapData<'a>),
 }
 
 #[cfg(feature = "get-size2")]
@@ -31,8 +36,8 @@ impl GetSize for InnerMap<'_> {
 
 impl<'a> InnerMap<'a> {
     #[inline]
-    const fn new() -> Self {
-        Self::Owned(BTreeMap::new())
+    fn new() -> Self {
+        Self::Owned(Box::default())
     }
 
     #[inline]
@@ -78,13 +83,13 @@ impl Hash for InnerMap<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Owned(map) => map.hash(state),
-            Self::Borrowed(map) => map.hash(state),
+            Self::Owned(map) => map.as_slice().hash(state),
+            Self::Borrowed(map) => map.as_slice().hash(state),
         }
     }
 }
 
-/// A map of string to [`Type`].
+/// A map of string to [`Type`], sorted by key bytes.
 #[derive(Debug, Clone)]
 pub struct Map<'a> {
     val_type: CompoundType,
@@ -103,7 +108,7 @@ impl<'a> Map<'a> {
     pub fn new(val_type: impl Into<CompoundType>) -> Self {
         Self {
             val_type: val_type.into(),
-            data: InnerMap::Owned(BTreeMap::new()),
+            data: InnerMap::new(),
         }
     }
 
@@ -127,16 +132,17 @@ impl<'a> Map<'a> {
         Map {
             val_type: self.val_type,
             data: match self.data {
-                InnerMap::Owned(map) => InnerMap::Owned(
-                    map.into_iter()
+                InnerMap::Owned(map) => InnerMap::Owned(Box::new(
+                    (*map)
+                        .into_iter()
                         .map(|(key, val)| (key, val.into_owned()))
                         .collect(),
-                ),
-                InnerMap::Borrowed(map) => InnerMap::Owned(
+                )),
+                InnerMap::Borrowed(map) => InnerMap::Owned(Box::new(
                     map.iter()
                         .map(|(key, value)| (key.clone(), value.clone().into_owned()))
                         .collect(),
-                ),
+                )),
             },
         }
     }
@@ -163,7 +169,7 @@ impl<'a> Map<'a> {
     pub fn into_values(self) -> MapValuesIntoIter<'a> {
         let Map { data, .. } = self;
         match data {
-            InnerMap::Owned(map) => MapValuesIntoIter::Owned(map.into_iter()),
+            InnerMap::Owned(map) => MapValuesIntoIter::Owned((*map).into_iter()),
             InnerMap::Borrowed(map) => {
                 MapValuesIntoIter::Borrowed(AsRefIterator::new(map.values()))
             }
@@ -173,12 +179,12 @@ impl<'a> Map<'a> {
     pub(crate) fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
         let Self { data, .. } = self;
         match data {
-            InnerMap::Owned(mut map) => map.remove(key),
+            InnerMap::Owned(mut map) => map.shift_remove(key),
             InnerMap::Borrowed(map) => map.get(key).map(LhsValue::as_ref),
         }
     }
 
-    /// Creates an iterator visiting all key-value pairs in arbitrary order.
+    /// Creates an iterator visiting all key-value pairs in sorted key order.
     #[inline]
     pub fn iter(&self) -> MapIter<'a, '_> {
         self.data.iter()
@@ -205,10 +211,13 @@ impl<'a> Map<'a> {
                     }
                 })
             })
-            .collect::<Result<BTreeMap<_, _>, _>>()
-            .map(|map| Map {
-                val_type,
-                data: InnerMap::Owned(map),
+            .collect::<Result<MapData<'a>, _>>()
+            .map(|mut map| {
+                map.sort_unstable_keys();
+                Map {
+                    val_type,
+                    data: InnerMap::Owned(Box::new(map)),
+                }
             })
     }
 }
@@ -251,7 +260,7 @@ impl Hash for Map<'_> {
 }
 
 /// An iterator over the entries of a Map.
-pub struct MapIter<'a, 'b>(std::collections::btree_map::Iter<'b, Box<[u8]>, LhsValue<'a>>);
+pub struct MapIter<'a, 'b>(indexmap::map::Iter<'b, Box<[u8]>, LhsValue<'a>>);
 
 impl<'a, 'b> Iterator for MapIter<'a, 'b> {
     type Item = (&'b [u8], &'b LhsValue<'a>);
@@ -275,8 +284,8 @@ impl ExactSizeIterator for MapIter<'_, '_> {
 }
 
 pub enum MapValuesIntoIter<'a> {
-    Owned(std::collections::btree_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::collections::btree_map::Values<'a, Box<[u8]>, LhsValue<'a>>>),
+    Owned(indexmap::map::IntoIter<Box<[u8]>, LhsValue<'a>>),
+    Borrowed(AsRefIterator<'a, indexmap::map::Values<'a, Box<[u8]>, LhsValue<'a>>>),
 }
 
 impl<'a> Iterator for MapValuesIntoIter<'a> {
@@ -307,8 +316,8 @@ impl ExactSizeIterator for MapValuesIntoIter<'_> {
 }
 
 enum MapIntoIterImpl<'a> {
-    Owned(std::collections::btree_map::IntoIter<Box<[u8]>, LhsValue<'a>>),
-    Borrowed(std::collections::btree_map::Iter<'a, Box<[u8]>, LhsValue<'a>>),
+    Owned(indexmap::map::IntoIter<Box<[u8]>, LhsValue<'a>>),
+    Borrowed(indexmap::map::Iter<'a, Box<[u8]>, LhsValue<'a>>),
 }
 
 pub struct MapIntoIter<'a>(MapIntoIterImpl<'a>);
@@ -334,7 +343,7 @@ impl<'a> IntoIterator for Map<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         match self.data {
-            InnerMap::Owned(map) => MapIntoIter(MapIntoIterImpl::Owned(map.into_iter())),
+            InnerMap::Owned(map) => MapIntoIter(MapIntoIterImpl::Owned((*map).into_iter())),
             InnerMap::Borrowed(map) => MapIntoIter(MapIntoIterImpl::Borrowed(map.iter())),
         }
     }
@@ -367,18 +376,9 @@ impl Serialize for Map<'_> {
             }
             map.end()
         } else {
-            // Keys have to be sorted in order to have reproducible output
-            let mut keys = Vec::new();
-            for (key, _) in self.data.iter() {
-                keys.push(key)
-            }
-            keys.sort();
             let mut seq = serializer.serialize_seq(Some(self.len()))?;
-            for key in keys {
-                seq.serialize_element(&[
-                    &LhsValue::Bytes(key.into()),
-                    self.data.get(key).unwrap(),
-                ])?;
+            for (key, value) in self.data.iter() {
+                seq.serialize_element(&[&LhsValue::Bytes(key.into()), value])?;
             }
             seq.end()
         }
@@ -448,7 +448,7 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                 let map = match &mut self.0.data {
                     InnerMap::Owned(map) => map,
                     InnerMap::Borrowed(map) => {
-                        let map = map.clone();
+                        let map = Box::new((*map).clone());
                         self.0.data = InnerMap::Owned(map);
                         match &mut self.0.data {
                             InnerMap::Owned(map) => map,
@@ -465,7 +465,7 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                             value_type
                         )));
                     }
-                    map.insert(key.into_owned().into_bytes().into(), value);
+                    map.insert_sorted(key.into_owned().into_bytes().into(), value);
                 }
 
                 Ok(())
@@ -479,7 +479,7 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                 let map = match &mut self.0.data {
                     InnerMap::Owned(map) => map,
                     InnerMap::Borrowed(map) => {
-                        let map = map.clone();
+                        let map = Box::new((*map).clone());
                         self.0.data = InnerMap::Owned(map);
                         match &mut self.0.data {
                             InnerMap::Owned(map) => map,
@@ -495,7 +495,7 @@ impl<'de> DeserializeSeed<'de> for &mut Map<'de> {
                             value_type
                         )));
                     }
-                    map.insert(key.into_owned(), value);
+                    map.insert_sorted(key.into_owned(), value);
                 }
                 Ok(())
             }
@@ -513,23 +513,21 @@ where
     V: IntoValue<'a>,
 {
     map: InnerMap<'a>,
-    _marker: std::marker::PhantomData<BTreeMap<Box<[u8]>, V>>,
+    _marker: std::marker::PhantomData<IndexMap<Box<[u8]>, V, RandomState>>,
 }
 
 impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
     /// Creates a new empty typed map.
     #[inline]
-    pub const fn new() -> Self {
-        const {
-            Self {
-                map: InnerMap::Owned(BTreeMap::new()),
-                _marker: std::marker::PhantomData,
-            }
+    pub fn new() -> Self {
+        Self {
+            map: InnerMap::new(),
+            _marker: std::marker::PhantomData,
         }
     }
 
     #[inline]
-    fn as_map_ref(&self) -> &BTreeMap<Box<[u8]>, LhsValue<'a>> {
+    fn as_map_ref(&self) -> &MapData<'a> {
         match &self.map {
             InnerMap::Owned(map) => map,
             InnerMap::Borrowed(_) => unreachable!(),
@@ -537,17 +535,26 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
     }
 
     #[inline]
-    fn as_map_mut(&mut self) -> &mut BTreeMap<Box<[u8]>, LhsValue<'a>> {
+    fn as_map_mut(&mut self) -> &mut MapData<'a> {
         match &mut self.map {
             InnerMap::Owned(map) => map,
             InnerMap::Borrowed(_) => unreachable!(),
         }
     }
 
-    /// Push an element to the back of the map
+    /// Inserts an element, keeping the map sorted by key.
     #[inline]
     pub fn insert(&mut self, key: Box<[u8]>, value: V) {
-        self.as_map_mut().insert(key, value.into_value());
+        self.as_map_mut().insert_sorted(key, value.into_value());
+    }
+
+    fn get_or_insert_value(&mut self, key: Box<[u8]>, value: V) -> &mut LhsValue<'a> {
+        let map = self.as_map_mut();
+        let index = match map.get_index_of(key.as_ref()) {
+            Some(index) => index,
+            None => map.insert_sorted(key, value.into_value()).0,
+        };
+        map.get_index_mut(index).unwrap().1
     }
 
     /// Returns the number of elements in the array
@@ -614,8 +621,9 @@ impl<'a, V: IntoValue<'a>> Default for TypedMap<'a, V> {
 impl<'a, V: IntoValue<'a>> Extend<(Box<[u8]>, V)> for TypedMap<'a, V> {
     #[inline]
     fn extend<T: IntoIterator<Item = (Box<[u8]>, V)>>(&mut self, iter: T) {
-        self.as_map_mut()
-            .extend(iter.into_iter().map(|(k, v)| (k, v.into_value())))
+        for (key, value) in iter {
+            self.insert(key, value);
+        }
     }
 }
 
@@ -624,8 +632,10 @@ impl<'a, V: IntoValue<'a>> FromIterator<(Box<[u8]>, V)> for TypedMap<'a, V> {
     where
         T: IntoIterator<Item = (Box<[u8]>, V)>,
     {
+        let mut map: MapData<'a> = iter.into_iter().map(|(k, v)| (k, v.into_value())).collect();
+        map.sort_unstable_keys();
         Self {
-            map: InnerMap::Owned(iter.into_iter().map(|(k, v)| (k, v.into_value())).collect()),
+            map: InnerMap::Owned(Box::new(map)),
             _marker: std::marker::PhantomData,
         }
     }
@@ -677,7 +687,7 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedMap<'a, V>> {
         key: Box<[u8]>,
         value: TypedMap<'a, V>,
     ) -> &mut TypedMap<'a, V> {
-        match self.as_map_mut().entry(key).or_insert(value.into_value()) {
+        match self.get_or_insert_value(key, value) {
             LhsValue::Map(map) => {
                 // Safety: this is safe because `TypedMap` is a repr(transparent)
                 // newtype over `InnerMap`.
@@ -727,7 +737,7 @@ impl<'a, V: IntoValue<'a>> TypedMap<'a, TypedArray<'a, V>> {
         key: Box<[u8]>,
         value: TypedArray<'a, V>,
     ) -> &mut TypedArray<'a, V> {
-        match self.as_map_mut().entry(key).or_insert(value.into_value()) {
+        match self.get_or_insert_value(key, value) {
             LhsValue::Array(array) => {
                 // Safety: this is safe because `TypedArray` is a repr(transparent)
                 // newtype over `InnerArray`.
@@ -748,7 +758,7 @@ mod tests {
 
     #[test]
     fn test_size_of_map() {
-        assert_eq!(std::mem::size_of::<Map<'_>>(), 40);
+        assert_eq!(std::mem::size_of::<Map<'_>>(), 24);
     }
 
     #[test]
@@ -772,6 +782,237 @@ mod tests {
 
     fn key(s: &str) -> Box<[u8]> {
         s.as_bytes().to_vec().into_boxed_slice()
+    }
+
+    fn assert_int_entries(map: &Map<'_>, expected: &[(&[u8], i64)]) {
+        let entries: Vec<_> = map
+            .iter()
+            .map(|(key, value)| {
+                let LhsValue::Int(value) = value else {
+                    panic!("expected an integer value");
+                };
+                (key, *value)
+            })
+            .collect();
+        assert_eq!(entries, expected);
+    }
+
+    #[test]
+    fn test_typed_map_sorted() {
+        let mut map =
+            TypedMap::from_iter([(key("c"), 3), (key("a"), 0), (key("b"), 2), (key("a"), 1)]);
+        assert_int_entries(&map.as_map(), &[(b"a", 1), (b"b", 2), (b"c", 3)]);
+
+        map.insert(key(""), 0);
+        map.insert(key("b"), 20);
+        assert_int_entries(&map.as_map(), &[(b"", 0), (b"a", 1), (b"b", 20), (b"c", 3)]);
+
+        map.extend([(key("e"), 5), (key("b"), 2), (key("d"), 4)]);
+        assert_int_entries(
+            &map.as_map(),
+            &[
+                (b"", 0),
+                (b"a", 1),
+                (b"b", 2),
+                (b"c", 3),
+                (b"d", 4),
+                (b"e", 5),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_map_sorted_iteration() {
+        let map = Map::try_from_iter(
+            Type::Int,
+            [(key("c"), 3), (key("a"), 0), (key("b"), 2), (key("a"), 1)]
+                .map(Ok::<_, TypeMismatchError>),
+        )
+        .unwrap();
+        let expected = &[
+            (b"a".as_slice(), 1),
+            (b"b".as_slice(), 2),
+            (b"c".as_slice(), 3),
+        ];
+        assert_int_entries(&map, expected);
+
+        for map in [
+            map.clone(),
+            map.as_ref(),
+            map.as_ref().into_owned(),
+            map.clone().into_owned(),
+        ] {
+            assert_int_entries(&map, expected);
+            assert_eq!(
+                map.clone().into_values().collect::<Vec<_>>(),
+                [LhsValue::Int(1), LhsValue::Int(2), LhsValue::Int(3)]
+            );
+            let entries: Vec<_> = map
+                .into_iter()
+                .map(|(key, value)| (key.into_owned(), value))
+                .collect();
+            assert_eq!(
+                entries,
+                [
+                    (b"a".to_vec(), LhsValue::Int(1)),
+                    (b"b".to_vec(), LhsValue::Int(2)),
+                    (b"c".to_vec(), LhsValue::Int(3))
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn test_map_deserialize_sorted() {
+        for input in [
+            r#"{"c":3,"a":0,"b":2,"a":1}"#,
+            r#"[["c",3],["a",0],["b",2],["a",1]]"#,
+        ] {
+            let mut map = Map::new(Type::Int);
+            (&mut map)
+                .deserialize(&mut serde_json::Deserializer::from_str(input))
+                .unwrap();
+            assert_int_entries(&map, &[(b"a", 1), (b"b", 2), (b"c", 3)]);
+            assert_eq!(
+                serde_json::to_string(&map).unwrap(),
+                r#"{"a":1,"b":2,"c":3}"#
+            );
+
+            // Deserializing into a borrowed map must leave its source intact.
+            let mut borrowed = map.as_ref();
+            (&mut borrowed)
+                .deserialize(&mut serde_json::Deserializer::from_str(
+                    r#"{"d":4,"":0,"b":20}"#,
+                ))
+                .unwrap();
+            assert_int_entries(
+                &borrowed,
+                &[(b"", 0), (b"a", 1), (b"b", 20), (b"c", 3), (b"d", 4)],
+            );
+            assert_int_entries(&map, &[(b"a", 1), (b"b", 2), (b"c", 3)]);
+
+            let mut borrowed = map.as_ref();
+            (&mut borrowed)
+                .deserialize(&mut serde_json::Deserializer::from_str(
+                    r#"[["d",4],["",0],["b",20]]"#,
+                ))
+                .unwrap();
+            assert_int_entries(
+                &borrowed,
+                &[(b"", 0), (b"a", 1), (b"b", 20), (b"c", 3), (b"d", 4)],
+            );
+        }
+    }
+
+    #[test]
+    fn test_map_deserialize_error_keeps_sorted() {
+        for input in [
+            r#"{"c":3,"a":1,"b":false}"#,
+            r#"[["c",3],["a",1],["b",false]]"#,
+        ] {
+            let mut map = Map::new(Type::Int);
+            assert!(
+                (&mut map)
+                    .deserialize(&mut serde_json::Deserializer::from_str(input))
+                    .is_err()
+            );
+            assert_int_entries(&map, &[(b"a", 1), (b"c", 3)]);
+        }
+    }
+
+    #[test]
+    fn test_map_binary_keys_sorted() {
+        let mut map = Map::new(Type::Int);
+        (&mut map)
+            .deserialize(&mut serde_json::Deserializer::from_str(
+                r#"[[[255],3],[[128],1],[[192],2]]"#,
+            ))
+            .unwrap();
+        assert_int_entries(&map, &[(b"\x80", 1), (b"\xc0", 2), (b"\xff", 3)]);
+        assert_eq!(
+            serde_json::to_string(&map).unwrap(),
+            r#"[[[128],1],[[192],2],[[255],3]]"#
+        );
+    }
+
+    #[test]
+    fn test_map_hash_independent_of_insertion_order() {
+        use std::hash::BuildHasher;
+
+        let a = Map::from(TypedMap::from_iter([
+            (key("c"), 3),
+            (key("a"), 1),
+            (key("b"), 2),
+        ]));
+        let b = Map::from(TypedMap::from_iter([
+            (key("b"), 2),
+            (key("c"), 3),
+            (key("a"), 1),
+        ]));
+        let hasher = RandomState::default();
+        assert_eq!(a, b);
+        assert_eq!(hasher.hash_one(&a), hasher.hash_one(&b));
+        assert_eq!(hasher.hash_one(&a), hasher.hash_one(a.as_ref()));
+    }
+
+    #[cfg(feature = "get-size2")]
+    #[test]
+    fn test_map_lhs_value_get_size() {
+        let stack_size = std::mem::size_of::<LhsValue<'_>>();
+        let storage_size = std::mem::size_of::<MapData<'_>>();
+        assert_eq!(
+            LhsValue::Map(Map::new(Type::Bytes)).get_size(),
+            stack_size + storage_size
+        );
+
+        for (value, value_heap_size) in [
+            (Bytes::Borrowed(b"borrowed"), 0),
+            (Bytes::Owned(Box::from(b"owned".as_slice())), b"owned".len()),
+        ] {
+            let map = Map::try_from_iter(
+                Type::Bytes,
+                [Ok::<_, TypeMismatchError>((key("key"), value))],
+            )
+            .unwrap();
+            let InnerMap::Owned(data) = &map.data else {
+                unreachable!()
+            };
+            let allocation_size =
+                storage_size + data.capacity() * std::mem::size_of::<(Box<[u8]>, LhsValue<'_>)>();
+            assert_eq!(LhsValue::Map(map.as_ref()).get_size(), stack_size);
+            assert_eq!(
+                LhsValue::Map(map).get_size(),
+                stack_size + allocation_size + b"key".len() + value_heap_size
+            );
+        }
+    }
+
+    #[test]
+    fn test_typed_map_get_or_insert_sorted() {
+        let mut maps = TypedMap::<TypedMap<'_, i64>>::new();
+        for (name, value) in [("c", 3), ("a", 1), ("b", 2)] {
+            maps.get_or_insert(key(name), TypedMap::new())
+                .insert(key("value"), value);
+        }
+        let existing = maps.get_or_insert(key("b"), TypedMap::new());
+        assert_eq!(*existing, [(b"value".as_slice(), 2)]);
+        existing.insert(key("a"), 0);
+        assert_eq!(
+            serde_json::to_string(&maps.as_map()).unwrap(),
+            r#"{"a":{"value":1},"b":{"a":0,"value":2},"c":{"value":3}}"#
+        );
+
+        let mut arrays = TypedMap::<TypedArray<'_, i64>>::new();
+        for (name, value) in [("c", 3), ("a", 1), ("b", 2)] {
+            arrays
+                .get_or_insert(key(name), TypedArray::new())
+                .push(value);
+        }
+        arrays.get_or_insert(key("b"), TypedArray::new()).push(20);
+        assert_eq!(
+            serde_json::to_string(&arrays.as_map()).unwrap(),
+            r#"{"a":[1],"b":[2,20],"c":[3]}"#
+        );
     }
 
     #[test]
