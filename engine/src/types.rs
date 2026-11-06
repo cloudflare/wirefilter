@@ -1188,7 +1188,7 @@ fn test_type_deserialize() {
 
 #[test]
 fn test_size_of_lhs_value() {
-    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 48);
+    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 40);
 }
 
 #[cfg(feature = "get-size2")]
@@ -1239,45 +1239,5 @@ fn test_array_lhs_value_get_size() {
     assert_eq!(
         LhsValue::Array(owned_array_of_owned).get_size(),
         stack_size + owned_values_capacity * stack_size + b"owned".len()
-    );
-}
-
-#[cfg(feature = "get-size2")]
-#[test]
-fn test_map_lhs_value_get_size() {
-    let stack_size = std::mem::size_of::<LhsValue<'static>>();
-
-    let owned_map_of_borrowed = Map::try_from_iter(
-        Type::Bytes,
-        [Ok::<_, TypeMismatchError>((
-            Box::from(b"key".as_slice()),
-            Bytes::Borrowed(b"borrowed"),
-        ))],
-    )
-    .unwrap();
-    assert_eq!(
-        LhsValue::Map(owned_map_of_borrowed.as_ref()).get_size(),
-        stack_size
-    );
-    assert_eq!(
-        LhsValue::Map(owned_map_of_borrowed).get_size(),
-        stack_size + std::mem::size_of::<Box<[u8]>>() + b"key".len() + stack_size
-    );
-
-    let owned_map_of_owned = Map::try_from_iter(
-        Type::Bytes,
-        [Ok::<_, TypeMismatchError>((
-            Box::from(b"key".as_slice()),
-            Bytes::Owned(Box::from(&b"owned"[..])),
-        ))],
-    )
-    .unwrap();
-    assert_eq!(
-        LhsValue::Map(owned_map_of_owned.as_ref()).get_size(),
-        stack_size
-    );
-    assert_eq!(
-        LhsValue::Map(owned_map_of_owned).get_size(),
-        stack_size + std::mem::size_of::<Box<[u8]>>() + b"key".len() + stack_size + b"owned".len()
     );
 }

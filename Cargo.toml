@@ -1,13 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-  "engine",
-  "ffi",
-  "fuzz/bytes",
-  "fuzz/map-keys",
-  "fuzz/raw-string",
-  "wasm",
-]
+members = ["engine", "ffi", "fuzz/bytes", "fuzz/map-keys", "fuzz/raw-string", "wasm"]
 
 [workspace.package]
 version = "0.7.0"
@@ -25,8 +18,10 @@ criterion = "0.8.2"
 dyn-clone = "1.0.20"
 erased-serde = "0.4.10"
 fnv = "1.0.7"
-get-size2 = "0.11.0"
+foldhash = "0.2.0"
+get-size2 = { version = "0.11.0", features = ["indexmap"] }
 getrandom = "0.4.3"
+indexmap = "2.14.2"
 indoc = "2.0.7"
 js-sys = "0.3.104"
 libc = "0.2.189"

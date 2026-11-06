@@ -27,7 +27,9 @@ cidr.workspace = true
 dyn-clone.workspace = true
 erased-serde.workspace = true
 fnv.workspace = true
+foldhash.workspace = true
 get-size2 = { workspace = true, optional = true }
+indexmap.workspace = true
 memchr.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
