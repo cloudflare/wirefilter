@@ -25,6 +25,14 @@
 //! its field bindings; it does not create a context or store request values.
 //! Getters read values when an expression is evaluated.
 //!
+//! Call [`ContextFamily::validate_scheme`](crate::ContextFamily::validate_scheme)
+//! during application initialization for each scheme/family pair. Its default
+//! implementation binds every scheme field and checks static provider types
+//! without evaluating getters. The macro additionally checks extra and duplicate
+//! definitions and rejects optional getter signatures for mandatory fields.
+//! Handwritten families must uphold those constraints themselves or override
+//! validation. Parsing, compilation, and execution do not run validation.
+//!
 //! The default [`ExecutionContext`](crate::ExecutionContext) implements the same
 //! evaluation interfaces and already owns equivalent state alongside its stored
 //! field values. It does not require a separate `NativeContextState`.

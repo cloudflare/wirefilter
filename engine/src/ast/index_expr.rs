@@ -8,7 +8,7 @@ use crate::Field;
 use crate::compiler::Compiler;
 use crate::context::{
     ContextFamily, ExecutionContextFamily, FieldBindingError, FieldConsumer, FieldGetter,
-    ProviderFamily,
+    ProviderFamily, check_field_type,
 };
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
@@ -191,20 +191,6 @@ fn required<T>(value: Option<T>, field: &Field) -> Option<T> {
         );
     }
     value
-}
-
-fn check_field_type<S: FieldValueType>(field: &Field) -> Result<(), FieldBindingError> {
-    let expected = field.get_type();
-    if let Some(actual) = S::STATIC_TYPE
-        && actual != expected
-    {
-        return Err(FieldBindingError::TypeMismatch {
-            field: field.name().into(),
-            expected,
-            actual,
-        });
-    }
-    Ok(())
 }
 
 struct MaterializationCost;

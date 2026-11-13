@@ -1,11 +1,12 @@
 //! Runtime contexts and statically bound field access.
 //!
 //! A context family associates compiled expressions with a context that may borrow
-//! request data. Field binding happens during filter compilation; evaluation calls
-//! the concrete getter captured by the compiled expression.
+//! request data. Field binding checks getters during explicit scheme validation
+//! and prepares them during filter compilation; evaluation calls the concrete
+//! getter captured by the compiled expression.
 
 use crate::native::values::{FieldValueType, IntoLhsValue, LhsValueType, NativeValue};
-use crate::{ExecutionContext, Field, LhsValue, List, ListMatcher, ListRef, Scheme, Type};
+use crate::{ExecutionContext, Field, GetType, LhsValue, List, ListMatcher, ListRef, Scheme, Type};
 use std::marker::PhantomData;
 
 /// The scheme associated with a runtime context.
@@ -72,6 +73,15 @@ pub trait EvaluationContextMut: EvaluationContext {
 /// A field-definition problem detected before filters are evaluated.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FieldDefinitionError {
+    /// A scheme field failed binding or static type checking during validation.
+    #[error("Native field {name} failed validation: {error}")]
+    Binding {
+        /// Scheme field being validated.
+        name: Box<str>,
+        /// The binding or type-checking failure.
+        #[source]
+        error: FieldBindingError,
+    },
     /// A scheme field has no getter.
     #[error("Missing native field getter for {0}")]
     MissingGetter(Box<str>),
@@ -101,9 +111,10 @@ pub enum FieldDefinitionError {
 #[error("Invalid native field definitions: {0:?}")]
 pub struct SchemeValidationError(pub Box<[FieldDefinitionError]>);
 
-/// A failure to bind a field or prepare its native access during compilation.
+/// A failure to bind a field or prepare its native access.
 ///
-/// Binding APIs return this error. The infallible expression compilation APIs
+/// Binding APIs return this error. Default scheme validation collects it in
+/// [`FieldDefinitionError::Binding`]. The infallible expression compilation APIs
 /// panic on a binding failure; filter execution does not return this error.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum FieldBindingError {
@@ -122,8 +133,8 @@ pub enum FieldBindingError {
     },
     /// A path is incompatible with the declared native type.
     ///
-    /// Produced during path compilation, not evaluation. Parsed paths for
-    /// matching scheme and native types are expected to be compatible.
+    /// Produced during binding or path compilation, not evaluation. Parsed paths
+    /// for matching scheme and native types are expected to be compatible.
     #[error("Unsupported native value operation: {0}")]
     Unsupported(&'static str),
 }
@@ -138,9 +149,10 @@ pub enum FieldBindingError {
 /// generates a separate marker for both forms of context.
 ///
 /// [`EvaluationContext`] describes the state available during evaluation; this
-/// trait selects that context type and binds its field getters during compilation.
-/// It does not own the context, request data, or [`crate::NativeContextState`]. See
-/// [`crate::native`] for a complete example showing their relationship.
+/// trait selects that context type and binds its field getters for validation
+/// and compilation. It does not own the context, request data, or
+/// [`crate::NativeContextState`]. See [`crate::native`] for a complete example
+/// showing their relationship.
 pub trait ContextFamily: Sized + 'static {
     /// State exposed to compiler customizations.
     type UserData: 'static;
@@ -148,26 +160,80 @@ pub trait ContextFamily: Sized + 'static {
     /// The runtime context, possibly retaining request references.
     type Context<'data>: EvaluationContext<UserData = Self::UserData>;
 
-    /// Resolve a field and pass its concrete getter to the compilation operation.
+    /// Resolve a field and pass its concrete getter to the consumer.
+    /// Called by default scheme validation and field compilation.
     /// Ownership of the logical field transfers to the consumer.
     fn bind<B: FieldConsumer<Self>>(
         field: Field,
         consumer: B,
     ) -> Result<B::Output, FieldBindingError>;
 
-    /// Validate field coverage, types, and required presence without evaluating getters.
+    /// Validate field definitions without evaluating getters.
     ///
     /// Applications must call this explicitly during initialization for each
     /// scheme and native context family, before loading rulesets or compiling
     /// expressions. A failed check is an initialization error. Parsing,
     /// compilation, and evaluation do not invoke this method automatically.
     ///
-    /// [`ExecutionContext`] obtains its field table directly from the scheme and
-    /// validates inserted values, so its family needs no additional validation.
-    /// Families with separately defined getters override this method.
-    fn validate_scheme(_: &Scheme) -> Result<(), SchemeValidationError> {
-        Ok(())
+    /// The default implementation binds every scheme field and checks its
+    /// provider's static type, collecting all binding failures. It constructs
+    /// getters through [`Self::bind`] but never calls [`FieldGetter::get`].
+    /// Scheme-typed providers such as [`LhsValueProvider`] have no static type to
+    /// check; their storage must validate values separately.
+    ///
+    /// This cannot detect extra or duplicate getter definitions, or determine
+    /// whether a mandatory getter can return `None`. Handwritten families remain
+    /// responsible for those constraints and may override this method for
+    /// stronger checks. [`crate::wirefilter_fields!`] generates an override that
+    /// checks all definitions, including their declared optionality.
+    /// [`ExecutionContextFamily`] overrides this with a no-op: its field table
+    /// comes from the scheme and its context validates values on insertion.
+    fn validate_scheme(scheme: &Scheme) -> Result<(), SchemeValidationError> {
+        let errors = scheme
+            .fields()
+            .filter_map(|field| {
+                Self::bind(field.to_owned(), CheckFieldType)
+                    .err()
+                    .map(|error| FieldDefinitionError::Binding {
+                        name: field.name().into(),
+                        error,
+                    })
+            })
+            .collect::<Box<[_]>>();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(SchemeValidationError(errors))
+        }
     }
+}
+
+struct CheckFieldType;
+
+impl<F: ContextFamily> FieldConsumer<F> for CheckFieldType {
+    type Output = ();
+
+    fn consume<G: FieldGetter<F>>(
+        self,
+        field: Field,
+        _: G,
+    ) -> Result<Self::Output, FieldBindingError> {
+        check_field_type::<<G::Provider as ProviderFamily>::ValueType>(&field)
+    }
+}
+
+pub(crate) fn check_field_type<S: FieldValueType>(field: &Field) -> Result<(), FieldBindingError> {
+    let expected = field.get_type();
+    if let Some(actual) = S::STATIC_TYPE
+        && actual != expected
+    {
+        return Err(FieldBindingError::TypeMismatch {
+            field: field.name().into(),
+            expected,
+            actual,
+        });
+    }
+    Ok(())
 }
 
 /// A context reference whose type records that request data outlives this access.
@@ -208,12 +274,12 @@ impl<'ctx, 'data: 'ctx, F: ContextFamily> ContextRef<'ctx, 'data, F> {
     }
 }
 
-/// An operation that composes field access with expression compilation.
+/// An operation that validates a field binding or compiles field access.
 pub trait FieldConsumer<F: ContextFamily>: Sized {
-    /// Executable expression produced by this operation.
+    /// Result produced by this operation, such as an executable expression.
     type Output;
 
-    /// Compile using a getter whose concrete type remains known.
+    /// Process a getter whose concrete type remains known.
     /// `field` is the original logical field supplied to the binding operation.
     /// This includes getters borrowing existing [`LhsValue`] fields through
     /// [`LhsValueProvider`].
@@ -468,6 +534,11 @@ impl<U: 'static> ContextFamily for ExecutionContextFamily<U> {
         consumer: B,
     ) -> Result<B::Output, FieldBindingError> {
         consumer.consume(field, ExecutionContextGetter)
+    }
+
+    fn validate_scheme(_: &Scheme) -> Result<(), SchemeValidationError> {
+        // Field coverage comes from the scheme; values are checked on insertion.
+        Ok(())
     }
 }
 
