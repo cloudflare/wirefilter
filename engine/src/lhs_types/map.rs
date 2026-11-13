@@ -1,8 +1,8 @@
 use super::TypedArray;
 use super::array::InnerArray;
 use crate::TypeMismatchError;
-use crate::lhs_types::{AsRefIterator, Bytes};
-use crate::types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type};
+use crate::lhs_types::{AsRefIterator, Bytes, IntoValue, LhsValue, LhsValueSeed};
+use crate::types::{CompoundType, GetType, Type};
 #[cfg(feature = "get-size2")]
 use get_size2::{GetSize, GetSizeTracker};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -630,6 +630,8 @@ impl<'a, V: IntoValue<'a>> FromIterator<(Box<[u8]>, V)> for TypedMap<'a, V> {
         }
     }
 }
+
+impl<'a, V: IntoValue<'a>> super::private::SealedIntoValue for TypedMap<'a, V> {}
 
 impl<'a, V: IntoValue<'a>> IntoValue<'a> for TypedMap<'a, V> {
     const TYPE: Type = Type::Map(CompoundType::from_type(V::TYPE));

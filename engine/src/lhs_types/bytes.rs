@@ -1,3 +1,5 @@
+use crate::LhsValue;
+use crate::values::{Bytes as BytesType, BytesRead, IntoLhsValue, Value};
 #[cfg(feature = "get-size2")]
 use get_size2::{GetSize, GetSizeTracker};
 use serde::de::Visitor;
@@ -22,6 +24,18 @@ impl GetSize for Bytes<'_> {
             Self::Owned(bytes) => bytes.get_heap_size_with_tracker(tracker),
             Self::Borrowed(_) => (0, tracker),
         }
+    }
+}
+
+impl Value for Bytes<'_> {
+    type Read = BytesRead;
+    type ValueType = BytesType;
+}
+
+impl<'a, 'data: 'a> IntoLhsValue<'a> for Bytes<'data> {
+    #[inline]
+    fn into_lhs(self) -> LhsValue<'a> {
+        LhsValue::Bytes(self)
     }
 }
 
@@ -254,6 +268,20 @@ impl PartialEq<String> for Bytes<'_> {
 
 impl Eq for Bytes<'_> {}
 
+impl PartialOrd for Bytes<'_> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Bytes<'_> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
 impl Hash for Bytes<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, h: &mut H) {
@@ -350,6 +378,26 @@ impl<'de> Deserialize<'de> for Bytes<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_byte_order_is_independent_of_storage() {
+        use std::collections::BTreeMap;
+
+        let mut values = BTreeMap::new();
+        values.insert(Bytes::from(b"b".to_vec()), 1);
+        values.insert(Bytes::from(&b"a"[..]), 2);
+        values.insert(Bytes::from(&b"a\0"[..]), 3);
+        values.insert(Bytes::from(vec![0xff]), 4);
+        values.insert(Bytes::from(b"a".to_vec()), 5);
+
+        assert_eq!(values.len(), 4);
+        assert_eq!(values.get(&b"a"[..]), Some(&5));
+        assert_eq!(values.get(&b"b"[..]), Some(&1));
+        assert_eq!(
+            values.keys().map(AsRef::as_ref).collect::<Vec<&[u8]>>(),
+            [&b"a"[..], &b"a\0"[..], &b"b"[..], &[0xff][..]],
+        );
+    }
 
     #[test]
     fn test_bytes_deserialize() {

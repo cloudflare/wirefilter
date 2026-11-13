@@ -2149,3 +2149,72 @@ fn test_nil_not_equal_behavior_false() {
 
     assert_eq!(filter.execute(&ctx), Ok(false));
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    #[test]
+    fn test_filter_compilation_does_not_duplicate_field_ownership() {
+        let scheme = Scheme! {
+            number: Int,
+            numbers: Array(Int),
+            headers: Map(Bytes),
+        }
+        .build();
+        let baseline = Arc::strong_count(&scheme.inner);
+
+        for input in [
+            "number == 42",
+            "numbers[0] == 42",
+            "any(numbers[*] == 42)",
+            "number == 42 or number == 43",
+            r#"headers["host"] == "example.com""#,
+        ] {
+            let ast = scheme.parse(input).unwrap();
+            let parsed_owners = Arc::strong_count(&scheme.inner);
+            let filter = ast.compile();
+            let compiled_owners = Arc::strong_count(&scheme.inner);
+
+            // Fields own a Scheme reference. Moving the AST's fields into
+            // compiled getters must not retain additional field copies.
+            assert!(
+                compiled_owners <= parsed_owners,
+                "compiling {input:?} increased Scheme owners from {parsed_owners} to {compiled_owners}"
+            );
+            drop(filter);
+            assert_eq!(Arc::strong_count(&scheme.inner), baseline, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn test_value_compilation_does_not_duplicate_field_ownership() {
+        let scheme = Scheme! {
+            number: Int,
+            numbers: Array(Int),
+            headers: Map(Bytes),
+        }
+        .build();
+        let baseline = Arc::strong_count(&scheme.inner);
+
+        for input in [
+            "number",
+            "numbers",
+            "numbers[0]",
+            r#"headers["host"]"#,
+            "any(numbers[*] == 42)",
+        ] {
+            let ast = scheme.parse_value(input).unwrap();
+            let parsed_owners = Arc::strong_count(&scheme.inner);
+            let value = ast.compile();
+            let compiled_owners = Arc::strong_count(&scheme.inner);
+
+            assert!(
+                compiled_owners <= parsed_owners,
+                "compiling {input:?} increased Scheme owners from {parsed_owners} to {compiled_owners}"
+            );
+            drop(value);
+            assert_eq!(Arc::strong_count(&scheme.inner), baseline, "{input:?}");
+        }
+    }
+}

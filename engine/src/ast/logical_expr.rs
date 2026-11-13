@@ -7,7 +7,8 @@ use super::visitor::{Visitor, VisitorMut};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::types::{GetType, LhsValue, Type, TypeMismatchError};
+use crate::lhs_types::LhsValue;
+use crate::types::{GetType, Type, TypeMismatchError};
 use serde::Serialize;
 
 lex_enum!(
@@ -362,7 +363,7 @@ impl Expr for LogicalExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U, C::Family> {
         match self {
             LogicalExpr::Comparison(op) => compiler.compile_comparison_expr(op),
             LogicalExpr::Parenthesized(node) => compiler.compile_logical_expr(node.expr),
