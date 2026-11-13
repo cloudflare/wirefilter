@@ -6,15 +6,13 @@ use crate::ast::index_expr::{Compare, IndexExpr};
 use crate::compiler::Compiler;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::TypedArray;
+use crate::lhs_types::{LhsValue, TypedArray};
 use crate::range_set::RangeSet;
 use crate::rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard};
 use crate::scheme::{Field, Identifier, List};
 use crate::searcher::{EmptySearcher, MemmemSearcher};
 use crate::strict_partial_ord::StrictPartialOrd;
-use crate::types::{
-    ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue, Type, TypeMismatchError,
-};
+use crate::types::{ExpectedTypeList, GetType, LiteralSet, LiteralValue, Type, TypeMismatchError};
 use crate::{ContextFamily, EvaluationContext, Scheme};
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;

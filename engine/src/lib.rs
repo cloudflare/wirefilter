@@ -67,19 +67,19 @@ mod scheme;
 
 mod ast;
 mod compiler;
-mod context;
+pub mod context;
 mod execution_context;
 mod filter;
 mod functions;
 mod lhs_types;
 mod list_matcher;
-pub mod native;
 mod panic;
 mod range_set;
 mod rhs_types;
 mod searcher;
 mod strict_partial_ord;
 mod types;
+pub mod values;
 
 pub use self::ast::field_expr::{
     ComparisonExpr, ComparisonOpExpr, ComparisonRhs, IdentifierExpr, IntOp, IntRhs, OrderingOp,
@@ -94,6 +94,10 @@ pub use self::ast::parse::{FilterParser, ParseError, ParserSettings};
 pub use self::ast::visitor::{Visitor, VisitorMut};
 pub use self::ast::{Expr, FilterAst, FilterValueAst, FilterValueExpr, ValueExpr};
 pub use self::compiler::{Compiler, DefaultCompiler};
+// The exported field macro calls this helper from downstream crates.
+#[doc(hidden)]
+pub use self::context::fields::validate_field_definitions;
+pub use self::context::state::ContextState;
 pub use self::context::{
     BorrowedValueProvider, ContextFamily, ContextRef, EvaluationContext, EvaluationContextMut,
     ExecutionContextFamily, FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter,
@@ -113,14 +117,10 @@ pub use self::functions::{
     SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
 };
 pub use self::lex::LexErrorKind;
-pub use self::lhs_types::{Array, Bytes, Map, MapIter, TypedArray, TypedMap};
+pub use self::lhs_types::{Array, Bytes, LhsValue, Map, MapIter, TypedArray, TypedMap};
 pub use self::list_matcher::{
     AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
 };
-// The exported field macro calls this helper from downstream crates.
-#[doc(hidden)]
-pub use self::native::fields::validate_field_definitions;
-pub use self::native::state::NativeContextState;
 pub use self::panic::{
     PanicCatcherFallbackMode, catch_panic, panic_catcher_disable, panic_catcher_enable,
     panic_catcher_get_backtrace, panic_catcher_set_fallback_mode, panic_catcher_set_hook,
@@ -135,6 +135,6 @@ pub use self::scheme::{
     ListRef, Scheme, SchemeBuilder, SchemeMismatchError, UnknownFieldError,
 };
 pub use self::types::{
-    CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue,
-    Type, TypeMismatchError,
+    CompoundType, ExpectedType, ExpectedTypeList, GetType, LiteralSet, LiteralValue, Type,
+    TypeMismatchError,
 };

@@ -12,12 +12,10 @@ use crate::context::{
 };
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::{Array, TypedArray};
-use crate::native::values::{
-    self, FieldValueType, IntoLhsValue, LhsValueRead, NativePredicate, NativeValue,
-};
+use crate::lhs_types::{Array, LhsValue, TypedArray};
 use crate::scheme::{FieldIndex, IndexAccessError};
-use crate::types::{GetType, LhsValue, Type};
+use crate::types::{GetType, Type};
+use crate::values::{self, FieldValueType, IntoLhsValue, LhsValueRead, Value, ValuePredicate};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
 use std::net::IpAddr;
@@ -97,7 +95,7 @@ impl ValueExpr for IndexExpr {
                         flatten,
                     },
                 )
-                .expect("field binding or native path preparation failed"),
+                .expect("field binding or path preparation failed"),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 match (flatten, indexes.is_empty()) {
@@ -274,7 +272,7 @@ struct ContextComparison<'p, 'ctx, 'data, F: ContextFamily, P> {
     ctx: &'ctx F::Context<'data>,
 }
 
-impl<F: ContextFamily, P: Compare<F::UserData, F>> NativePredicate
+impl<F: ContextFamily, P: Compare<F::UserData, F>> ValuePredicate
     for ContextComparison<'_, '_, '_, F, P>
 {
     #[inline]
@@ -309,7 +307,7 @@ fn comparison_input_type(field: &Field, depth: usize) -> Type {
     for _ in 0..depth {
         input_type = input_type
             .next()
-            .expect("parsed native path must have valid types");
+            .expect("parsed field path must have valid types");
     }
     input_type
 }
@@ -358,7 +356,7 @@ fn execute_one<F, V, P>(
 ) -> bool
 where
     F: ContextFamily,
-    V: NativeValue,
+    V: Value,
     P: Compare<F::UserData, F>,
 {
     let Some(value) = required(value, field) else {
@@ -377,7 +375,7 @@ fn execute_vec<F, V, P>(
 ) -> TypedArray<'static, bool>
 where
     F: ContextFamily,
-    V: NativeValue,
+    V: Value,
     P: Compare<F::UserData, F>,
 {
     let mut output = TypedArray::new();
@@ -628,7 +626,7 @@ impl IndexExpr {
             {
                 compiler
                     .bind_field(field.clone(), MaterializationCost)
-                    .expect("field binding or native path preparation failed")
+                    .expect("field binding or path preparation failed")
             }
             IdentifierExpr::Field(_) | IdentifierExpr::FunctionCallExpr(_) => false,
         }
@@ -679,7 +677,7 @@ impl IndexExpr {
                         comp,
                     },
                 )
-                .expect("field binding or native path preparation failed"),
+                .expect("field binding or path preparation failed"),
         }
     }
 
@@ -720,7 +718,7 @@ impl IndexExpr {
                         mode: CollectionComparisonMode::Items,
                     },
                 )
-                .expect("field binding or native path preparation failed"),
+                .expect("field binding or path preparation failed"),
         }
     }
 
@@ -743,7 +741,7 @@ impl IndexExpr {
                         mode: CollectionComparisonMode::Path,
                     },
                 )
-                .expect("field binding or native path preparation failed"),
+                .expect("field binding or path preparation failed"),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {

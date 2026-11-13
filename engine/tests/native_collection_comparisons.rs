@@ -3,13 +3,13 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use wirefilter::native::values::{
-    self, ArrayRead, IntoLhsValue, MapRead, NativeArray, NativeMap, NativeValue, ValueType,
+use wirefilter::values::{
+    self, ArrayRead, ArrayValue, IntoLhsValue, MapRead, MapValue, Value, ValueType,
 };
 use wirefilter::{
-    Compare, CompiledExpr, ContextFamily, DefaultCompiler, EvaluationContext, ExecutionContext,
-    FieldIndex, HasScheme, IdentifierExpr, IndexExpr, LhsValue, List, ListMatcher, ListRef,
-    NativeContextState, Scheme, SchemeBuilder, Type,
+    Compare, CompiledExpr, ContextFamily, ContextState, DefaultCompiler, EvaluationContext,
+    ExecutionContext, FieldIndex, HasScheme, IdentifierExpr, IndexExpr, LhsValue, List,
+    ListMatcher, ListRef, Scheme, SchemeBuilder, Type,
 };
 
 thread_local! {
@@ -21,7 +21,7 @@ struct CountedArray<T> {
     items: Vec<T>,
 }
 
-impl<T: NativeValue> NativeValue for CountedArray<T>
+impl<T: Value> Value for CountedArray<T>
 where
     T::ValueType: ValueType,
 {
@@ -29,7 +29,7 @@ where
     type ValueType = values::Array<T::ValueType>;
 }
 
-impl<T: NativeValue> NativeArray for CountedArray<T>
+impl<T: Value> ArrayValue for CountedArray<T>
 where
     T::ValueType: ValueType,
 {
@@ -62,15 +62,15 @@ type Groups = BTreeMap<Box<[u8]>, Group>;
 #[derive(Clone)]
 struct Descriptor(Arc<Groups>);
 
-impl NativeValue for Descriptor {
+impl Value for Descriptor {
     type Read = MapRead;
-    type ValueType = values::Map<<Group as NativeValue>::ValueType>;
+    type ValueType = values::Map<<Group as Value>::ValueType>;
 }
 
 impl IntoLhsValue<'_> for Descriptor {}
 
-impl NativeMap for Descriptor {
-    type Element = <Group as NativeValue>::ValueType;
+impl MapValue for Descriptor {
+    type Element = <Group as Value>::ValueType;
     type Item<'a> = &'a Group;
     type Iter<'a> = std::collections::btree_map::Values<'a, Box<[u8]>, Group>;
 
@@ -90,7 +90,7 @@ impl NativeMap for Descriptor {
 }
 
 struct Context {
-    state: NativeContextState<()>,
+    state: ContextState<()>,
     groups: Option<Arc<Groups>>,
 }
 
@@ -183,7 +183,7 @@ fn fixture(present: bool) -> Context {
         )
     });
     Context {
-        state: NativeContextState::new(&scheme),
+        state: ContextState::new(&scheme),
         groups,
     }
 }

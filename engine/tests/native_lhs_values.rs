@@ -1,4 +1,4 @@
-//! Default and downstream contexts expose runtime-typed values through native binding.
+//! Default and downstream contexts expose runtime-typed values through shared field binding.
 
 use std::cell::Cell;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};

@@ -1,3 +1,5 @@
+use crate::LhsValue;
+use crate::values::{Bytes as BytesType, BytesRead, IntoLhsValue, Value};
 #[cfg(feature = "get-size2")]
 use get_size2::{GetSize, GetSizeTracker};
 use serde::de::Visitor;
@@ -22,6 +24,18 @@ impl GetSize for Bytes<'_> {
             Self::Owned(bytes) => bytes.get_heap_size_with_tracker(tracker),
             Self::Borrowed(_) => (0, tracker),
         }
+    }
+}
+
+impl Value for Bytes<'_> {
+    type Read = BytesRead;
+    type ValueType = BytesType;
+}
+
+impl<'a, 'data: 'a> IntoLhsValue<'a> for Bytes<'data> {
+    #[inline]
+    fn into_lhs(self) -> LhsValue<'a> {
+        LhsValue::Bytes(self)
     }
 }
 

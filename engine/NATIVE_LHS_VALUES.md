@@ -1,4 +1,4 @@
-# Reading stored values through native field bindings
+# Reading stored values through shared field bindings
 
 `ExecutionContext` and downstream contexts expose runtime-typed `LhsValue`
 fields through `FieldConsumer::consume`. There is one field-binding interface;
@@ -10,15 +10,15 @@ continues to own its field table and validate values when they are inserted.
 
 `LhsValueProvider` supplies a getter returning `&LhsValue`, with both the reference
 and its payloads valid for the evaluation borrow. The context can own its values
-or borrow them from another owner. See the runnable example in `native/mod.rs`
+or borrow them from another owner. See the runnable example in `src/context/mod.rs`
 and the independent context in `tests/native_lhs_values.rs`.
 
 `FieldValueType` describes a field root. Every existing static `ValueType`
 implements it automatically. `LhsValueType` instead gets the root type from the
 scheme and validates the complete index path during filter compilation. It
 supports arbitrary array/map nesting without enumerating combinations in Rust.
-Native collection elements still have static types: this does not make
-`Vec<LhsValue>` a native array.
+Collection elements exposed through `ArrayValue` and `MapValue` still have static
+types: this does not make `Vec<LhsValue>` a supported array representation.
 
 `LhsValueRead` borrows existing containers, follows concrete indices and `[*]`
 selections, and calls the compiler's existing `Compare::compare` method on each

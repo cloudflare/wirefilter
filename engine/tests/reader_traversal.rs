@@ -3,10 +3,10 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use wirefilter::{
-    Array, Bytes, Compare, CompiledExpr, CompiledValueExpr, ContextFamily, DefaultCompiler,
-    EvaluationContext, ExecutionContext, FieldIndex, FilterValueExpr, FunctionArgs, HasScheme,
-    IdentifierExpr, IndexExpr, LhsValue, ListMatcher, ListRef, Map, NativeContextState, Scheme,
-    SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
+    Array, Bytes, Compare, CompiledExpr, CompiledValueExpr, ContextFamily, ContextState,
+    DefaultCompiler, EvaluationContext, ExecutionContext, FieldIndex, FilterValueExpr,
+    FunctionArgs, HasScheme, IdentifierExpr, IndexExpr, LhsValue, ListMatcher, ListRef, Map,
+    Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
     SimpleFunctionParam, Type, TypeMismatchError, ValueExpr,
 };
 
@@ -258,7 +258,7 @@ fn flattened_borrowed_function_results_keep_source_payloads() {
 type Rows = Vec<BTreeMap<Box<[u8]>, Vec<i64>>>;
 
 struct NativeContext {
-    state: NativeContextState,
+    state: ContextState,
     rows: Rows,
     missing: Option<Rows>,
     flags: Vec<bool>,
@@ -306,7 +306,7 @@ fn native_context() -> NativeContext {
     let scheme = builder.build();
     NativeFields::validate_scheme(&scheme).unwrap();
     NativeContext {
-        state: NativeContextState::new(&scheme),
+        state: ContextState::new(&scheme),
         rows: vec![
             BTreeMap::from([
                 (Box::from(b"z".as_slice()), vec![1, 2]),

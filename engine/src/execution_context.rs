@@ -1,5 +1,6 @@
+use crate::lhs_types::{LhsValue, LhsValueSeed};
 use crate::scheme::{Field, List, Scheme, SchemeMismatchError};
-use crate::types::{GetType, LhsValue, LhsValueSeed, Type, TypeMismatchError};
+use crate::types::{GetType, Type, TypeMismatchError};
 use crate::{FieldRef, ListMatcher, ListRef, UnknownFieldError};
 use serde::Serialize;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -46,9 +47,9 @@ pub struct InvalidListMatcherError {
 ///
 /// This type implements [`crate::EvaluationContext`] and
 /// [`crate::EvaluationContextMut`], owning its scheme, list matchers, and user data
-/// alongside the field values. Native contexts can use [`crate::NativeContextState`]
-/// to own equivalent state without field-value slots. See [`crate::native`] for
-/// the native context interfaces and an example.
+/// alongside the field values. Custom contexts can use [`crate::ContextState`]
+/// to own equivalent state without field-value slots. See [`crate::context`] for
+/// the context interfaces and an example.
 #[derive(Debug, PartialEq)]
 pub struct ExecutionContext<'e, U = ()> {
     scheme: Scheme,
@@ -133,7 +134,7 @@ impl<'e, U> ExecutionContext<'e, U> {
 
     /// Create an empty stored-value snapshot with a context's scheme and lists.
     ///
-    /// Native runtimes can use this explicitly for consumers that require stored
+    /// Applications can use this explicitly for consumers that require stored
     /// values, such as diagnostic serialization. Field getters are not evaluated;
     /// the caller chooses which fields to materialize. List matchers are cloned
     /// independently so later changes to either context do not affect the other.

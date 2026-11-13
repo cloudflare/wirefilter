@@ -6,9 +6,9 @@
 //! as recursion unwinds.
 
 use crate::context::{ContextFamily, ContextRef, ExecutionContextFamily, HasScheme};
-use crate::lhs_types::TypedArray;
+use crate::lhs_types::{LhsValue, TypedArray};
 use crate::scheme::{Scheme, SchemeMismatchError};
-use crate::types::{LhsValue, Type};
+use crate::types::Type;
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -195,11 +195,11 @@ impl<U, F: ContextFamily<UserData = U>> CompiledValueExpr<U, F> {
         Self::new_with_context(move |ctx| closure(ctx.context()))
     }
 
-    /// Create a value expression that can borrow native context payloads.
+    /// Create a value expression that can borrow context payloads.
     ///
     /// The callback's witness records that the context's retained data outlives
     /// this evaluation. Call [`ContextRef::context`] to obtain the original
-    /// context reference before invoking native getters or child expressions.
+    /// context reference before invoking field getters or child expressions.
     pub fn new_with_context(
         closure: impl for<'ctx, 'data> Fn(ContextRef<'ctx, 'data, F>) -> CompiledValueResult<'ctx>
         + Sync

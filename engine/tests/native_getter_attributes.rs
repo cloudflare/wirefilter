@@ -1,7 +1,7 @@
 #![deny(unused_variables)]
 
 use std::cell::Cell;
-use wirefilter::native::values::{self, SliceView};
+use wirefilter::values::{self, SliceView};
 use wirefilter::{
     DefaultCompiler, EvaluationContext, Field, HasScheme, LhsValue, ListMatcher, ListRef,
     ProviderFamily, Scheme, SchemeBuilder, Type,

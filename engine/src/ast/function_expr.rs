@@ -12,9 +12,9 @@ use crate::functions::{
     FunctionParamError,
 };
 use crate::lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::Array;
+use crate::lhs_types::{Array, LhsValue};
 use crate::scheme::Function;
-use crate::types::{GetType, LhsValue, LiteralValue, Type};
+use crate::types::{GetType, LiteralValue, Type};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
 use std::iter::once;
@@ -102,7 +102,7 @@ impl FunctionCallArgExpr {
     /// Returns `true` if re-evaluating this argument for every mapped element
     /// could be costly, i.e. it is a nested function call or a logical
     /// sub-expression. Literals and stored field accesses are cheap to evaluate
-    /// repeatedly. Native field conversion is classified separately at binding.
+    /// repeatedly. Field conversion is classified separately at binding.
     fn is_expensive_to_reevaluate(&self) -> bool {
         match self {
             FunctionCallArgExpr::Literal(_) => false,
@@ -303,10 +303,10 @@ impl ValueExpr for FunctionCallExpr {
                 .iter()
                 .skip(1)
                 .any(FunctionCallArgExpr::is_expensive_to_reevaluate);
-        // Native field values can require whole-container conversion, including
+        // Field values can require whole-container conversion, including
         // when an index subsequently selects one scalar. Classify the provider
         // during compilation so ordinary stored field accesses stay cheap.
-        let memoize_native_extra_args = map_each_count > 0
+        let memoize_converted_extra_args = map_each_count > 0
             && !memoize_extra_args
             && args.iter().skip(1).any(|arg| {
                 matches!(arg, FunctionCallArgExpr::IndexExpr(index)
@@ -391,13 +391,13 @@ impl ValueExpr for FunctionCallExpr {
                         |elem| ExactSizeChain::new(once(Ok(elem)), extra_args.iter().cloned()),
                     )
                 })
-            } else if memoize_native_extra_args {
+            } else if memoize_converted_extra_args {
                 CompiledValueExpr::new_with_context(move |ctx| {
                     let ctx = ctx.context();
                     // Preserve lazy argument consumption: empty mapped inputs
                     // and functions that ignore an argument must not read it.
                     // Cloning cached LhsValues retains the function interface's
-                    // ownership contract, but native conversion runs only once.
+                    // ownership contract, but conversion runs only once.
                     let extra_args = std::cell::OnceCell::new();
                     compute(first.execute(ctx), &call, return_type, |elem| {
                         let values = extra_args.get_or_init(|| {
@@ -1560,9 +1560,7 @@ mod tests {
     }
     #[test]
     fn test_indexed_native_function_arguments_materialize_only_the_selection() {
-        use crate::native::values::{
-            ArrayRead, IntoLhsValue, MapRead, NativeArray, NativeMap, NativeValue,
-        };
+        use crate::values::{ArrayRead, ArrayValue, IntoLhsValue, MapRead, MapValue, Value};
         use crate::{EvaluationContext, HasScheme, ListMatcher, ListRef};
         use std::cell::{Cell, RefCell};
         use std::collections::BTreeMap;
@@ -1572,12 +1570,12 @@ mod tests {
             gets: Cell<usize>,
             iterations: Cell<usize>,
         }
-        impl NativeValue for HeaderValues {
+        impl Value for HeaderValues {
             type Read = ArrayRead;
-            type ValueType = crate::native::values::Array<crate::native::values::Bytes>;
+            type ValueType = crate::values::Array<crate::values::Bytes>;
         }
-        impl NativeArray for HeaderValues {
-            type Element = crate::native::values::Bytes;
+        impl ArrayValue for HeaderValues {
+            type Element = crate::values::Bytes;
             type Item<'a> = &'a Box<[u8]>;
             type Iter<'a> = std::slice::Iter<'a, Box<[u8]>>;
 
@@ -1597,14 +1595,12 @@ mod tests {
             value_iterations: Cell<usize>,
             entry_iterations: Cell<usize>,
         }
-        impl NativeValue for Headers {
+        impl Value for Headers {
             type Read = MapRead;
-            type ValueType = crate::native::values::Map<
-                crate::native::values::Array<crate::native::values::Bytes>,
-            >;
+            type ValueType = crate::values::Map<crate::values::Array<crate::values::Bytes>>;
         }
-        impl NativeMap for Headers {
-            type Element = crate::native::values::Array<crate::native::values::Bytes>;
+        impl MapValue for Headers {
+            type Element = crate::values::Array<crate::values::Bytes>;
             type Item<'a> = &'a HeaderValues;
             type Iter<'a> = std::collections::btree_map::Values<'a, Box<[u8]>, HeaderValues>;
 
@@ -2022,7 +2018,7 @@ mod tests {
 
     #[test]
     fn test_mapped_native_extra_arguments_convert_once_and_remain_lazy() {
-        use crate::native::values::{IntoLhsValue, MapRead, NativeMap, NativeValue};
+        use crate::values::{IntoLhsValue, MapRead, MapValue, Value};
         use crate::{EvaluationContext, HasScheme, ListMatcher, ListRef};
         use std::cell::Cell;
         use std::collections::BTreeMap;
@@ -2032,12 +2028,12 @@ mod tests {
             entries: BTreeMap<Box<[u8]>, i64>,
             conversions: Cell<usize>,
         }
-        impl NativeValue for CountingMap {
+        impl Value for CountingMap {
             type Read = MapRead;
-            type ValueType = crate::native::values::Map<crate::native::values::Int>;
+            type ValueType = crate::values::Map<crate::values::Int>;
         }
-        impl NativeMap for CountingMap {
-            type Element = crate::native::values::Int;
+        impl MapValue for CountingMap {
+            type Element = crate::values::Int;
             type Item<'a> = &'a i64;
             type Iter<'a> = std::collections::btree_map::Values<'a, Box<[u8]>, i64>;
 

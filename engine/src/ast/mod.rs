@@ -12,8 +12,9 @@ use self::visitor::{UsesListVisitor, UsesVisitor, Visitor, VisitorMut};
 use crate::compiler::{Compiler, DefaultCompiler};
 use crate::filter::{CompiledExpr, CompiledValueExpr, Filter, FilterValue};
 use crate::lex::{LexErrorKind, LexResult, LexWith};
+use crate::lhs_types::LhsValue;
 use crate::scheme::{Scheme, UnknownFieldError};
-use crate::types::{GetType, LhsValue, Type, TypeMismatchError};
+use crate::types::{GetType, Type, TypeMismatchError};
 use serde::Serialize;
 use std::fmt::{self, Debug};
 
@@ -154,7 +155,7 @@ impl FilterAst {
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].
     ///
-    /// Native field definitions must be validated explicitly during application
+    /// Field definitions must be validated explicitly during application
     /// initialization with [`crate::ContextFamily::validate_scheme`]. Compilation
     /// does not repeat that validation.
     pub fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> Filter<C::U, C::Family> {
@@ -347,7 +348,7 @@ impl FilterValueAst {
 
     /// Compiles a [`FilterValueAst`] into a [`FilterValue`] using a specific [`Compiler`].
     ///
-    /// Native field definitions must be validated explicitly during application
+    /// Field definitions must be validated explicitly during application
     /// initialization with [`crate::ContextFamily::validate_scheme`]. Compilation
     /// does not repeat that validation.
     pub fn compile_with_compiler<C: Compiler>(

@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use std::any::TypeId;
 use std::cell::Cell;
-use wirefilter::native::values::{self, IntoLhsValue, SliceView};
+use wirefilter::values::{self, IntoLhsValue, SliceView};
 use wirefilter::{
     Compiler, ContextFamily, ContextRef, DefaultCompiler, EvaluationContext, Field,
     FieldBindingError, FieldConsumer, FieldGetter, FieldIndex, HasScheme, IdentifierExpr,

@@ -1,12 +1,12 @@
-//! Persistent executor state for contexts whose fields live in native storage.
+//! Persistent executor state independent of field storage.
 
 use crate::{
     EvaluationContext, EvaluationContextMut, HasScheme, List, ListMatcher, ListRef, Scheme, Type,
 };
 
-/// Scheme, list matchers, and compiler state retained across native evaluations.
+/// Scheme, list matchers, and compiler state retained across evaluations.
 ///
-/// This type has no field-value slots. The embedding runtime supplies native
+/// This type has no field-value slots. The embedding runtime supplies
 /// fields through its context family and can borrow this state while evaluating
 /// them. Neither the state nor its list matchers must be rebuilt for each phase.
 ///
@@ -14,7 +14,7 @@ use crate::{
 /// [`EvaluationContext`], and [`EvaluationContextMut`]. An application context can
 /// borrow it and forward those methods while its [`crate::ContextFamily`] supplies
 /// getters for application-owned field values. Applications can instead implement
-/// the same interfaces using their existing state. See [`crate::native`] for a
+/// the same interfaces using their existing state. See [`crate::context`] for a
 /// complete example.
 ///
 /// Forward [`EvaluationContext::get_list_matcher_unchecked`] as well as the
@@ -22,17 +22,17 @@ use crate::{
 /// performed by the filter.
 ///
 /// [`crate::ExecutionContext`] already owns equivalent state together with its
-/// stored field values and does not need a separate `NativeContextState`. The
+/// stored field values and does not need a separate `ContextState`. The
 /// application is responsible for resetting state when reusing it; [`Self::clear`]
 /// clears list contents but retains user data.
 #[derive(Debug, PartialEq)]
-pub struct NativeContextState<U = ()> {
+pub struct ContextState<U = ()> {
     scheme: Scheme,
     list_matchers: Box<[Box<dyn ListMatcher>]>,
     user_data: U,
 }
 
-impl<U> NativeContextState<U> {
+impl<U> ContextState<U> {
     /// Create persistent state with default user data and the scheme's matchers.
     pub fn new(scheme: &Scheme) -> Self
     where
@@ -110,14 +110,14 @@ impl<U> NativeContextState<U> {
     }
 }
 
-impl<U> HasScheme for NativeContextState<U> {
+impl<U> HasScheme for ContextState<U> {
     #[inline]
     fn scheme(&self) -> &Scheme {
         self.scheme()
     }
 }
 
-impl<U> EvaluationContext for NativeContextState<U> {
+impl<U> EvaluationContext for ContextState<U> {
     type UserData = U;
 
     #[inline]
@@ -142,7 +142,7 @@ impl<U> EvaluationContext for NativeContextState<U> {
     }
 }
 
-impl<U> EvaluationContextMut for NativeContextState<U> {
+impl<U> EvaluationContextMut for ContextState<U> {
     #[inline]
     fn get_user_data_mut(&mut self) -> &mut U {
         self.get_user_data_mut()
@@ -161,7 +161,7 @@ impl<U> EvaluationContextMut for NativeContextState<U> {
 
 #[cfg(test)]
 mod tests {
-    use super::NativeContextState;
+    use super::ContextState;
     use crate::{
         DefaultCompiler, EvaluationContext, EvaluationContextMut, HasScheme, LhsValue, List,
         ListDefinition, ListMatcher, ListRef, Scheme, SchemeBuilder, Type,
@@ -227,7 +227,7 @@ mod tests {
         *context.get_user_data_mut() += 1;
     }
 
-    struct StateAdapter<'a>(&'a mut NativeContextState<usize>);
+    struct StateAdapter<'a>(&'a mut ContextState<usize>);
 
     impl HasScheme for StateAdapter<'_> {
         fn scheme(&self) -> &Scheme {
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_list_state_reuse_and_generic_mutation() {
         let scheme = scheme();
-        let mut state = NativeContextState::new_with(&scheme, || 7usize);
+        let mut state = ContextState::new_with(&scheme, || 7usize);
         assert!(state.get_list_matcher_from_type(&Type::Bytes).is_none());
         assert!(state.get_list_matcher_mut_from_type(&Type::Bytes).is_none());
         insert(&mut StateAdapter(&mut state), 41);
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn test_explicit_stored_snapshot_preserves_lists_without_populating_fields() {
         let scheme = scheme();
-        let mut state = NativeContextState::new_with(&scheme, || 0usize);
+        let mut state = ContextState::new_with(&scheme, || 0usize);
         insert(&mut state, 41);
         let snapshot = crate::ExecutionContext::new_from_context(&state, 9usize);
         assert!(
@@ -338,7 +338,7 @@ mod tests {
     fn test_list_access_checks_scheme_identity() {
         let scheme = scheme();
         let other = self::scheme();
-        let mut state = NativeContextState::<()>::new(&scheme);
+        let mut state = ContextState::<()>::new(&scheme);
         let foreign = other.get_list(&Type::Int).unwrap();
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -361,7 +361,7 @@ mod tests {
 
     struct NativeContext<'a> {
         request: &'a Request,
-        state: &'a NativeContextState<usize>,
+        state: &'a ContextState<usize>,
     }
 
     impl HasScheme for NativeContext<'_> {
@@ -414,7 +414,7 @@ mod tests {
             .parse_value("name")
             .unwrap()
             .compile_with_compiler(&mut compiler);
-        let mut state = NativeContextState::new_with(&scheme, || 0usize);
+        let mut state = ContextState::new_with(&scheme, || 0usize);
         insert(&mut state, 41);
         let request = Request {
             name: "first".into(),

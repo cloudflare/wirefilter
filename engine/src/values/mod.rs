@@ -1,21 +1,22 @@
-//! Native field values, concrete collection traversal, and value conversion.
+//! Value interfaces, concrete collection traversal, and value conversion.
 //!
-//! Implement [`NativeValue`] to associate storage with a [`ValueType`] and an
-//! engine-provided reader. Custom containers implement [`NativeArray`] or
-//! [`NativeMap`] and select [`ArrayRead`] or [`MapRead`]. Comparison execution is
+//! Implement [`Value`] to associate storage with a [`FieldValueType`] and an
+//! engine-provided reader. Custom containers implement [`ArrayValue`] or
+//! [`MapValue`] and select [`ArrayRead`] or [`MapRead`]. Comparison execution is
 //! internal: scalar comparison returns an optional boolean, while array
 //! comparison appends results to an ordinary [`TypedArray<bool>`].
 
-pub use super::lhs_value::{LhsValueRead, LhsValueType};
+use crate::lhs_types::append_stored_lhs_at;
+pub use crate::lhs_types::{LhsValueRead, LhsValueType};
 use crate::{CompoundType, FieldIndex, LhsValue, Type, TypedArray};
 use std::borrow::{Borrow, Cow};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::net::IpAddr;
 
-/// A path incompatible with a statically declared native type.
+/// A path incompatible with the declared value type.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("unsupported native value operation: {0}")]
+#[error("unsupported value operation: {0}")]
 pub struct ValueError(pub &'static str);
 
 /// A Wirefilter value type, including recursively composed containers.
@@ -44,14 +45,15 @@ pub trait ValueType {
 ///
 /// Every static [`ValueType`] implements this trait automatically. [`LhsValueType`]
 /// instead obtains its type from the scheme, allowing one provider to expose
-/// stored values with arbitrary collection nesting. Native collection elements
-/// still require a static [`ValueType`]; a scheme-typed value is a complete field.
+/// stored values with arbitrary collection nesting. Collection elements exposed
+/// through [`ArrayValue`] or [`MapValue`] still require a static [`ValueType`]; a
+/// scheme-typed value is a complete field.
 pub trait FieldValueType {
     /// A fixed getter type, or `None` when the scheme supplies the field's type.
     const STATIC_TYPE: Option<Type>;
 
     /// Whether the reader can compare a selected collection directly.
-    /// Typed native collections normally convert for custom collection comparisons.
+    /// Typed collections normally convert for custom collection comparisons.
     const DIRECT_COLLECTION_COMPARISON: bool = false;
 
     /// Compiled traversal, independent of request data and the field getter.
@@ -82,14 +84,14 @@ impl<S: ValueType> FieldValueType for S {
     }
 }
 
-/// A statically dispatched custom comparison over native scalar values.
+/// A statically dispatched comparison over values and their scalar representations.
 ///
 /// The compiler selects the scalar comparison method from the validated path's
 /// type. Implementations override that method. A compiler adapts a comparison
 /// that needs the evaluation context to this interface by
 /// borrowing its evaluation context; traversal does not erase the predicate or
 /// construct a value enum for each element.
-pub(crate) trait NativePredicate {
+pub(crate) trait ValuePredicate {
     /// Compare an existing stored value, including a selected collection.
     fn lhs(&self, _: &LhsValue<'_>) -> bool {
         panic!("predicate does not accept stored values")
@@ -116,16 +118,15 @@ pub(crate) trait NativePredicate {
     }
 }
 
-/// A native value selects its logical type and an engine-provided reader.
+/// A value selects its logical type and an engine-provided reader.
 ///
-/// A custom array implements [`NativeArray`] and selects [`ArrayRead`]; a custom
-/// map implements [`NativeMap`] and selects [`MapRead`]. Neither implementation
+/// A custom array implements [`ArrayValue`] and selects [`ArrayRead`]; a custom
+/// map implements [`MapValue`] and selects [`MapRead`]. Neither implementation
 /// needs to implement comparison algorithms or construct erased value enums.
 ///
 /// Byte storage includes `Vec<u8>`, `Cow<[u8]>`, and [`crate::Bytes`]. The optional
-/// `bytes` feature also supports `bytes::Bytes`, including inside native arrays
-/// and maps.
-pub trait NativeValue {
+/// `bytes` feature also supports `bytes::Bytes`, including inside arrays and maps.
+pub trait Value {
     /// Logical type, independent of the borrow lifetime of this provider.
     type ValueType: FieldValueType;
 
@@ -133,29 +134,30 @@ pub trait NativeValue {
     ///
     /// Select a supplied reader such as [`BytesRead`], [`ArrayRead`], or
     /// [`MapRead`]. Its execution interface is internal to Wirefilter;
-    /// applications customize their storage through the native container traits.
+    /// applications customize their storage through the collection traits.
     // The private bound intentionally permits selecting supported readers while
     // keeping their comparison implementation inside Wirefilter.
     #[allow(private_bounds)]
     type Read: ReadValue<Self, Self::ValueType>;
 }
 
-/// Convert a native value into the representation used by general value expressions.
+/// Convert a value into the representation used by general value expressions.
 ///
-/// Direct native comparisons do not call this method. Arrays and maps materialize
-/// their container structure when passed to existing functions or other operations
-/// requiring an [`LhsValue`]. Borrowed values retain references to byte payloads.
+/// Direct comparisons through the value reader do not require conversion.
+/// Application arrays and maps materialize their container structure when passed
+/// to functions or other operations requiring an [`LhsValue`]. Borrowed values
+/// retain references to byte payloads.
 ///
 /// A descriptor returned by value may implement this trait with the default method:
 /// the resulting value owns its payloads and cannot borrow the temporary descriptor.
 /// Descriptors that retain longer-lived references can override it to keep those
 /// payloads borrowed, as [`SliceView`] does.
-pub trait IntoLhsValue<'a>: NativeValue + Sized {
+pub trait IntoLhsValue<'a>: Value + Sized {
     /// Whether converting a collection builds container storage.
     ///
     /// The compiler uses this hint to memoize converted non-mapped function
     /// arguments. Borrowing existing Wirefilter containers is cheap and returns
-    /// `false`; ordinary native arrays and maps retain the default. This does not
+    /// `false`; application arrays and maps retain the default. This does not
     /// change whether the value can be passed to a function.
     const MATERIALIZES_COLLECTIONS: bool = true;
 
@@ -166,7 +168,8 @@ pub trait IntoLhsValue<'a>: NativeValue + Sized {
 
     /// Consume the value and convert the selection reached by keys and indexes.
     ///
-    /// Borrowed storage traverses natively and converts only the selected value.
+    /// Borrowed values select directly from their source storage and convert only
+    /// the selected value.
     /// The default preserves custom conversion and ownership behavior by calling
     /// [`Self::into_lhs`] before indexing. Borrowing descriptors can override this
     /// method to select first, as [`SliceView`] does.
@@ -181,16 +184,17 @@ pub trait IntoLhsValue<'a>: NativeValue + Sized {
 
     /// Consume the value and append selections reached by keys, indexes, and `[*]`.
     ///
-    /// Missing children contribute no values. The `[*]` operator visits arrays in array order
-    /// and maps in the byte-key order required by [`NativeMap::values`]. An empty
-    /// path appends the whole value, including its container structure if any.
+    /// Missing children contribute no values. The `[*]` operator visits arrays in
+    /// array order and maps in the byte-key order required by [`MapValue::values`].
+    /// An empty path appends the whole value, including its container structure.
     /// Existing entries in `output` are preserved.
     ///
-    /// Borrowed storage traverses natively and converts only the selected values.
+    /// Borrowed values select directly from their source storage and convert only
+    /// the selected values.
     /// The default selects the fixed prefix through [`Self::into_lhs_at`], then
     /// traverses the converted value, preserving custom conversion and ownership.
     /// Borrowing descriptors can override this method to retain their source
-    /// lifetime during native traversal, as [`SliceView`] does.
+    /// lifetime during traversal, as [`SliceView`] does.
     ///
     /// Paths must be compatible with the declared type; incompatible paths panic.
     #[inline]
@@ -205,33 +209,7 @@ pub trait IntoLhsValue<'a>: NativeValue + Sized {
     }
 }
 
-pub(super) fn append_stored_lhs_at<'a>(
-    mut value: LhsValue<'a>,
-    mut indexes: &[FieldIndex],
-    output: &mut Vec<LhsValue<'a>>,
-) {
-    while let Some((index, rest)) = indexes.split_first() {
-        if *index == FieldIndex::MapEach {
-            let values = value.into_iter();
-            if rest.is_empty() {
-                output.extend(values);
-            } else {
-                for value in values {
-                    append_stored_lhs_at(value, rest, output);
-                }
-            }
-            return;
-        }
-        let Some(selected) = value.extract(index).expect("invalid native selection path") else {
-            return;
-        };
-        value = selected;
-        indexes = rest;
-    }
-    output.push(value);
-}
-
-impl<'a, 'data: 'a, T: NativeValue + ?Sized> IntoLhsValue<'a> for &'data T {
+impl<'a, 'data: 'a, T: Value + ?Sized> IntoLhsValue<'a> for &'data T {
     const MATERIALIZES_COLLECTIONS: bool = T::Read::MATERIALIZES_COLLECTIONS;
 
     #[inline]
@@ -250,7 +228,7 @@ impl<'a, 'data: 'a, T: NativeValue + ?Sized> IntoLhsValue<'a> for &'data T {
     }
 }
 
-/// Internal conversion and comparison operations for a native value.
+/// Internal conversion and comparison operations for a value.
 ///
 /// The compiler chooses scalar or array evaluation before constructing the
 /// closure. Both operations preserve concrete storage and predicate types.
@@ -274,13 +252,13 @@ pub(crate) trait ReadValue<V: ?Sized, S: FieldValueType> {
     /// lifetime instead of borrowing a temporary on the traversal stack.
     #[inline]
     fn append_lhs_at<'a>(value: &'a V, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
-        assert!(indexes.is_empty(), "path continues beyond native scalar");
+        assert!(indexes.is_empty(), "path continues beyond scalar");
         output.push(Self::to_lhs(value));
     }
 
     /// Compare the value selected by a path containing only indexes and keys.
     /// A missing index or key returns `None`; `[*]` is a compiler error.
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         value: &V,
         path: &S::Path,
         predicate: &P,
@@ -289,7 +267,7 @@ pub(crate) trait ReadValue<V: ?Sized, S: FieldValueType> {
     /// Append comparisons in traversal order, skipping missing indexes and keys.
     /// Scalar readers append one result; container readers also handle `[*]`.
     #[inline]
-    fn compare_vec<P: NativePredicate + ?Sized>(
+    fn compare_vec<P: ValuePredicate + ?Sized>(
         value: &V,
         path: &S::Path,
         predicate: &P,
@@ -303,7 +281,7 @@ pub(crate) trait ReadValue<V: ?Sized, S: FieldValueType> {
 
 /// Compare a scalar selection without constructing a result collector.
 #[inline]
-pub(crate) fn compare_one<V: NativeValue + ?Sized, P: NativePredicate + ?Sized>(
+pub(crate) fn compare_one<V: Value + ?Sized, P: ValuePredicate + ?Sized>(
     value: &V,
     path: &<V::ValueType as FieldValueType>::Path,
     predicate: &P,
@@ -313,7 +291,7 @@ pub(crate) fn compare_one<V: NativeValue + ?Sized, P: NativePredicate + ?Sized>(
 
 /// Append comparisons for a possibly nested array or map selection.
 #[inline]
-pub(crate) fn compare_vec<V: NativeValue + ?Sized, P: NativePredicate + ?Sized>(
+pub(crate) fn compare_vec<V: Value + ?Sized, P: ValuePredicate + ?Sized>(
     value: &V,
     path: &<V::ValueType as FieldValueType>::Path,
     predicate: &P,
@@ -323,12 +301,12 @@ pub(crate) fn compare_vec<V: NativeValue + ?Sized, P: NativePredicate + ?Sized>(
 }
 
 /// A concrete array projection. Elements can be references or borrowed descriptors.
-pub trait NativeArray {
+pub trait ArrayValue {
     /// Stable logical type of each element.
     type Element: ValueType;
 
     /// A projection tied to the borrow of the container.
-    type Item<'a>: NativeValue<ValueType = Self::Element> + IntoLhsValue<'a>
+    type Item<'a>: Value<ValueType = Self::Element> + IntoLhsValue<'a>
     where
         Self: 'a;
 
@@ -345,12 +323,12 @@ pub trait NativeArray {
 }
 
 /// A byte-keyed map with concrete value projections.
-pub trait NativeMap {
+pub trait MapValue {
     /// Stable logical type of each map value.
     type Element: ValueType;
 
     /// A reference or descriptor returned by value.
-    type Item<'a>: NativeValue<ValueType = Self::Element> + IntoLhsValue<'a>
+    type Item<'a>: Value<ValueType = Self::Element> + IntoLhsValue<'a>
     where
         Self: 'a;
 
@@ -366,7 +344,7 @@ pub trait NativeMap {
     ///
     /// This must match ordinary Wirefilter maps, including after conversion for
     /// function arguments. Vector logical operations combine results by position;
-    /// a different native order can change results even through an identity
+    /// a different iteration order can change results even through an identity
     /// function. Adapters over differently ordered storage must supply this order.
     fn values(&self) -> Self::Iter<'_>;
 
@@ -450,13 +428,13 @@ impl<S: ValueType> ValueType for Map<S> {
     }
 }
 
-/// Engine reader for any concrete [`NativeArray`] implementation.
+/// Engine reader for any concrete [`ArrayValue`] implementation.
 pub struct ArrayRead;
 
-impl<A: NativeArray + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
+impl<A: ArrayValue + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
     fn to_lhs(array: &A) -> LhsValue<'_> {
         crate::Array::try_from_iter(A::Element::TYPE, array.iter().map(IntoLhsValue::into_lhs))
-            .expect("native array items must match their declared type")
+            .expect("array items must match their declared type")
             .into()
     }
 
@@ -467,7 +445,7 @@ impl<A: NativeArray + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
             Some((FieldIndex::ArrayIndex(index), rest)) => {
                 array.get(*index as usize)?.into_lhs_at(rest)
             }
-            Some(_) => panic!("native array selection requires an array index"),
+            Some(_) => panic!("array selection requires an array index"),
         }
     }
 
@@ -489,12 +467,12 @@ impl<A: NativeArray + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
                     value.append_lhs_at(rest, output);
                 }
             }
-            Some(_) => panic!("map key used on native array"),
+            Some(_) => panic!("map key used on array"),
         }
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         array: &A,
         path: &ArrayPath<<A::Element as ValueType>::Path>,
         predicate: &P,
@@ -509,7 +487,7 @@ impl<A: NativeArray + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
     }
 
     #[inline]
-    fn compare_vec<P: NativePredicate + ?Sized>(
+    fn compare_vec<P: ValuePredicate + ?Sized>(
         array: &A,
         path: &ArrayPath<<A::Element as ValueType>::Path>,
         predicate: &P,
@@ -537,10 +515,10 @@ impl<A: NativeArray + ?Sized> ReadValue<A, Array<A::Element>> for ArrayRead {
     }
 }
 
-/// Engine reader for any concrete [`NativeMap`] implementation.
+/// Engine reader for any concrete [`MapValue`] implementation.
 pub struct MapRead;
 
-impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
+impl<M: MapValue + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
     fn to_lhs(map: &M) -> LhsValue<'_> {
         let mut entries = Vec::with_capacity(map.values().size_hint().0);
         map.for_each_entry(|key, value| {
@@ -550,7 +528,7 @@ impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
             )));
         });
         crate::Map::try_from_iter(M::Element::TYPE, entries)
-            .expect("native map values must match their declared type")
+            .expect("map values must match their declared type")
             .into()
     }
 
@@ -559,7 +537,7 @@ impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
         match indexes.split_first() {
             None => Some(Self::to_lhs(map)),
             Some((FieldIndex::MapKey(key), rest)) => map.get(key.as_bytes())?.into_lhs_at(rest),
-            Some(_) => panic!("native map selection requires a map key"),
+            Some(_) => panic!("map selection requires a map key"),
         }
     }
 
@@ -581,12 +559,12 @@ impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
                     value.append_lhs_at(rest, output);
                 }
             }
-            Some(_) => panic!("array index used on native map"),
+            Some(_) => panic!("array index used on map"),
         }
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         map: &M,
         path: &MapPath<<M::Element as ValueType>::Path>,
         predicate: &P,
@@ -601,7 +579,7 @@ impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
     }
 
     #[inline]
-    fn compare_vec<P: NativePredicate + ?Sized>(
+    fn compare_vec<P: ValuePredicate + ?Sized>(
         map: &M,
         path: &MapPath<<M::Element as ValueType>::Path>,
         predicate: &P,
@@ -632,12 +610,12 @@ impl<M: NativeMap + ?Sized> ReadValue<M, Map<M::Element>> for MapRead {
 /// Forward a borrowed provider to its concrete engine reader.
 pub struct Borrowed<R>(PhantomData<R>);
 
-impl<T: NativeValue + ?Sized> NativeValue for &T {
+impl<T: Value + ?Sized> Value for &T {
     type Read = Borrowed<T::Read>;
     type ValueType = T::ValueType;
 }
 
-impl<T: NativeValue + ?Sized> ReadValue<&T, T::ValueType> for Borrowed<T::Read> {
+impl<T: Value + ?Sized> ReadValue<&T, T::ValueType> for Borrowed<T::Read> {
     const MATERIALIZES_COLLECTIONS: bool = T::Read::MATERIALIZES_COLLECTIONS;
 
     #[inline]
@@ -656,7 +634,7 @@ impl<T: NativeValue + ?Sized> ReadValue<&T, T::ValueType> for Borrowed<T::Read> 
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         value: &&T,
         path: &<T::ValueType as FieldValueType>::Path,
         predicate: &P,
@@ -665,7 +643,7 @@ impl<T: NativeValue + ?Sized> ReadValue<&T, T::ValueType> for Borrowed<T::Read> 
     }
 
     #[inline]
-    fn compare_vec<P: NativePredicate + ?Sized>(
+    fn compare_vec<P: ValuePredicate + ?Sized>(
         value: &&T,
         path: &<T::ValueType as FieldValueType>::Path,
         predicate: &P,
@@ -675,22 +653,22 @@ impl<T: NativeValue + ?Sized> ReadValue<&T, T::ValueType> for Borrowed<T::Read> 
     }
 }
 
-/// Forward boxed native storage to its concrete reader.
+/// Forward boxed storage to its concrete reader.
 pub struct BoxRead<R>(PhantomData<R>);
 
-impl<T: NativeValue + ?Sized> NativeValue for Box<T> {
+impl<T: Value + ?Sized> Value for Box<T> {
     type Read = BoxRead<T::Read>;
     type ValueType = T::ValueType;
 }
 
-impl<'a, T: NativeValue + ?Sized> IntoLhsValue<'a> for Box<T> {
+impl<'a, T: Value + ?Sized> IntoLhsValue<'a> for Box<T> {
     #[inline]
     fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
         append_stored_lhs_at(self.into_lhs(), indexes, output);
     }
 }
 
-impl<T: NativeValue + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Read> {
+impl<T: Value + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Read> {
     const MATERIALIZES_COLLECTIONS: bool = T::Read::MATERIALIZES_COLLECTIONS;
 
     #[inline]
@@ -713,7 +691,7 @@ impl<T: NativeValue + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Rea
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         value: &Box<T>,
         path: &<T::ValueType as FieldValueType>::Path,
         predicate: &P,
@@ -722,7 +700,7 @@ impl<T: NativeValue + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Rea
     }
 
     #[inline]
-    fn compare_vec<P: NativePredicate + ?Sized>(
+    fn compare_vec<P: ValuePredicate + ?Sized>(
         value: &Box<T>,
         path: &<T::ValueType as FieldValueType>::Path,
         predicate: &P,
@@ -732,7 +710,7 @@ impl<T: NativeValue + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Rea
     }
 }
 
-impl<T: NativeValue> NativeArray for Vec<T>
+impl<T: Value> ArrayValue for Vec<T>
 where
     T::ValueType: ValueType,
 {
@@ -757,7 +735,7 @@ where
     }
 }
 
-impl<T: NativeValue> NativeValue for Vec<T>
+impl<T: Value> Value for Vec<T>
 where
     T::ValueType: ValueType,
 {
@@ -765,7 +743,7 @@ where
     type ValueType = Array<T::ValueType>;
 }
 
-impl<'a, T: NativeValue> IntoLhsValue<'a> for Vec<T>
+impl<'a, T: Value> IntoLhsValue<'a> for Vec<T>
 where
     T::ValueType: ValueType,
 {
@@ -775,7 +753,7 @@ where
     }
 }
 
-impl<T: NativeValue> NativeArray for [T]
+impl<T: Value> ArrayValue for [T]
 where
     T::ValueType: ValueType,
 {
@@ -800,7 +778,7 @@ where
     }
 }
 
-impl<T: NativeValue> NativeValue for [T]
+impl<T: Value> Value for [T]
 where
     T::ValueType: ValueType,
 {
@@ -808,7 +786,7 @@ where
     type ValueType = Array<T::ValueType>;
 }
 
-impl<K: Borrow<[u8]> + Ord, V: NativeValue> NativeMap for BTreeMap<K, V>
+impl<K: Borrow<[u8]> + Ord, V: Value> MapValue for BTreeMap<K, V>
 where
     V::ValueType: ValueType,
 {
@@ -840,7 +818,7 @@ where
     }
 }
 
-impl<K: Borrow<[u8]> + Ord, V: NativeValue> NativeValue for BTreeMap<K, V>
+impl<K: Borrow<[u8]> + Ord, V: Value> Value for BTreeMap<K, V>
 where
     V::ValueType: ValueType,
 {
@@ -848,7 +826,7 @@ where
     type ValueType = Map<V::ValueType>;
 }
 
-impl<'a, K: Borrow<[u8]> + Ord, V: NativeValue> IntoLhsValue<'a> for BTreeMap<K, V>
+impl<'a, K: Borrow<[u8]> + Ord, V: Value> IntoLhsValue<'a> for BTreeMap<K, V>
 where
     V::ValueType: ValueType,
 {
@@ -862,7 +840,7 @@ where
 #[derive(Debug, Clone, Copy)]
 pub struct SliceView<'a, T>(pub &'a [T]);
 
-impl<T: NativeValue> NativeArray for SliceView<'_, T>
+impl<T: Value> ArrayValue for SliceView<'_, T>
 where
     T::ValueType: ValueType,
 {
@@ -887,7 +865,7 @@ where
     }
 }
 
-impl<T: NativeValue> NativeValue for SliceView<'_, T>
+impl<T: Value> Value for SliceView<'_, T>
 where
     T::ValueType: ValueType,
 {
@@ -895,7 +873,7 @@ where
     type ValueType = Array<T::ValueType>;
 }
 
-impl<'a, 'data: 'a, T: NativeValue> IntoLhsValue<'a> for SliceView<'data, T>
+impl<'a, 'data: 'a, T: Value> IntoLhsValue<'a> for SliceView<'data, T>
 where
     T::ValueType: ValueType,
 {
@@ -953,23 +931,23 @@ impl<T: AsRef<[u8]> + ?Sized> ReadValue<T, Bytes> for BytesRead {
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(value: &T, _: &(), predicate: &P) -> Option<bool> {
+    fn compare_one<P: ValuePredicate + ?Sized>(value: &T, _: &(), predicate: &P) -> Option<bool> {
         Some(predicate.bytes(value.as_ref()))
     }
 }
 
 macro_rules! bytes_storage {
     ($($ty:ty),* $(,)?) => {$(
-        impl NativeValue for $ty {
+        impl Value for $ty {
             type ValueType = Bytes;
             type Read = BytesRead;
         }
     )*};
 }
 
-// `u8` deliberately has no NativeValue implementation: Vec<u8> and [u8] are
-// byte strings, while Vec<T> and [T] compose arrays for native element types.
-bytes_storage!(str, String, [u8], Vec<u8>, Cow<'_, [u8]>, crate::Bytes<'_>);
+// `u8` deliberately has no Value implementation: Vec<u8> and [u8] are
+// byte strings, while Vec<T> and [T] compose arrays for element types implementing Value.
+bytes_storage!(str, String, [u8], Vec<u8>, Cow<'_, [u8]>);
 
 #[cfg(feature = "bytes")]
 bytes_storage!(bytes::Bytes);
@@ -984,13 +962,6 @@ impl<'a, 'data: 'a> IntoLhsValue<'a> for Cow<'data, [u8]> {
     #[inline]
     fn into_lhs(self) -> LhsValue<'a> {
         LhsValue::Bytes(crate::Bytes::from(self))
-    }
-}
-
-impl<'a, 'data: 'a> IntoLhsValue<'a> for crate::Bytes<'data> {
-    #[inline]
-    fn into_lhs(self) -> LhsValue<'a> {
-        LhsValue::Bytes(self)
     }
 }
 
@@ -1011,7 +982,7 @@ macro_rules! ordered_scalar {
                 validate_scalar_path(path, input_type, Type::$variant)
             }
         }
-        impl NativeValue for $ty {
+        impl Value for $ty {
             type Read = $marker;
             type ValueType = $marker;
         }
@@ -1022,7 +993,7 @@ macro_rules! ordered_scalar {
             }
 
             #[inline]
-            fn compare_one<P: NativePredicate + ?Sized>(
+            fn compare_one<P: ValuePredicate + ?Sized>(
                 value: &$ty,
                 _: &(),
                 predicate: &P,
@@ -1051,7 +1022,7 @@ impl ValueType for Bool {
     }
 }
 
-impl NativeValue for bool {
+impl Value for bool {
     type Read = Bool;
     type ValueType = Bool;
 }
@@ -1063,7 +1034,7 @@ impl ReadValue<bool, Bool> for Bool {
     }
 
     #[inline]
-    fn compare_one<P: NativePredicate + ?Sized>(
+    fn compare_one<P: ValuePredicate + ?Sized>(
         value: &bool,
         _: &(),
         predicate: &P,
@@ -1179,12 +1150,12 @@ mod tests {
 
     struct SelectionMap(Vec<String>);
 
-    impl NativeValue for SelectionMap {
+    impl Value for SelectionMap {
         type Read = MapRead;
         type ValueType = Map<Array<Bytes>>;
     }
 
-    impl NativeMap for SelectionMap {
+    impl MapValue for SelectionMap {
         type Element = Array<Bytes>;
         type Item<'a> = SliceView<'a, String>;
         type Iter<'a> = std::iter::Once<SliceView<'a, String>>;
@@ -1313,11 +1284,11 @@ mod tests {
             values: &'a [String],
             conversions: &'a Cell<usize>,
         }
-        impl NativeValue for Descriptor<'_> {
+        impl Value for Descriptor<'_> {
             type Read = ArrayRead;
             type ValueType = Array<Bytes>;
         }
-        impl NativeArray for Descriptor<'_> {
+        impl ArrayValue for Descriptor<'_> {
             type Element = Bytes;
             type Item<'a>
                 = &'a String
@@ -1397,12 +1368,12 @@ mod tests {
     fn test_map_each_fallback_preserves_custom_indexed_conversion() {
         struct IndexedSelection<'a>(&'a [Vec<String>]);
 
-        impl NativeValue for IndexedSelection<'_> {
+        impl Value for IndexedSelection<'_> {
             type Read = ArrayRead;
             type ValueType = Array<Array<Bytes>>;
         }
 
-        impl NativeArray for IndexedSelection<'_> {
+        impl ArrayValue for IndexedSelection<'_> {
             type Element = Array<Bytes>;
             type Item<'a>
                 = &'a Vec<String>
@@ -1449,12 +1420,12 @@ mod tests {
     fn test_map_each_preserves_custom_child_append() {
         struct AppendingSelection<'a>(&'a [String]);
 
-        impl NativeValue for AppendingSelection<'_> {
+        impl Value for AppendingSelection<'_> {
             type Read = ArrayRead;
             type ValueType = Array<Bytes>;
         }
 
-        impl NativeArray for AppendingSelection<'_> {
+        impl ArrayValue for AppendingSelection<'_> {
             type Element = Bytes;
             type Item<'a>
                 = &'a String
@@ -1491,12 +1462,12 @@ mod tests {
 
         struct MapWithSelection(Vec<String>);
 
-        impl NativeValue for MapWithSelection {
+        impl Value for MapWithSelection {
             type Read = MapRead;
             type ValueType = Map<Array<Bytes>>;
         }
 
-        impl NativeMap for MapWithSelection {
+        impl MapValue for MapWithSelection {
             type Element = Array<Bytes>;
             type Item<'a> = AppendingSelection<'a>;
             type Iter<'a> = std::iter::Once<AppendingSelection<'a>>;
@@ -1582,7 +1553,7 @@ mod tests {
             }
         }
 
-        impl NativeValue for Temporary {
+        impl Value for Temporary {
             type Read = BytesRead;
             type ValueType = Bytes;
         }
@@ -1611,7 +1582,7 @@ mod tests {
         reads: &'a Cell<usize>,
     }
 
-    impl NativePredicate for Matches<'_> {
+    impl ValuePredicate for Matches<'_> {
         fn bytes(&self, value: &[u8]) -> bool {
             self.reads.set(self.reads.get() + 1);
             value == self.needle
@@ -1640,7 +1611,7 @@ mod tests {
             (u32::MAX, "key", 0, None),
             (0, "key", u32::MAX, None),
         ] {
-            let path = <Input as NativeValue>::ValueType::compile_path(
+            let path = <Input as Value>::ValueType::compile_path(
                 &[
                     FieldIndex::ArrayIndex(outer),
                     FieldIndex::MapKey(key.into()),
@@ -1670,7 +1641,7 @@ mod tests {
             needle: b"hit",
             reads: &reads,
         };
-        let path = <Input as NativeValue>::ValueType::compile_path(
+        let path = <Input as Value>::ValueType::compile_path(
             &[FieldIndex::MapEach, FieldIndex::MapEach],
             Type::Bytes,
         )
@@ -1730,7 +1701,7 @@ mod tests {
             needle: b"two",
             reads: &reads,
         };
-        let path = <Input as NativeValue>::ValueType::compile_path(
+        let path = <Input as Value>::ValueType::compile_path(
             &[
                 FieldIndex::MapEach,
                 FieldIndex::MapKey("key".into()),
@@ -1744,7 +1715,7 @@ mod tests {
         assert_eq!(results, [false, true, true]);
         assert_eq!(reads.get(), 3);
 
-        let absent = <Input as NativeValue>::ValueType::compile_path(
+        let absent = <Input as Value>::ValueType::compile_path(
             &[
                 FieldIndex::ArrayIndex(8),
                 FieldIndex::MapKey("key".into()),
@@ -1768,8 +1739,7 @@ mod tests {
                 FieldIndex::ArrayIndex(u32::MAX),
             ],
         ] {
-            let path =
-                <Input as NativeValue>::ValueType::compile_path(&indexes, Type::Bytes).unwrap();
+            let path = <Input as Value>::ValueType::compile_path(&indexes, Type::Bytes).unwrap();
             compare_vec(&input, &path, &predicate, &mut results);
             assert_eq!(results, [false, true, true]);
             assert_eq!(reads.get(), 3);
@@ -1801,19 +1771,19 @@ mod tests {
     #[test]
     fn test_custom_predicate_receives_each_scalar_kind() {
         struct IntPredicate;
-        impl NativePredicate for IntPredicate {
+        impl ValuePredicate for IntPredicate {
             fn int(&self, value: i64) -> bool {
                 value == 42
             }
         }
         struct IpPredicate;
-        impl NativePredicate for IpPredicate {
+        impl ValuePredicate for IpPredicate {
             fn ip(&self, value: IpAddr) -> bool {
                 value.is_loopback()
             }
         }
         struct BoolPredicate;
-        impl NativePredicate for BoolPredicate {
+        impl ValuePredicate for BoolPredicate {
             fn boolean(&self, value: bool) -> bool {
                 !value
             }
