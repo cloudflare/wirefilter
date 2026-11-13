@@ -4,7 +4,7 @@
 //! request data. Field binding happens during filter compilation; evaluation calls
 //! the concrete getter captured by the compiled expression.
 
-use crate::native::values::{IntoLhsValue, NativeValue, ValueType};
+use crate::native::values::{FieldValueType, IntoLhsValue, LhsValueType, NativeValue};
 use crate::{ExecutionContext, Field, LhsValue, List, ListMatcher, ListRef, Scheme, Type};
 use std::marker::PhantomData;
 
@@ -227,7 +227,7 @@ pub trait FieldConsumer<F: ContextFamily>: Sized {
 /// A native field's representation across request and access lifetimes.
 pub trait ProviderFamily: 'static {
     /// Recursive Wirefilter type represented by the provider.
-    type ValueType: ValueType;
+    type ValueType: FieldValueType;
 
     /// Storage usable by generated contexts and custom adapters.
     type Storage<'data>;
@@ -279,6 +279,28 @@ where
     #[inline]
     fn reborrow<'ctx, 'data: 'ctx>(value: &'ctx Self::Storage<'data>) -> Self::Value<'ctx, 'data> {
         value.clone()
+    }
+}
+
+/// A provider borrowing a stored value with request-borrowed payloads.
+///
+/// The scheme supplies the logical field type. A context must validate inserted
+/// values against it; this provider does not convert or copy the retained value.
+/// Handwritten getters can use this provider to read an ordinary field table
+/// through the native compilation interface.
+pub struct LhsValueProvider;
+
+impl ProviderFamily for LhsValueProvider {
+    type Storage<'data> = LhsValue<'data>;
+    type Value<'ctx, 'data>
+        = &'ctx LhsValue<'ctx>
+    where
+        'data: 'ctx;
+    type ValueType = LhsValueType;
+
+    #[inline]
+    fn reborrow<'ctx, 'data: 'ctx>(value: &'ctx Self::Storage<'data>) -> Self::Value<'ctx, 'data> {
+        value
     }
 }
 
@@ -505,7 +527,10 @@ mod tests {
 
             fn validate_scheme(scheme: &Scheme) -> Result<(), SchemeValidationError> {
                 VALIDATIONS.fetch_add(1, Ordering::Relaxed);
-                crate::validate_field_definitions(scheme, &[("flag", crate::Type::Bool, false)])
+                crate::validate_field_definitions(
+                    scheme,
+                    &[("flag", Some(crate::Type::Bool), false)],
+                )
             }
         }
         impl StoredFieldGetter<Family> for Getter {

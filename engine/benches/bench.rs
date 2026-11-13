@@ -1,3 +1,5 @@
+mod lhs_value_reader;
+
 use std::alloc::System;
 
 // Most of our usage will be via FFI as a dynamic library, so we're interested
@@ -250,6 +252,7 @@ criterion_group! {
         bench_string_comparisons,
         bench_string_matches,
         bench_string_function_comparison,
+        lhs_value_reader::bench,
 }
 
 criterion_main!(field_benchmarks);

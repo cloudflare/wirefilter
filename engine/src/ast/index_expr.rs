@@ -13,7 +13,7 @@ use crate::context::{
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
 use crate::lhs_types::{Array, Map, TypedArray};
-use crate::native::values::{self, IntoLhsValue, NativePredicate, NativeValue, ValueType};
+use crate::native::values::{self, FieldValueType, IntoLhsValue, NativePredicate, NativeValue};
 use crate::scheme::{FieldIndex, IndexAccessError};
 use crate::types::{GetType, IntoIter, LhsValue, Type};
 use serde::ser::SerializeSeq;
@@ -191,18 +191,18 @@ fn required<T>(value: Option<T>, field: &Field) -> Option<T> {
     value
 }
 
-fn check_native_field<S: ValueType>(field: &Field) -> Result<(), FieldBindingError> {
+fn check_native_field<S: FieldValueType>(field: &Field) -> Result<(), FieldBindingError> {
     let expected = field.get_type();
-    let actual = S::TYPE;
-    if actual == expected {
-        Ok(())
-    } else {
-        Err(FieldBindingError::TypeMismatch {
+    if let Some(actual) = S::STATIC_TYPE
+        && actual != expected
+    {
+        return Err(FieldBindingError::TypeMismatch {
             field: field.name().into(),
             expected,
             actual,
-        })
+        });
     }
+    Ok(())
 }
 
 struct MaterializationCost;
@@ -210,11 +210,13 @@ struct MaterializationCost;
 impl<F: ContextFamily> FieldConsumer<F> for MaterializationCost {
     type Output = bool;
 
-    fn native<G: FieldGetter<F>>(self, _: Field, _: G) -> Result<bool, FieldBindingError> {
-        Ok(matches!(
-            <G::Provider as ProviderFamily>::ValueType::TYPE,
-            Type::Array(_) | Type::Map(_)
-        ))
+    fn native<G: FieldGetter<F>>(self, field: Field, _: G) -> Result<bool, FieldBindingError> {
+        // Stored values also use this interface, but borrowing their containers
+        // must not introduce the memoization allocation for native conversion.
+        Ok(matches!(field.get_type(), Type::Array(_) | Type::Map(_))
+            && <<G::Provider as ProviderFamily>::Value<'static, 'static> as IntoLhsValue<
+                'static,
+            >>::MATERIALIZES_COLLECTIONS)
     }
 
     fn stored<G: StoredFieldGetter<F>>(self, _: G) -> Result<bool, FieldBindingError> {
@@ -329,6 +331,11 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> NativePredicate
     for ContextComparison<'_, '_, '_, F, P>
 {
     #[inline]
+    fn lhs(&self, value: &LhsValue<'_>) -> bool {
+        self.comp.compare(value, self.ctx)
+    }
+
+    #[inline]
     fn bytes(&self, value: &[u8]) -> bool {
         self.comp.compare_bytes(value, self.ctx)
     }
@@ -350,48 +357,47 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> NativePredicate
 }
 
 // Share type validation and path-type calculation across getter types.
-fn native_input_type(field: &Field, actual: Type, depth: usize) -> Result<Type, FieldBindingError> {
-    let expected = field.get_type();
-    if actual != expected {
-        return Err(FieldBindingError::TypeMismatch {
-            field: field.name().into(),
-            expected,
-            actual,
-        });
-    }
-    let mut input_type = expected;
+fn native_input_type(field: &Field, depth: usize) -> Type {
+    let mut input_type = field.get_type();
     for _ in 0..depth {
         input_type = input_type
             .next()
             .expect("parsed native path must have valid types");
     }
-    Ok(input_type)
+    input_type
 }
 
 // Prepare paths independently of getter types.
-enum PreparedNativePath<S: ValueType> {
+enum PreparedNativePath<S: FieldValueType> {
     Native(S::Path),
     Collection(Box<[FieldIndex]>),
 }
 
-fn prepare_native_path<S: ValueType>(
+fn prepare_native_path<S: FieldValueType>(
     field: &Field,
     indexes: Box<[FieldIndex]>,
     add_map_each: bool,
 ) -> Result<PreparedNativePath<S>, FieldBindingError> {
-    let input_type = native_input_type(field, S::TYPE, indexes.len() + usize::from(add_map_each))?;
-    if matches!(S::TYPE, Type::Array(_) | Type::Map(_))
-        && matches!(input_type, Type::Array(_) | Type::Map(_))
-    {
+    check_native_field::<S>(field)?;
+    let input_type = native_input_type(field, indexes.len() + usize::from(add_map_each));
+    if needs_collection_conversion::<S>() && matches!(input_type, Type::Array(_) | Type::Map(_)) {
         return Ok(PreparedNativePath::Collection(indexes));
     }
     let mut indexes = indexes.into_vec();
     if add_map_each {
         indexes.push(FieldIndex::MapEach);
     }
-    let path = S::compile_path(&indexes, input_type)
+    let path = S::compile_field_path(field.get_type(), indexes, input_type)
         .map_err(|error| FieldBindingError::Unsupported(error.0))?;
     Ok(PreparedNativePath::Native(path))
+}
+
+// Preserve the constant guards that prevent scalar providers from instantiating
+// collection-conversion helpers. Readers supporting direct collection comparison
+// also bypass those helpers.
+const fn needs_collection_conversion<S: FieldValueType>() -> bool {
+    !S::DIRECT_COLLECTION_COMPARISON
+        && matches!(S::STATIC_TYPE, None | Some(Type::Array(_) | Type::Map(_)))
 }
 
 // Keep the execute_native_* helpers separate from getter-specific closures.
@@ -404,7 +410,7 @@ fn execute_native_one<F, V, P>(
     ctx: &F::Context<'_>,
     field: &Field,
     value: Option<V>,
-    path: &<V::ValueType as ValueType>::Path,
+    path: &<V::ValueType as FieldValueType>::Path,
     comp: &P,
     default: bool,
 ) -> bool
@@ -424,7 +430,7 @@ fn execute_native_vec<F, V, P>(
     ctx: &F::Context<'_>,
     field: &Field,
     value: Option<V>,
-    path: &<V::ValueType as ValueType>::Path,
+    path: &<V::ValueType as FieldValueType>::Path,
     comp: &P,
 ) -> TypedArray<'static, bool>
 where
@@ -539,7 +545,7 @@ fn materialize_native_map_each<'ctx, V: IntoLhsValue<'ctx>>(
 fn compile_native_vec<F, G, P>(
     field: Field,
     getter: G,
-    path: <<G::Provider as ProviderFamily>::ValueType as ValueType>::Path,
+    path: <<G::Provider as ProviderFamily>::ValueType as FieldValueType>::Path,
     comp: P,
 ) -> CompiledVecExpr<F::UserData, F>
 where
@@ -582,10 +588,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
             PreparedNativePath::Collection(indexes) => {
                 // Retain the constant root-type guard so scalar providers do not
                 // instantiate collection conversion closures behind this boundary.
-                if matches!(
-                    <G::Provider as ProviderFamily>::ValueType::TYPE,
-                    Type::Array(_) | Type::Map(_)
-                ) {
+                if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
                     Ok(CompiledOneExpr::new(move |ctx| {
                         execute_native_collection_one::<F, _, P>(
                             ctx,
@@ -597,7 +600,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
                         )
                     }))
                 } else {
-                    unreachable!("scalar provider cannot prepare a collection comparison")
+                    unreachable!("provider does not require collection conversion")
                 }
             }
         }
@@ -643,10 +646,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecCompa
             PreparedNativePath::Collection(indexes) => {
                 // Retain the constant root-type guard so scalar providers do not
                 // instantiate collection conversion closures behind this boundary.
-                if matches!(
-                    <G::Provider as ProviderFamily>::ValueType::TYPE,
-                    Type::Array(_) | Type::Map(_)
-                ) {
+                if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
                     Ok(CompiledVecExpr::new(move |ctx| {
                         execute_native_collection_vec::<F, _, P>(
                             ctx,
@@ -657,7 +657,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecCompa
                         )
                     }))
                 } else {
-                    unreachable!("scalar provider cannot prepare a collection comparison")
+                    unreachable!("provider does not require collection conversion")
                 }
             }
         }
@@ -694,10 +694,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComp
             PreparedNativePath::Collection(indexes) => {
                 // Retain the constant root-type guard so scalar providers do not
                 // instantiate collection conversion closures behind this boundary.
-                if matches!(
-                    <G::Provider as ProviderFamily>::ValueType::TYPE,
-                    Type::Array(_) | Type::Map(_)
-                ) {
+                if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
                     Ok(CompiledVecExpr::new(move |ctx| {
                         execute_native_collection_iter::<F, _, P>(
                             ctx,
@@ -708,7 +705,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComp
                         )
                     }))
                 } else {
-                    unreachable!("scalar provider cannot prepare a collection comparison")
+                    unreachable!("provider does not require collection conversion")
                 }
             }
         }

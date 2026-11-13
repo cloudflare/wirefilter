@@ -97,8 +97,9 @@ pub use self::compiler::{Compiler, DefaultCompiler};
 pub use self::context::{
     BorrowedValueProvider, ContextFamily, ContextRef, EvaluationContext, EvaluationContextMut,
     FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter, FieldGetterFn, HasScheme,
-    OptionalFieldGetterResult, OwnedValueProvider, ProviderFamily, RequiredFieldGetterFn,
-    RequiredFieldGetterResult, SchemeValidationError, StoredContextFamily, StoredFieldGetter,
+    LhsValueProvider, OptionalFieldGetterResult, OwnedValueProvider, ProviderFamily,
+    RequiredFieldGetterFn, RequiredFieldGetterResult, SchemeValidationError, StoredContextFamily,
+    StoredFieldGetter,
 };
 pub use self::execution_context::{
     ExecutionContext, ExecutionContextGuard, InvalidListMatcherError, SetFieldValueError,

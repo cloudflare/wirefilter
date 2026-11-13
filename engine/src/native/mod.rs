@@ -115,7 +115,80 @@
 //! but retains user data; any compiler-specific cleanup remains the application's
 //! responsibility. See [`values`] for supported storage and custom collection
 //! interfaces, and [`wirefilter_fields!`](crate::wirefilter_fields) for getter forms.
+//!
+//! # Fields backed by `LhsValue`
+//!
+//! A context may also store [`LhsValue`](crate::LhsValue) fields whose types are
+//! chosen when the scheme is built, including arbitrary array/map nesting.
+//! [`LhsValueProvider`](crate::LhsValueProvider) reads these fields through the
+//! same native binding interface. Its reader traverses and compares the existing
+//! values without rebuilding containers. Function arguments borrow selected
+//! values; flattening multiple selections still needs an output container.
+//!
+//! This example uses `ExecutionContext` as the field table. A downstream context
+//! can implement its own table and evaluation state, then provide a getter with
+//! the same return signature.
+//!
+//! ```
+//! use wirefilter::{
+//!     ContextFamily, DefaultCompiler, ExecutionContext, Field, FieldBindingError, FieldConsumer,
+//!     FieldGetter, LhsValue, LhsValueProvider, SchemeBuilder, Type,
+//! };
+//!
+//! struct Fields;
+//! struct Getter;
+//!
+//! impl ContextFamily for Fields {
+//!     type Context<'data> = ExecutionContext<'data>;
+//!     type UserData = ();
+//!
+//!     fn bind<B: FieldConsumer<Self>>(
+//!         field: Field,
+//!         consumer: B,
+//!     ) -> Result<B::Output, FieldBindingError> {
+//!         consumer.native(field, Getter)
+//!     }
+//! }
+//!
+//! impl FieldGetter<Fields> for Getter {
+//!     type Provider = LhsValueProvider;
+//!
+//!     fn get<'ctx, 'data: 'ctx>(
+//!         &self,
+//!         context: &'ctx ExecutionContext<'data>,
+//!         field: &Field,
+//!     ) -> Option<&'ctx LhsValue<'ctx>> {
+//!         context.get_field_value(field.as_ref())
+//!     }
+//! }
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut builder = SchemeBuilder::new();
+//! builder.add_field("port", Type::Int)?;
+//! let scheme = builder.build();
+//! let filter = scheme
+//!     .parse("port eq 443")?
+//!     .compile_with_compiler(&mut DefaultCompiler::<(), Fields>::new());
+//! let mut context = ExecutionContext::new(&scheme);
+//! context.set_field_value(scheme.get_field("port")?, 443i64)?;
+//! assert!(filter.execute(&context)?);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The field's scheme type determines comparison and traversal during filter
+//! compilation. Because a getter returning `&LhsValue` has no fixed logical type,
+//! startup validation cannot check which variant it returns. The context must
+//! check values against the scheme when inserting them, as `ExecutionContext`
+//! does. The field macro still validates getter coverage and optionality.
+//!
+//! [`values::FieldValueType`] describes these scheme-typed field roots as well as
+//! ordinary static [`values::ValueType`] implementations. Native collection
+//! elements continue to require a static `ValueType`: for example, `Vec<i64>`
+//! is supported, while a runtime-typed array uses `LhsValue::Array` rather than
+//! `Vec<LhsValue>`.
 
 pub(crate) mod fields;
+mod lhs_value;
 pub(crate) mod state;
 pub mod values;
