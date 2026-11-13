@@ -90,6 +90,11 @@ impl<'a, 'data: 'a> IntoLhsValue<'a> for LhsValue<'data> {
     fn into_lhs(self) -> LhsValue<'a> {
         self
     }
+
+    #[inline]
+    fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
+        super::values::append_stored_lhs_at(self, indexes, output);
+    }
 }
 
 impl ReadValue<LhsValue<'_>, LhsValueType> for LhsValueRead {
@@ -134,37 +139,38 @@ impl ReadValue<LhsValue<'_>, LhsValueType> for LhsValueRead {
     }
 }
 
-fn compare_each<P: NativePredicate + ?Sized>(
-    value: &LhsValue<'_>,
-    path: &[FieldIndex],
+fn compare_each<'a, P: NativePredicate + ?Sized>(
+    mut value: &'a LhsValue<'a>,
+    mut path: &[FieldIndex],
     predicate: &P,
     output: &mut TypedArray<'static, bool>,
 ) {
-    let prefix = path
-        .iter()
-        .position(|index| *index == FieldIndex::MapEach)
-        .unwrap_or(path.len());
-    let Some(value) = value.get_nested(&path[..prefix]) else {
-        return;
-    };
-    if prefix == path.len() {
-        output.push(predicate.lhs(value));
-        return;
+    // Follow concrete indices while reading values, without first searching for
+    // [*]. Only collection iteration recurses; concrete indices add no calls.
+    while let Some((index, rest)) = path.split_first() {
+        if *index == FieldIndex::MapEach {
+            let children = value.iter().expect("[*] requires a collection");
+            if rest.is_empty() {
+                if output.is_empty() {
+                    *output = TypedArray::with_capacity(children.size_hint().0);
+                }
+                for child in children {
+                    output.push(predicate.lhs(child));
+                }
+            } else {
+                for child in children {
+                    compare_each(child, rest, predicate, output);
+                }
+            }
+            return;
+        }
+        let Some(child) = value.get(index).unwrap() else {
+            return;
+        };
+        value = child;
+        path = rest;
     }
-    let children = value.iter().expect("[*] requires a collection");
-    let rest = &path[prefix + 1..];
-    if rest.is_empty() {
-        if output.is_empty() {
-            *output = TypedArray::with_capacity(children.size_hint().0);
-        }
-        for child in children {
-            output.push(predicate.lhs(child));
-        }
-    } else {
-        for child in children {
-            compare_each(child, rest, predicate, output);
-        }
-    }
+    output.push(predicate.lhs(value));
 }
 
 #[cfg(test)]

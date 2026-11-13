@@ -248,20 +248,25 @@ impl<F: ContextFamily> FieldConsumer<F> for ValueConsumer {
     }
 }
 
-// Each caller already knows whether it needs one result, a flat array, or
-// nested `[*]` traversal. Keep that choice in the consumer type so binding
-// returns the concrete compiled expression without another mode dispatch.
+// Single-result and vector comparisons use separate consumers so binding
+// returns the concrete compiled expression without a runtime mode dispatch.
 struct OneComparisonConsumer<P> {
     indexes: Box<[FieldIndex]>,
     default: bool,
     comp: P,
 }
 
-// FLAT keeps a single trailing iteration implicit in collection fallbacks.
-// It is selected during compilation, not stored in the evaluation closure.
-struct ArrayComparisonConsumer<P, const FLAT: bool> {
+// Select the collection fallback during compilation; the mode is not retained
+// by the executable expression. Items keeps one trailing iteration implicit.
+enum CollectionComparisonMode {
+    Items,
+    Path,
+}
+
+struct ArrayComparisonConsumer<P> {
     indexes: Vec<FieldIndex>,
     comp: P,
+    mode: CollectionComparisonMode,
 }
 
 struct ContextComparison<'p, 'ctx, 'data, F: ContextFamily, P> {
@@ -406,11 +411,11 @@ where
     comp.compare(&value, ctx)
 }
 
-fn execute_collection_vec<'ctx, 'data: 'ctx, F, V, P, const FLAT: bool>(
+fn execute_collection_items<'ctx, 'data: 'ctx, F, V, P>(
     ctx: &'ctx F::Context<'data>,
     field: &Field,
     value: Option<V>,
-    indexes: &[FieldIndex],
+    prefix: &[FieldIndex],
     comp: &P,
 ) -> TypedArray<'static, bool>
 where
@@ -420,26 +425,35 @@ where
 {
     let mut output = TypedArray::new();
     if let Some(value) = required(value, field) {
-        // FLAT has already removed its final [*]. Otherwise, select the concrete
-        // prefix and leave traversal from the first [*] to the stored reader.
-        let prefix_len = if FLAT {
-            indexes.len()
-        } else {
-            indexes
-                .iter()
-                .position(|index| *index == FieldIndex::MapEach)
-                .unwrap_or(indexes.len())
-        };
-        let (prefix, rest) = indexes.split_at(prefix_len);
         let Some(value) = value.into_lhs_at(prefix) else {
             return output;
         };
         let predicate = ContextComparison::<F, _> { comp, ctx };
-        if FLAT {
-            LhsValueRead::compare_items(&value, &[], &predicate, &mut output);
-        } else {
-            LhsValueRead::compare_vec(&value, rest, &predicate, &mut output);
-        }
+        LhsValueRead::compare_items(&value, &[], &predicate, &mut output);
+    }
+    output
+}
+
+fn execute_collection_path<'ctx, 'data: 'ctx, F, V, P>(
+    ctx: &'ctx F::Context<'data>,
+    field: &Field,
+    value: Option<V>,
+    prefix: &[FieldIndex],
+    rest: &[FieldIndex],
+    comp: &P,
+) -> TypedArray<'static, bool>
+where
+    F: ContextFamily,
+    V: IntoLhsValue<'ctx>,
+    P: Compare<F::UserData, F>,
+{
+    let mut output = TypedArray::new();
+    if let Some(value) = required(value, field) {
+        let Some(value) = value.into_lhs_at(prefix) else {
+            return output;
+        };
+        let predicate = ContextComparison::<F, _> { comp, ctx };
+        LhsValueRead::compare_vec(&value, rest, &predicate, &mut output);
     }
     output
 }
@@ -538,9 +552,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
     }
 }
 
-impl<F: ContextFamily, P: Compare<F::UserData, F>, const FLAT: bool> FieldConsumer<F>
-    for ArrayComparisonConsumer<P, FLAT>
-{
+impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for ArrayComparisonConsumer<P> {
     type Output = CompiledVecExpr<F::UserData, F>;
 
     fn consume<G: FieldGetter<F>>(
@@ -548,7 +560,11 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>, const FLAT: bool> FieldConsum
         field: Field,
         getter: G,
     ) -> Result<Self::Output, FieldBindingError> {
-        let Self { indexes, comp } = self;
+        let Self {
+            indexes,
+            comp,
+            mode,
+        } = self;
         let prepared =
             prepare_field_path::<<G::Provider as ProviderFamily>::ValueType>(&field, indexes)?;
         match prepared {
@@ -559,20 +575,39 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>, const FLAT: bool> FieldConsum
                 // Retain the constant guard to avoid instantiating conversion
                 // helpers for readers that never need collection conversion.
                 if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
-                    let indexes = if FLAT {
-                        simplify_indexes(indexes)
-                    } else {
-                        indexes
-                    };
-                    Ok(CompiledVecExpr::new(move |ctx| {
-                        execute_collection_vec::<F, _, P, FLAT>(
-                            ctx,
-                            &field,
-                            getter.get(ctx, &field),
-                            &indexes,
-                            &comp,
-                        )
-                    }))
+                    match mode {
+                        CollectionComparisonMode::Items => {
+                            let prefix = simplify_indexes(indexes);
+                            Ok(CompiledVecExpr::new(move |ctx| {
+                                execute_collection_items::<F, _, P>(
+                                    ctx,
+                                    &field,
+                                    getter.get(ctx, &field),
+                                    &prefix,
+                                    &comp,
+                                )
+                            }))
+                        }
+                        CollectionComparisonMode::Path => {
+                            // The path is fixed for this expression. Retain one
+                            // split offset rather than searching during execution.
+                            let prefix_len = indexes
+                                .iter()
+                                .position(|index| *index == FieldIndex::MapEach)
+                                .unwrap_or(indexes.len());
+                            Ok(CompiledVecExpr::new(move |ctx| {
+                                let (prefix, rest) = indexes.split_at(prefix_len);
+                                execute_collection_path::<F, _, P>(
+                                    ctx,
+                                    &field,
+                                    getter.get(ctx, &field),
+                                    prefix,
+                                    rest,
+                                    &comp,
+                                )
+                            }))
+                        }
+                    }
                 } else {
                     unreachable!("provider does not require collection conversion")
                 }
@@ -679,9 +714,10 @@ impl IndexExpr {
             IdentifierExpr::Field(field) => compiler
                 .bind_field(
                     field,
-                    ArrayComparisonConsumer::<_, true> {
+                    ArrayComparisonConsumer {
                         indexes: with_terminal_each(indexes),
                         comp,
+                        mode: CollectionComparisonMode::Items,
                     },
                 )
                 .expect("field binding or native path preparation failed"),
@@ -701,9 +737,10 @@ impl IndexExpr {
             IdentifierExpr::Field(field) => compiler
                 .bind_field(
                     field,
-                    ArrayComparisonConsumer::<_, false> {
+                    ArrayComparisonConsumer {
                         indexes: indexes.into_vec(),
                         comp,
+                        mode: CollectionComparisonMode::Path,
                     },
                 )
                 .expect("field binding or native path preparation failed"),

@@ -206,13 +206,12 @@ pub trait IntoLhsValue<'a>: NativeValue + Sized {
 }
 
 pub(super) fn append_stored_lhs_at<'a>(
-    value: LhsValue<'a>,
-    indexes: &[FieldIndex],
+    mut value: LhsValue<'a>,
+    mut indexes: &[FieldIndex],
     output: &mut Vec<LhsValue<'a>>,
 ) {
-    match indexes.split_first() {
-        None => output.push(value),
-        Some((FieldIndex::MapEach, rest)) => {
+    while let Some((index, rest)) = indexes.split_first() {
+        if *index == FieldIndex::MapEach {
             let values = value.into_iter();
             if rest.is_empty() {
                 output.extend(values);
@@ -221,13 +220,15 @@ pub(super) fn append_stored_lhs_at<'a>(
                     append_stored_lhs_at(value, rest, output);
                 }
             }
+            return;
         }
-        Some((index, rest)) => {
-            if let Some(value) = value.extract(index).expect("invalid native selection path") {
-                append_stored_lhs_at(value, rest, output);
-            }
-        }
+        let Some(selected) = value.extract(index).expect("invalid native selection path") else {
+            return;
+        };
+        value = selected;
+        indexes = rest;
     }
+    output.push(value);
 }
 
 impl<'a, 'data: 'a, T: NativeValue + ?Sized> IntoLhsValue<'a> for &'data T {
@@ -682,7 +683,12 @@ impl<T: NativeValue + ?Sized> NativeValue for Box<T> {
     type ValueType = T::ValueType;
 }
 
-impl<T: NativeValue + ?Sized> IntoLhsValue<'_> for Box<T> {}
+impl<'a, T: NativeValue + ?Sized> IntoLhsValue<'a> for Box<T> {
+    #[inline]
+    fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
+        append_stored_lhs_at(self.into_lhs(), indexes, output);
+    }
+}
 
 impl<T: NativeValue + ?Sized> ReadValue<Box<T>, T::ValueType> for BoxRead<T::Read> {
     const MATERIALIZES_COLLECTIONS: bool = T::Read::MATERIALIZES_COLLECTIONS;
@@ -759,7 +765,15 @@ where
     type ValueType = Array<T::ValueType>;
 }
 
-impl<T: NativeValue> IntoLhsValue<'_> for Vec<T> where T::ValueType: ValueType {}
+impl<'a, T: NativeValue> IntoLhsValue<'a> for Vec<T>
+where
+    T::ValueType: ValueType,
+{
+    #[inline]
+    fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
+        append_stored_lhs_at(self.into_lhs(), indexes, output);
+    }
+}
 
 impl<T: NativeValue> NativeArray for [T]
 where
@@ -834,9 +848,14 @@ where
     type ValueType = Map<V::ValueType>;
 }
 
-impl<K: Borrow<[u8]> + Ord, V: NativeValue> IntoLhsValue<'_> for BTreeMap<K, V> where
-    V::ValueType: ValueType
+impl<'a, K: Borrow<[u8]> + Ord, V: NativeValue> IntoLhsValue<'a> for BTreeMap<K, V>
+where
+    V::ValueType: ValueType,
 {
+    #[inline]
+    fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
+        append_stored_lhs_at(self.into_lhs(), indexes, output);
+    }
 }
 
 /// A small borrowed selection descriptor that can be returned by value.
@@ -1424,6 +1443,133 @@ mod tests {
             assert!(matches!(value, LhsValue::Bytes(crate::Bytes::Borrowed(_))));
             assert_eq!(bytes(value).as_ptr(), original.as_ptr());
         }
+    }
+
+    #[test]
+    fn test_map_each_preserves_custom_child_append() {
+        struct AppendingSelection<'a>(&'a [String]);
+
+        impl NativeValue for AppendingSelection<'_> {
+            type Read = ArrayRead;
+            type ValueType = Array<Bytes>;
+        }
+
+        impl NativeArray for AppendingSelection<'_> {
+            type Element = Bytes;
+            type Item<'a>
+                = &'a String
+            where
+                Self: 'a;
+            type Iter<'a>
+                = std::slice::Iter<'a, String>
+            where
+                Self: 'a;
+
+            fn get(&self, _: usize) -> Option<Self::Item<'_>> {
+                panic!("the custom append method must be used");
+            }
+
+            fn iter(&self) -> Self::Iter<'_> {
+                panic!("the custom append method must be used");
+            }
+        }
+
+        impl<'a> IntoLhsValue<'a> for AppendingSelection<'a> {
+            fn into_lhs(self) -> LhsValue<'a> {
+                panic!("the custom append method must be used");
+            }
+
+            fn into_lhs_at(self, _: &[FieldIndex]) -> Option<LhsValue<'a>> {
+                panic!("the custom append method must be used");
+            }
+
+            fn append_lhs_at(self, indexes: &[FieldIndex], output: &mut Vec<LhsValue<'a>>) {
+                assert_eq!(indexes, &[FieldIndex::ArrayIndex(0)]);
+                self.0.append_lhs_at(indexes, output);
+            }
+        }
+
+        struct MapWithSelection(Vec<String>);
+
+        impl NativeValue for MapWithSelection {
+            type Read = MapRead;
+            type ValueType = Map<Array<Bytes>>;
+        }
+
+        impl NativeMap for MapWithSelection {
+            type Element = Array<Bytes>;
+            type Item<'a> = AppendingSelection<'a>;
+            type Iter<'a> = std::iter::Once<AppendingSelection<'a>>;
+
+            fn get(&self, key: &[u8]) -> Option<Self::Item<'_>> {
+                (key == b"values").then_some(AppendingSelection(&self.0))
+            }
+
+            fn values(&self) -> Self::Iter<'_> {
+                std::iter::once(AppendingSelection(&self.0))
+            }
+
+            fn for_each_entry<'a>(&'a self, mut visitor: impl FnMut(&[u8], Self::Item<'a>)) {
+                visitor(b"values", AppendingSelection(&self.0));
+            }
+        }
+
+        let source = MapWithSelection(vec!["selected".to_owned(), "other".to_owned()]);
+        let mut selected = vec![LhsValue::Bool(true)];
+        (&source).append_lhs_at(
+            &[FieldIndex::MapEach, FieldIndex::ArrayIndex(0)],
+            &mut selected,
+        );
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0], LhsValue::Bool(true));
+        assert!(matches!(
+            selected[1],
+            LhsValue::Bytes(crate::Bytes::Borrowed(_))
+        ));
+        assert_eq!(bytes(&selected[1]).as_ptr(), source.0[0].as_ptr());
+    }
+
+    #[test]
+    fn test_owned_containers_append_selected_values_with_owned_payloads() {
+        fn check(value: impl IntoLhsValue<'static>, indexes: &[FieldIndex]) {
+            let mut selected = vec![LhsValue::Bool(true)];
+            value.append_lhs_at(indexes, &mut selected);
+            assert_eq!(selected.len(), 2);
+            assert_eq!(selected[0], LhsValue::Bool(true));
+            assert!(matches!(
+                selected[1],
+                LhsValue::Bytes(crate::Bytes::Owned(_))
+            ));
+            assert_eq!(bytes(&selected[1]), b"selected");
+        }
+
+        let rows = vec![vec!["selected".to_owned()], vec![]];
+        check(
+            vec![vec![vec!["other".to_owned()]], rows.clone()],
+            &[
+                FieldIndex::ArrayIndex(1),
+                FieldIndex::MapEach,
+                FieldIndex::ArrayIndex(0),
+            ],
+        );
+        check(
+            Box::new(rows.clone()),
+            &[FieldIndex::MapEach, FieldIndex::ArrayIndex(0)],
+        );
+        check(
+            BTreeMap::from([
+                (Box::<[u8]>::from(&b"wanted"[..]), rows),
+                (
+                    Box::<[u8]>::from(&b"other"[..]),
+                    vec![vec!["other".to_owned()]],
+                ),
+            ]),
+            &[
+                FieldIndex::MapKey("wanted".into()),
+                FieldIndex::MapEach,
+                FieldIndex::ArrayIndex(0),
+            ],
+        );
     }
 
     #[test]
