@@ -399,9 +399,11 @@ where
     let Some(value) = required(value, field) else {
         return default;
     };
-    let value = value.into_lhs();
-    let predicate = ContextComparison::<F, _> { comp, ctx };
-    LhsValueRead::compare_one(&value, indexes, &predicate).unwrap_or(default)
+    // Select on native storage before materializing the comparator's collection.
+    let Some(value) = value.into_lhs_at(indexes) else {
+        return default;
+    };
+    comp.compare(&value, ctx)
 }
 
 fn execute_collection_vec<'ctx, 'data: 'ctx, F, V, P, const FLAT: bool>(
@@ -418,12 +420,25 @@ where
 {
     let mut output = TypedArray::new();
     if let Some(value) = required(value, field) {
-        let value = value.into_lhs();
+        // FLAT has already removed its final [*]. Otherwise, select the concrete
+        // prefix and leave traversal from the first [*] to the stored reader.
+        let prefix_len = if FLAT {
+            indexes.len()
+        } else {
+            indexes
+                .iter()
+                .position(|index| *index == FieldIndex::MapEach)
+                .unwrap_or(indexes.len())
+        };
+        let (prefix, rest) = indexes.split_at(prefix_len);
+        let Some(value) = value.into_lhs_at(prefix) else {
+            return output;
+        };
         let predicate = ContextComparison::<F, _> { comp, ctx };
         if FLAT {
-            LhsValueRead::compare_items(&value, indexes, &predicate, &mut output);
+            LhsValueRead::compare_items(&value, &[], &predicate, &mut output);
         } else {
-            LhsValueRead::compare_vec(&value, indexes, &predicate, &mut output);
+            LhsValueRead::compare_vec(&value, rest, &predicate, &mut output);
         }
     }
     output
