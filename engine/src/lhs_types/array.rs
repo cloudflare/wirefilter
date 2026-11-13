@@ -481,6 +481,15 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, V> {
         }
     }
 
+    /// Creates an empty typed array with space for at least `capacity` values.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            array: InnerArray::Owned(Vec::with_capacity(capacity)),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
     #[inline]
     fn as_vec_ref(&self) -> &Vec<LhsValue<'a>> {
         match &self.array {

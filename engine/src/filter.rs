@@ -5,19 +5,27 @@
 //! their `execute` methods and aggregating results into a single boolean value
 //! as recursion unwinds.
 
-use crate::execution_context::ExecutionContext;
+use crate::context::{ContextFamily, ContextRef, HasScheme, StoredContextFamily};
 use crate::lhs_types::TypedArray;
 use crate::scheme::{Scheme, SchemeMismatchError};
 use crate::types::{LhsValue, Type};
 use std::fmt;
+use std::marker::PhantomData;
 
-type BoxedClosureToOneBool<U> =
-    Box<dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 'static>;
+type BoxedClosureToOneBool<F> = Box<
+    dyn for<'ctx, 'data> Fn(&'ctx <F as ContextFamily>::Context<'data>) -> bool
+        + Sync
+        + Send
+        + 'static,
+>;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
-pub struct CompiledOneExpr<U = ()>(BoxedClosureToOneBool<U>);
+pub struct CompiledOneExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+    BoxedClosureToOneBool<F>,
+    PhantomData<fn() -> U>,
+);
 
-impl<U> fmt::Debug for CompiledOneExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> fmt::Debug for CompiledOneExpr<U, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledOneExpr")
             .field(&((&*self.0) as *const _))
@@ -25,35 +33,44 @@ impl<U> fmt::Debug for CompiledOneExpr<U> {
     }
 }
 
-impl<U> CompiledOneExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> CompiledOneExpr<U, F> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> bool + Sync + Send + 'static,
+        closure: impl for<'ctx, 'data> Fn(&'ctx <F as ContextFamily>::Context<'data>) -> bool
+        + Sync
+        + Send
+        + 'static,
     ) -> Self {
-        CompiledOneExpr(Box::new(closure))
+        CompiledOneExpr(Box::new(closure), PhantomData)
     }
 
     /// Executes the closure against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> bool {
+    pub fn execute<'ctx, 'data: 'ctx>(&self, ctx: &'ctx F::Context<'data>) -> bool {
         self.0(ctx)
     }
 
     /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToOneBool<U> {
+    pub fn into_boxed_closure(self) -> BoxedClosureToOneBool<F> {
         self.0
     }
 }
 
 pub(crate) type CompiledVecExprResult = TypedArray<'static, bool>;
 
-type BoxedClosureToVecBool<U> = Box<
-    dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult + Sync + Send + 'static,
+type BoxedClosureToVecBool<F> = Box<
+    dyn for<'ctx, 'data> Fn(&'ctx <F as ContextFamily>::Context<'data>) -> CompiledVecExprResult
+        + Sync
+        + Send
+        + 'static,
 >;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-pub struct CompiledVecExpr<U = ()>(BoxedClosureToVecBool<U>);
+pub struct CompiledVecExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+    BoxedClosureToVecBool<F>,
+    PhantomData<fn() -> U>,
+);
 
-impl<U> fmt::Debug for CompiledVecExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> fmt::Debug for CompiledVecExpr<U, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledVecExpr")
             .field(&((&*self.0) as *const _))
@@ -61,40 +78,53 @@ impl<U> fmt::Debug for CompiledVecExpr<U> {
     }
 }
 
-impl<U> CompiledVecExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> CompiledVecExpr<U, F> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledVecExprResult
+        closure: impl for<'ctx, 'data> Fn(
+            &'ctx <F as ContextFamily>::Context<'data>,
+        ) -> CompiledVecExprResult
         + Sync
         + Send
         + 'static,
     ) -> Self {
-        CompiledVecExpr(Box::new(closure))
+        CompiledVecExpr(Box::new(closure), PhantomData)
     }
 
     /// Executes the closure against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> CompiledVecExprResult {
+    pub fn execute<'ctx, 'data: 'ctx>(
+        &self,
+        ctx: &'ctx F::Context<'data>,
+    ) -> CompiledVecExprResult {
         self.0(ctx)
     }
 
     /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToVecBool<U> {
+    pub fn into_boxed_closure(self) -> BoxedClosureToVecBool<F> {
         self.0
     }
 }
 
 /// Enum of boxed closure for [`crate::Expr`] AST nodes.
-#[derive(Debug)]
-pub enum CompiledExpr<U = ()> {
+pub enum CompiledExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
     /// Variant for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
-    One(CompiledOneExpr<U>),
+    One(CompiledOneExpr<U, F>),
     /// Variant for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-    Vec(CompiledVecExpr<U>),
+    Vec(CompiledVecExpr<U, F>),
 }
 
-impl<U> CompiledExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> fmt::Debug for CompiledExpr<U, F> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::One(expr) => fmt.debug_tuple("One").field(expr).finish(),
+            Self::Vec(expr) => fmt.debug_tuple("Vec").field(expr).finish(),
+        }
+    }
+}
+
+impl<U, F: ContextFamily<UserData = U>> CompiledExpr<U, F> {
     #[cfg(test)]
-    pub(crate) fn execute_one<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> bool {
+    pub(crate) fn execute_one<'ctx, 'data: 'ctx>(&self, ctx: &'ctx F::Context<'data>) -> bool {
         match self {
             CompiledExpr::One(one) => one.execute(ctx),
             CompiledExpr::Vec(_) => unreachable!(),
@@ -102,9 +132,9 @@ impl<U> CompiledExpr<U> {
     }
 
     #[cfg(test)]
-    pub(crate) fn execute_vec<'e>(
+    pub(crate) fn execute_vec<'ctx, 'data: 'ctx>(
         &self,
-        ctx: &'e ExecutionContext<'e, U>,
+        ctx: &'ctx F::Context<'data>,
     ) -> CompiledVecExprResult {
         match self {
             CompiledExpr::One(_) => unreachable!(),
@@ -127,14 +157,24 @@ impl From<Type> for CompiledValueResult<'_> {
     }
 }
 
-type BoxedClosureToValue<U> = Box<
-    dyn for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e> + Sync + Send + 'static,
+type BoxedClosureToValue<F> = Box<
+    dyn for<'ctx, 'data> Fn(ContextRef<'ctx, 'data, F>) -> CompiledValueResult<'ctx>
+        + Sync
+        + Send
+        + 'static,
+>;
+
+type BoxedStoredClosureToValue<U> = Box<
+    dyn for<'e> Fn(&'e crate::ExecutionContext<'e, U>) -> CompiledValueResult<'e> + Sync + Send,
 >;
 
 /// Boxed closure for [`crate::ValueExpr`] AST node that evaluates to an [`LhsValue`].
-pub struct CompiledValueExpr<U = ()>(BoxedClosureToValue<U>);
+pub struct CompiledValueExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+    BoxedClosureToValue<F>,
+    PhantomData<fn() -> U>,
+);
 
-impl<U> fmt::Debug for CompiledValueExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> fmt::Debug for CompiledValueExpr<U, F> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_tuple("CompiledValueExpr")
             .field(&((&*self.0) as *const _))
@@ -142,25 +182,54 @@ impl<U> fmt::Debug for CompiledValueExpr<U> {
     }
 }
 
-impl<U> CompiledValueExpr<U> {
+impl<U, F: ContextFamily<UserData = U>> CompiledValueExpr<U, F> {
     /// Creates a compiled expression IR from a generic closure.
     pub fn new(
-        closure: impl for<'e> Fn(&'e ExecutionContext<'e, U>) -> CompiledValueResult<'e>
+        closure: impl for<'ctx, 'data> Fn(
+            &'ctx <F as ContextFamily>::Context<'data>,
+        ) -> CompiledValueResult<'ctx>
         + Sync
         + Send
         + 'static,
     ) -> Self {
-        CompiledValueExpr(Box::new(closure))
+        Self::new_with_context(move |ctx| closure(ctx.context()))
+    }
+
+    /// Create a value expression that can borrow native context payloads.
+    ///
+    /// The callback's witness records that the context's retained data outlives
+    /// this evaluation. Call [`ContextRef::context`] to obtain the original
+    /// context reference before invoking native getters or child expressions.
+    pub fn new_with_context(
+        closure: impl for<'ctx, 'data> Fn(ContextRef<'ctx, 'data, F>) -> CompiledValueResult<'ctx>
+        + Sync
+        + Send
+        + 'static,
+    ) -> Self {
+        CompiledValueExpr(Box::new(closure), PhantomData)
     }
 
     /// Executes the closure against a provided context with values.
-    pub fn execute<'e>(&self, ctx: &'e ExecutionContext<'e, U>) -> CompiledValueResult<'e> {
-        self.0(ctx)
+    pub fn execute<'ctx, 'data: 'ctx>(
+        &self,
+        ctx: &'ctx F::Context<'data>,
+    ) -> CompiledValueResult<'ctx> {
+        self.0(ContextRef::new(ctx))
     }
 
-    /// Extracts the underlying boxed closure.
-    pub fn into_boxed_closure(self) -> BoxedClosureToValue<U> {
+    /// Extract the callback, retaining its context-lifetime witness.
+    pub fn into_boxed_context_closure(self) -> BoxedClosureToValue<F> {
         self.0
+    }
+}
+
+impl<U: 'static> CompiledValueExpr<U> {
+    /// Convert to a callback accepting the ordinary stored execution context.
+    ///
+    /// This compatibility adapter adds one boxed closure around the expression.
+    /// [`Self::into_boxed_context_closure`] extracts the original callback directly.
+    pub fn into_boxed_closure(self) -> BoxedStoredClosureToValue<U> {
+        Box::new(move |ctx| self.execute(ctx))
     }
 }
 
@@ -179,12 +248,12 @@ impl<U> CompiledValueExpr<U> {
 /// In the future the underlying representation might change, but for now it
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
-pub struct Filter<U = ()> {
-    root_expr: CompiledOneExpr<U>,
+pub struct Filter<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
+    root_expr: CompiledOneExpr<U, F>,
     scheme: Scheme,
 }
 
-impl<U> std::fmt::Debug for Filter<U> {
+impl<U, F: ContextFamily<UserData = U>> std::fmt::Debug for Filter<U, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Filter")
             .field("root", &self.root_expr)
@@ -193,16 +262,16 @@ impl<U> std::fmt::Debug for Filter<U> {
     }
 }
 
-impl<U> Filter<U> {
+impl<U, F: ContextFamily<UserData = U>> Filter<U, F> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledOneExpr<U>, scheme: Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledOneExpr<U, F>, scheme: Scheme) -> Self {
         Filter { root_expr, scheme }
     }
 
     /// Executes a compiled filter expression against a provided context with values.
-    pub fn execute<'e>(
+    pub fn execute<'ctx, 'data: 'ctx>(
         &self,
-        ctx: &'e ExecutionContext<'e, U>,
+        ctx: &'ctx F::Context<'data>,
     ) -> Result<bool, SchemeMismatchError> {
         if ctx.scheme() == &self.scheme {
             Ok(self.root_expr.execute(ctx))
@@ -213,22 +282,22 @@ impl<U> Filter<U> {
 }
 
 /// An IR for a compiled value expression.
-pub struct FilterValue<U = ()> {
-    root_expr: CompiledValueExpr<U>,
+pub struct FilterValue<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
+    root_expr: CompiledValueExpr<U, F>,
     scheme: Scheme,
 }
 
-impl<U> FilterValue<U> {
+impl<U, F: ContextFamily<UserData = U>> FilterValue<U, F> {
     /// Creates a compiled expression IR from a generic closure.
-    pub(crate) fn new(root_expr: CompiledValueExpr<U>, scheme: Scheme) -> Self {
+    pub(crate) fn new(root_expr: CompiledValueExpr<U, F>, scheme: Scheme) -> Self {
         FilterValue { root_expr, scheme }
     }
 
     /// Executes a compiled value expression against a provided context with values.
-    pub fn execute<'e>(
+    pub fn execute<'ctx, 'data: 'ctx>(
         &self,
-        ctx: &'e ExecutionContext<'e, U>,
-    ) -> Result<Result<LhsValue<'e>, Type>, SchemeMismatchError> {
+        ctx: &'ctx F::Context<'data>,
+    ) -> Result<Result<LhsValue<'ctx>, Type>, SchemeMismatchError> {
         if ctx.scheme() == &self.scheme {
             Ok(self.root_expr.execute(ctx))
         } else {
@@ -259,5 +328,71 @@ mod tests {
 
         is_send::<Filter<ExecutionContext<'_>>>();
         is_sync::<Filter<ExecutionContext<'_>>>();
+    }
+
+    #[test]
+    fn test_distinct_context_and_data_lifetimes() {
+        use crate::{
+            CompiledOneExpr, CompiledValueExpr, ContextFamily, EvaluationContext, Field,
+            FieldBindingError, FieldConsumer, HasScheme, LhsValue, ListMatcher, ListRef, Scheme,
+        };
+        use std::cell::Cell;
+
+        struct Context<'data> {
+            scheme: &'data Scheme,
+            value: Cell<&'data str>,
+        }
+
+        impl HasScheme for Context<'_> {
+            fn scheme(&self) -> &Scheme {
+                self.scheme
+            }
+        }
+
+        impl EvaluationContext for Context<'_> {
+            type UserData = ();
+
+            fn get_user_data(&self) -> &() {
+                &()
+            }
+
+            fn get_list_matcher(&self, _: ListRef<'_>) -> &dyn ListMatcher {
+                unreachable!("the test scheme has no lists")
+            }
+        }
+
+        struct Family;
+
+        impl ContextFamily for Family {
+            type Context<'data> = Context<'data>;
+            type UserData = ();
+
+            fn bind<B: FieldConsumer<Self>>(
+                field: Field,
+                _: B,
+            ) -> Result<B::Output, FieldBindingError> {
+                Err(FieldBindingError::UnknownField(field.name().into()))
+            }
+        }
+
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<CompiledValueExpr<(), Family>>();
+        assert_send_sync::<CompiledOneExpr<(), Family>>();
+
+        let value =
+            CompiledValueExpr::<(), Family>::new(|ctx| Ok(LhsValue::Bytes(ctx.value.get().into())));
+        let matches = CompiledOneExpr::<(), Family>::new(|ctx| ctx.value.get() == "first");
+        let first = String::from("first");
+        let second = String::from("second");
+        let scheme = crate::SchemeBuilder::new().build();
+        let mut ctx = Context {
+            scheme: &scheme,
+            value: Cell::new(&first),
+        };
+        assert_eq!(value.execute(&ctx).unwrap(), LhsValue::from("first"));
+        assert!(matches.execute(&ctx));
+        *ctx.value.get_mut() = &second;
+        assert_eq!(value.execute(&ctx).unwrap(), LhsValue::from("second"));
+        assert!(!matches.execute(&ctx));
     }
 }

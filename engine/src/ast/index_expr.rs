@@ -2,15 +2,23 @@ use super::ValueExpr;
 use super::field_expr::IdentifierExpr;
 use super::parse::FilterParser;
 use super::visitor::{Visitor, VisitorMut};
+#[cfg(test)]
+use crate::ExecutionContext;
+use crate::Field;
 use crate::compiler::Compiler;
-use crate::execution_context::ExecutionContext;
+use crate::context::{
+    ContextFamily, FieldBindingError, FieldConsumer, FieldGetter, ProviderFamily,
+    StoredContextFamily, StoredFieldGetter,
+};
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
 use crate::lhs_types::{Array, Map, TypedArray};
+use crate::native::values::{self, IntoLhsValue, NativePredicate, NativeValue, ValueType};
 use crate::scheme::{FieldIndex, IndexAccessError};
 use crate::types::{GetType, IntoIter, LhsValue, Type};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
+use std::net::IpAddr;
 
 const BOOL_ARRAY: TypedArray<'_, bool> = TypedArray::new();
 
@@ -56,71 +64,69 @@ impl ValueExpr for IndexExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<C::U, C::Family> {
         let mut ty = self.get_type();
-        let map_each_count = self.map_each_count();
+        let count = self.map_each_count();
+        let flatten = match count {
+            0 => false,
+            1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
+                // Preserve the parent container: a terminal `map[*]` evaluates
+                // to a Map here, and mapped-function execution consumes its values.
+                // Native maps could instead produce an array of values directly,
+                // avoiding map materialization and key copies. That would change
+                // the value visible to Compiler hooks wrapping this expression
+                // (e.g. compile_index_expr / compile_function_call_arg_expr), so
+                // it requires a separate compatibility decision.
+                ty = Type::Array(ty.into());
+                false
+            }
+            _ => true,
+        };
         let Self {
             identifier,
             indexes,
         } = self;
-
-        let last = match map_each_count {
-            0 => Some(indexes.len()),
-            1 if indexes.last() == Some(&FieldIndex::MapEach) => {
-                ty = Type::Array(ty.into());
-                Some(indexes.len() - 1)
-            }
-            _ => None,
+        // Resolve the terminal `[*]` selection during compilation so the
+        // closure owns only the indices it follows, without a separate end offset.
+        let indexes = if flatten {
+            indexes
+        } else {
+            simplify_indexes(indexes)
         };
-        if last == Some(0) {
-            // Fast path
-            match identifier {
-                IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    ctx.get_field_value_unchecked(&f)
-                        .map(LhsValue::as_ref)
-                        .ok_or(ty)
-                }),
-                IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
-            }
-        } else if let Some(last) = last {
-            // Average path
-            match identifier {
-                IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    ctx.get_field_value_unchecked(&f)
-                        .and_then(|value| value.get_nested(&indexes[..last]))
-                        .map(LhsValue::as_ref)
-                        .ok_or(ty)
-                }),
-                IdentifierExpr::FunctionCallExpr(call) => {
-                    let call = compiler.compile_function_call_expr(call);
-                    CompiledValueExpr::new(move |ctx| {
+        match identifier {
+            IdentifierExpr::Field(field) => compiler
+                .bind_field(
+                    field,
+                    ValueConsumer {
+                        indexes,
+                        ty,
+                        flatten,
+                    },
+                )
+                .expect("field binding or native path preparation failed"),
+            IdentifierExpr::FunctionCallExpr(call) => {
+                let call = compiler.compile_function_call_expr(call);
+                match (flatten, indexes.is_empty()) {
+                    (false, true) => call,
+                    (false, false) => CompiledValueExpr::new_with_context(move |ctx| {
+                        let ctx = ctx.context();
                         call.execute(ctx)
                             .ok()
-                            .and_then(|val| val.extract_nested(&indexes[..last]))
+                            .and_then(|value| value.extract_nested(&indexes))
                             .ok_or(ty)
-                    })
-                }
-            }
-        } else {
-            let return_type = Type::Array(ty.into());
-            // Slow path
-            match identifier {
-                IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
-                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    iter.reset(
-                        ctx.get_field_value_unchecked(&f)
-                            .map(LhsValue::as_ref)
-                            .ok_or(return_type)?,
-                    );
-                    Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
-                }),
-                IdentifierExpr::FunctionCallExpr(call) => {
-                    let call = compiler.compile_function_call_expr(call);
-                    CompiledValueExpr::new(move |ctx| {
-                        let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                        iter.reset(call.execute(ctx).map_err(|_| return_type)?);
-                        Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
-                    })
+                    }),
+                    (true, _) => {
+                        let return_type = Type::Array(ty.into());
+                        CompiledValueExpr::new_with_context(move |ctx| {
+                            let ctx = ctx.context();
+                            let mut iter = MapEachIterator::from_indexes(&indexes);
+                            iter.reset(call.execute(ctx).map_err(|_| return_type)?);
+                            Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
+                        })
+                    }
                 }
             }
         }
@@ -138,18 +144,613 @@ fn simplify_indexes(indexes: Box<[FieldIndex]>) -> Box<[FieldIndex]> {
 }
 
 /// Interface used to implement comparison against a value.
-pub trait Compare<U>: Send + Sync + 'static {
+pub trait Compare<U: 'static, F: ContextFamily<UserData = U> = StoredContextFamily<U>>:
+    Send + Sync + 'static
+{
     /// Returns true if the value matches the comparison.
-    fn compare<'e>(&self, value: &LhsValue<'e>, ctx: &'e ExecutionContext<'e, U>) -> bool;
+    fn compare<'ctx, 'data: 'ctx>(
+        &self,
+        value: &LhsValue<'ctx>,
+        ctx: &'ctx F::Context<'data>,
+    ) -> bool;
+
+    /// Compare native bytes. Override to operate directly on the native value.
+    #[inline]
+    fn compare_bytes<'ctx, 'data: 'ctx>(
+        &self,
+        value: &'ctx [u8],
+        ctx: &'ctx F::Context<'data>,
+    ) -> bool {
+        self.compare(&LhsValue::Bytes(value.into()), ctx)
+    }
+    /// Compare a native integer.
+    #[inline]
+    fn compare_int<'ctx, 'data: 'ctx>(&self, value: i64, ctx: &'ctx F::Context<'data>) -> bool {
+        self.compare(&LhsValue::Int(value), ctx)
+    }
+    /// Compare a native Boolean.
+    #[inline]
+    fn compare_bool<'ctx, 'data: 'ctx>(&self, value: bool, ctx: &'ctx F::Context<'data>) -> bool {
+        self.compare(&LhsValue::Bool(value), ctx)
+    }
+    /// Compare a native IP address.
+    #[inline]
+    fn compare_ip<'ctx, 'data: 'ctx>(&self, value: IpAddr, ctx: &'ctx F::Context<'data>) -> bool {
+        self.compare(&LhsValue::Ip(value), ctx)
+    }
+}
+
+#[inline]
+fn required<T>(value: Option<T>, field: &Field) -> Option<T> {
+    if value.is_none() && !field.optional() {
+        panic!(
+            "Field {} was registered as mandatory but not given a value",
+            field.name()
+        );
+    }
+    value
+}
+
+fn check_native_field<S: ValueType>(field: &Field) -> Result<(), FieldBindingError> {
+    let expected = field.get_type();
+    let actual = S::TYPE;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(FieldBindingError::TypeMismatch {
+            field: field.name().into(),
+            expected,
+            actual,
+        })
+    }
+}
+
+struct MaterializationCost;
+
+impl<F: ContextFamily> FieldConsumer<F> for MaterializationCost {
+    type Output = bool;
+
+    fn native<G: FieldGetter<F>>(self, _: Field, _: G) -> Result<bool, FieldBindingError> {
+        Ok(matches!(
+            <G::Provider as ProviderFamily>::ValueType::TYPE,
+            Type::Array(_) | Type::Map(_)
+        ))
+    }
+
+    fn stored<G: StoredFieldGetter<F>>(self, _: G) -> Result<bool, FieldBindingError> {
+        Ok(false)
+    }
+}
+
+struct ValueConsumer {
+    indexes: Box<[FieldIndex]>,
+    ty: Type,
+    flatten: bool,
+}
+
+impl<F: ContextFamily> FieldConsumer<F> for ValueConsumer {
+    type Output = CompiledValueExpr<F::UserData, F>;
+
+    fn native<G: FieldGetter<F>>(
+        self,
+        field: Field,
+        getter: G,
+    ) -> Result<Self::Output, FieldBindingError> {
+        check_native_field::<<G::Provider as ProviderFamily>::ValueType>(&field)?;
+        let Self {
+            indexes,
+            ty,
+            flatten,
+        } = self;
+        Ok(match (flatten, indexes.is_empty()) {
+            (false, true) => CompiledValueExpr::new_with_context(move |ctx| {
+                let ctx = ctx.context();
+                materialize_native_root(getter.get(ctx, &field), &field, ty)
+            }),
+            (false, false) => CompiledValueExpr::new_with_context(move |ctx| {
+                let ctx = ctx.context();
+                materialize_native_selection(getter.get(ctx, &field), &field, &indexes, ty)
+            }),
+            (true, _) => {
+                let return_type = Type::Array(ty.into());
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
+                    materialize_native_map_each(
+                        getter.get(ctx, &field),
+                        &field,
+                        &indexes,
+                        ty,
+                        return_type,
+                    )
+                })
+            }
+        })
+    }
+
+    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
+        let Self {
+            indexes,
+            ty,
+            flatten,
+        } = self;
+        Ok(match (flatten, indexes.is_empty()) {
+            (false, true) => CompiledValueExpr::new_with_context(move |ctx| {
+                let ctx = ctx.context();
+                required(getter.get(ctx), getter.field())
+                    .map(LhsValue::as_ref)
+                    .ok_or(ty)
+            }),
+            (false, false) => CompiledValueExpr::new_with_context(move |ctx| {
+                let ctx = ctx.context();
+                required(getter.get(ctx), getter.field())
+                    .and_then(|value| value.get_nested(&indexes))
+                    .map(LhsValue::as_ref)
+                    .ok_or(ty)
+            }),
+            (true, _) => {
+                let return_type = Type::Array(ty.into());
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
+                    let value = required(getter.get(ctx), getter.field()).ok_or(return_type)?;
+                    let mut iter = MapEachIterator::from_indexes(&indexes);
+                    iter.reset(value.as_ref());
+                    Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
+                })
+            }
+        })
+    }
+}
+
+// Each caller already knows whether it needs one result, a flat array, or
+// nested `[*]` traversal. Keep that choice in the consumer type so binding
+// returns the concrete compiled expression without another mode dispatch.
+struct OneComparisonConsumer<P> {
+    indexes: Box<[FieldIndex]>,
+    default: bool,
+    comp: P,
+}
+
+struct VecComparisonConsumer<P> {
+    indexes: Box<[FieldIndex]>,
+    comp: P,
+}
+
+struct IterComparisonConsumer<P> {
+    indexes: Box<[FieldIndex]>,
+    comp: P,
+}
+
+struct ContextComparison<'p, 'ctx, 'data, F: ContextFamily, P> {
+    comp: &'p P,
+    ctx: &'ctx F::Context<'data>,
+}
+
+impl<F: ContextFamily, P: Compare<F::UserData, F>> NativePredicate
+    for ContextComparison<'_, '_, '_, F, P>
+{
+    #[inline]
+    fn bytes(&self, value: &[u8]) -> bool {
+        self.comp.compare_bytes(value, self.ctx)
+    }
+
+    #[inline]
+    fn int(&self, value: i64) -> bool {
+        self.comp.compare_int(value, self.ctx)
+    }
+
+    #[inline]
+    fn boolean(&self, value: bool) -> bool {
+        self.comp.compare_bool(value, self.ctx)
+    }
+
+    #[inline]
+    fn ip(&self, value: IpAddr) -> bool {
+        self.comp.compare_ip(value, self.ctx)
+    }
+}
+
+// Share type validation and path-type calculation across getter types.
+fn native_input_type(field: &Field, actual: Type, depth: usize) -> Result<Type, FieldBindingError> {
+    let expected = field.get_type();
+    if actual != expected {
+        return Err(FieldBindingError::TypeMismatch {
+            field: field.name().into(),
+            expected,
+            actual,
+        });
+    }
+    let mut input_type = expected;
+    for _ in 0..depth {
+        input_type = input_type
+            .next()
+            .expect("parsed native path must have valid types");
+    }
+    Ok(input_type)
+}
+
+// Prepare paths independently of getter types.
+enum PreparedNativePath<S: ValueType> {
+    Native(S::Path),
+    Collection(Box<[FieldIndex]>),
+}
+
+fn prepare_native_path<S: ValueType>(
+    field: &Field,
+    indexes: Box<[FieldIndex]>,
+    add_map_each: bool,
+) -> Result<PreparedNativePath<S>, FieldBindingError> {
+    let input_type = native_input_type(field, S::TYPE, indexes.len() + usize::from(add_map_each))?;
+    if matches!(S::TYPE, Type::Array(_) | Type::Map(_))
+        && matches!(input_type, Type::Array(_) | Type::Map(_))
+    {
+        return Ok(PreparedNativePath::Collection(indexes));
+    }
+    let mut indexes = indexes.into_vec();
+    if add_map_each {
+        indexes.push(FieldIndex::MapEach);
+    }
+    let path = S::compile_path(&indexes, input_type)
+        .map_err(|error| FieldBindingError::Unsupported(error.0))?;
+    Ok(PreparedNativePath::Native(path))
+}
+
+// Keep the execute_native_* helpers separate from getter-specific closures.
+// Execution depends on the context family, produced value type and comparator,
+// not the getter type, so fields with the same types can share execution code
+// while their closures retain concrete getter calls. Moving these bodies into
+// the closures substantially increased release-build compiler memory and code
+// size. Leave inlining decisions to the compiler.
+fn execute_native_one<F, V, P>(
+    ctx: &F::Context<'_>,
+    field: &Field,
+    value: Option<V>,
+    path: &<V::ValueType as ValueType>::Path,
+    comp: &P,
+    default: bool,
+) -> bool
+where
+    F: ContextFamily,
+    V: NativeValue,
+    P: Compare<F::UserData, F>,
+{
+    let Some(value) = required(value, field) else {
+        return default;
+    };
+    let predicate = ContextComparison::<F, _> { comp, ctx };
+    values::compare_one(&value, path, &predicate).unwrap_or(default)
+}
+
+fn execute_native_vec<F, V, P>(
+    ctx: &F::Context<'_>,
+    field: &Field,
+    value: Option<V>,
+    path: &<V::ValueType as ValueType>::Path,
+    comp: &P,
+) -> TypedArray<'static, bool>
+where
+    F: ContextFamily,
+    V: NativeValue,
+    P: Compare<F::UserData, F>,
+{
+    let mut output = TypedArray::new();
+    if let Some(value) = required(value, field) {
+        let predicate = ContextComparison::<F, _> { comp, ctx };
+        values::compare_vec(&value, path, &predicate, &mut output);
+    }
+    output
+}
+
+fn execute_native_collection_one<'ctx, 'data: 'ctx, F, V, P>(
+    ctx: &'ctx F::Context<'data>,
+    field: &Field,
+    value: Option<V>,
+    indexes: &[FieldIndex],
+    comp: &P,
+    default: bool,
+) -> bool
+where
+    F: ContextFamily,
+    V: IntoLhsValue<'ctx>,
+    P: Compare<F::UserData, F>,
+{
+    required(value, field)
+        .map(IntoLhsValue::into_lhs)
+        .as_ref()
+        .and_then(|value| value.get_nested(indexes))
+        .map_or(default, |value| comp.compare(value, ctx))
+}
+
+fn execute_native_collection_vec<'ctx, 'data: 'ctx, F, V, P>(
+    ctx: &'ctx F::Context<'data>,
+    field: &Field,
+    value: Option<V>,
+    indexes: &[FieldIndex],
+    comp: &P,
+) -> TypedArray<'static, bool>
+where
+    F: ContextFamily,
+    V: IntoLhsValue<'ctx>,
+    P: Compare<F::UserData, F>,
+{
+    let value = required(value, field).map(IntoLhsValue::into_lhs);
+    value
+        .as_ref()
+        .and_then(|value| value.get_nested(indexes))
+        .map_or(BOOL_ARRAY, |value| {
+            TypedArray::from_iter(value.iter().unwrap().map(|item| comp.compare(item, ctx)))
+        })
+}
+
+fn execute_native_collection_iter<'ctx, 'data: 'ctx, F, V, P>(
+    ctx: &'ctx F::Context<'data>,
+    field: &Field,
+    value: Option<V>,
+    indexes: &[FieldIndex],
+    comp: &P,
+) -> TypedArray<'static, bool>
+where
+    F: ContextFamily,
+    V: IntoLhsValue<'ctx>,
+    P: Compare<F::UserData, F>,
+{
+    let Some(value) = required(value, field) else {
+        return TypedArray::default();
+    };
+    let mut iter = MapEachIterator::from_indexes(indexes);
+    iter.reset(value.into_lhs());
+    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+}
+
+fn materialize_native_root<'ctx, V: IntoLhsValue<'ctx>>(
+    value: Option<V>,
+    field: &Field,
+    ty: Type,
+) -> Result<LhsValue<'ctx>, Type> {
+    required(value, field).map(IntoLhsValue::into_lhs).ok_or(ty)
+}
+
+fn materialize_native_selection<'ctx, V: IntoLhsValue<'ctx>>(
+    value: Option<V>,
+    field: &Field,
+    indexes: &[FieldIndex],
+    ty: Type,
+) -> Result<LhsValue<'ctx>, Type> {
+    required(value, field)
+        .and_then(|value| value.into_lhs_at(indexes))
+        .ok_or(ty)
+}
+
+fn materialize_native_map_each<'ctx, V: IntoLhsValue<'ctx>>(
+    value: Option<V>,
+    field: &Field,
+    indexes: &[FieldIndex],
+    ty: Type,
+    return_type: Type,
+) -> Result<LhsValue<'ctx>, Type> {
+    let value = required(value, field).ok_or(return_type)?;
+    // Missing children contribute no elements; an absent root remains an error.
+    // Only selected values are materialized, retaining terminal map[*] behavior.
+    let mut values = Vec::new();
+    value.append_lhs_at(indexes, &mut values);
+    Ok(LhsValue::Array(Array::try_from_vec(ty, values).unwrap()))
+}
+
+// Both vector consumers construct the same small native execution closure.
+fn compile_native_vec<F, G, P>(
+    field: Field,
+    getter: G,
+    path: <<G::Provider as ProviderFamily>::ValueType as ValueType>::Path,
+    comp: P,
+) -> CompiledVecExpr<F::UserData, F>
+where
+    F: ContextFamily,
+    G: FieldGetter<F>,
+    P: Compare<F::UserData, F>,
+{
+    CompiledVecExpr::new(move |ctx| {
+        execute_native_vec::<F, _, P>(ctx, &field, getter.get(ctx, &field), &path, &comp)
+    })
+}
+
+impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneComparisonConsumer<P> {
+    type Output = CompiledOneExpr<F::UserData, F>;
+
+    fn native<G: FieldGetter<F>>(
+        self,
+        field: Field,
+        getter: G,
+    ) -> Result<Self::Output, FieldBindingError> {
+        let Self {
+            indexes,
+            default,
+            comp,
+        } = self;
+        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
+            &field, indexes, false,
+        )?;
+        match prepared {
+            PreparedNativePath::Native(path) => Ok(CompiledOneExpr::new(move |ctx| {
+                execute_native_one::<F, _, P>(
+                    ctx,
+                    &field,
+                    getter.get(ctx, &field),
+                    &path,
+                    &comp,
+                    default,
+                )
+            })),
+            PreparedNativePath::Collection(indexes) => {
+                // Retain the constant root-type guard so scalar providers do not
+                // instantiate collection conversion closures behind this boundary.
+                if matches!(
+                    <G::Provider as ProviderFamily>::ValueType::TYPE,
+                    Type::Array(_) | Type::Map(_)
+                ) {
+                    Ok(CompiledOneExpr::new(move |ctx| {
+                        execute_native_collection_one::<F, _, P>(
+                            ctx,
+                            &field,
+                            getter.get(ctx, &field),
+                            &indexes,
+                            &comp,
+                            default,
+                        )
+                    }))
+                } else {
+                    unreachable!("scalar provider cannot prepare a collection comparison")
+                }
+            }
+        }
+    }
+
+    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
+        let Self {
+            indexes,
+            default,
+            comp,
+        } = self;
+        Ok(if indexes.is_empty() {
+            CompiledOneExpr::new(move |ctx| {
+                required(getter.get(ctx), getter.field())
+                    .map_or(default, |value| comp.compare(value, ctx))
+            })
+        } else {
+            CompiledOneExpr::new(move |ctx| {
+                required(getter.get(ctx), getter.field())
+                    .and_then(|value| value.get_nested(&indexes))
+                    .map_or(default, |value| comp.compare(value, ctx))
+            })
+        })
+    }
+}
+
+impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecComparisonConsumer<P> {
+    type Output = CompiledVecExpr<F::UserData, F>;
+
+    fn native<G: FieldGetter<F>>(
+        self,
+        field: Field,
+        getter: G,
+    ) -> Result<Self::Output, FieldBindingError> {
+        let Self { indexes, comp } = self;
+        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
+            &field, indexes, true,
+        )?;
+        match prepared {
+            PreparedNativePath::Native(path) => {
+                Ok(compile_native_vec::<F, G, P>(field, getter, path, comp))
+            }
+            PreparedNativePath::Collection(indexes) => {
+                // Retain the constant root-type guard so scalar providers do not
+                // instantiate collection conversion closures behind this boundary.
+                if matches!(
+                    <G::Provider as ProviderFamily>::ValueType::TYPE,
+                    Type::Array(_) | Type::Map(_)
+                ) {
+                    Ok(CompiledVecExpr::new(move |ctx| {
+                        execute_native_collection_vec::<F, _, P>(
+                            ctx,
+                            &field,
+                            getter.get(ctx, &field),
+                            &indexes,
+                            &comp,
+                        )
+                    }))
+                } else {
+                    unreachable!("scalar provider cannot prepare a collection comparison")
+                }
+            }
+        }
+    }
+
+    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
+        let Self { indexes, comp } = self;
+        Ok(CompiledVecExpr::new(move |ctx| {
+            required(getter.get(ctx), getter.field())
+                .and_then(|value| value.get_nested(&indexes))
+                .map_or(BOOL_ARRAY, |value| {
+                    TypedArray::from_iter(value.iter().unwrap().map(|item| comp.compare(item, ctx)))
+                })
+        }))
+    }
+}
+
+impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComparisonConsumer<P> {
+    type Output = CompiledVecExpr<F::UserData, F>;
+
+    fn native<G: FieldGetter<F>>(
+        self,
+        field: Field,
+        getter: G,
+    ) -> Result<Self::Output, FieldBindingError> {
+        let Self { indexes, comp } = self;
+        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
+            &field, indexes, false,
+        )?;
+        match prepared {
+            PreparedNativePath::Native(path) => {
+                Ok(compile_native_vec::<F, G, P>(field, getter, path, comp))
+            }
+            PreparedNativePath::Collection(indexes) => {
+                // Retain the constant root-type guard so scalar providers do not
+                // instantiate collection conversion closures behind this boundary.
+                if matches!(
+                    <G::Provider as ProviderFamily>::ValueType::TYPE,
+                    Type::Array(_) | Type::Map(_)
+                ) {
+                    Ok(CompiledVecExpr::new(move |ctx| {
+                        execute_native_collection_iter::<F, _, P>(
+                            ctx,
+                            &field,
+                            getter.get(ctx, &field),
+                            &indexes,
+                            &comp,
+                        )
+                    }))
+                } else {
+                    unreachable!("scalar provider cannot prepare a collection comparison")
+                }
+            }
+        }
+    }
+
+    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
+        let Self { indexes, comp } = self;
+        Ok(CompiledVecExpr::new(move |ctx| {
+            let mut iter = MapEachIterator::from_indexes(&indexes);
+            match required(getter.get(ctx), getter.field()) {
+                Some(value) => iter.reset(value.as_ref()),
+                None => return TypedArray::default(),
+            }
+            TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+        }))
+    }
 }
 
 impl IndexExpr {
+    /// Determine conversion cost while the field's provider type is known.
+    pub(crate) fn materializes_native_collection<C: Compiler>(&self, compiler: &mut C) -> bool {
+        match &self.identifier {
+            // Custom by-value descriptors may still convert before indexing.
+            // Conservatively memoize collection-backed arguments even when
+            // borrowed native storage can select a scalar without conversion.
+            IdentifierExpr::Field(field)
+                if matches!(field.get_type(), Type::Array(_) | Type::Map(_)) =>
+            {
+                compiler
+                    .bind_field(field.clone(), MaterializationCost)
+                    .expect("field binding or native path preparation failed")
+            }
+            IdentifierExpr::Field(_) | IdentifierExpr::FunctionCallExpr(_) => false,
+        }
+    }
+
     fn compile_one_with<C: Compiler>(
         self,
         compiler: &mut C,
         default: bool,
-        comp: impl Compare<C::U>,
-    ) -> CompiledOneExpr<C::U> {
+        comp: impl Compare<C::U, C::Family>,
+    ) -> CompiledOneExpr<C::U, C::Family> {
         let Self {
             identifier,
             indexes,
@@ -178,33 +779,24 @@ impl IndexExpr {
                     })
                 }
             }
-            IdentifierExpr::Field(f) => {
-                if indexes.is_empty() {
-                    CompiledOneExpr::new(move |ctx| {
-                        ctx.get_field_value_unchecked(&f)
-                            .map(|value| comp.compare(value, ctx))
-                            .unwrap_or(default)
-                    })
-                } else {
-                    CompiledOneExpr::new(move |ctx| {
-                        ctx.get_field_value_unchecked(&f)
-                            .and_then(|value| value.get_nested(&indexes))
-                            .map_or(
-                                default,
-                                #[inline]
-                                |val| comp.compare(val, ctx),
-                            )
-                    })
-                }
-            }
+            IdentifierExpr::Field(field) => compiler
+                .bind_field(
+                    field,
+                    OneComparisonConsumer {
+                        indexes,
+                        default,
+                        comp,
+                    },
+                )
+                .expect("field binding or native path preparation failed"),
         }
     }
 
     pub(crate) fn compile_vec_with<C: Compiler>(
         self,
         compiler: &mut C,
-        comp: impl Compare<C::U>,
-    ) -> CompiledVecExpr<C::U> {
+        comp: impl Compare<C::U, C::Family>,
+    ) -> CompiledVecExpr<C::U, C::Family> {
         let Self {
             identifier,
             indexes,
@@ -228,41 +820,25 @@ impl IndexExpr {
                         )
                 })
             }
-            IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let comp = &comp;
-                ctx.get_field_value_unchecked(&f)
-                    .and_then(|value| value.get_nested(&indexes))
-                    .map_or(
-                        BOOL_ARRAY,
-                        #[inline]
-                        |val: &LhsValue<'_>| {
-                            TypedArray::from_iter(
-                                val.iter().unwrap().map(|item| comp.compare(item, ctx)),
-                            )
-                        },
-                    )
-            }),
+            IdentifierExpr::Field(field) => compiler
+                .bind_field(field, VecComparisonConsumer { indexes, comp })
+                .expect("field binding or native path preparation failed"),
         }
     }
 
     pub(crate) fn compile_iter_with<C: Compiler>(
         self,
         compiler: &mut C,
-        comp: impl Compare<C::U>,
-    ) -> CompiledVecExpr<C::U> {
+        comp: impl Compare<C::U, C::Family>,
+    ) -> CompiledVecExpr<C::U, C::Family> {
         let Self {
             identifier,
             indexes,
         } = self;
         match identifier {
-            IdentifierExpr::Field(f) => CompiledVecExpr::new(move |ctx| {
-                let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                match ctx.get_field_value_unchecked(&f) {
-                    Some(value) => iter.reset(value.as_ref()),
-                    None => return TypedArray::default(),
-                };
-                TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
-            }),
+            IdentifierExpr::Field(field) => compiler
+                .bind_field(field, IterComparisonConsumer { indexes, comp })
+                .expect("field binding or native path preparation failed"),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
@@ -288,8 +864,8 @@ impl IndexExpr {
         self,
         compiler: &mut C,
         default: bool,
-        comp: impl Compare<C::U>,
-    ) -> CompiledExpr<C::U> {
+        comp: impl Compare<C::U, C::Family>,
+    ) -> CompiledExpr<C::U, C::Family> {
         match self.map_each_count() {
             0 => CompiledExpr::One(self.compile_one_with(compiler, default, comp)),
             1 if self.indexes.last() == Some(&FieldIndex::MapEach) => {
@@ -674,6 +1250,99 @@ mod tests {
     }
 
     #[test]
+    fn test_function_return_selection() {
+        let mut ctx = ExecutionContext::new(&SCHEME);
+        ctx.set_field_value_from_name("test", Array::from_iter(["value"]))
+            .unwrap();
+        let array = LhsValue::Array(Array::from_iter(["value"]));
+        for (expression, expected) in [
+            ("array(test[0])", Ok(array.clone())),
+            ("array(test[0])[0]", Ok(LhsValue::from("value"))),
+            ("array(test[0])[*]", Ok(array.clone())),
+            ("array2(test[0])[0]", Ok(array.clone())),
+            ("array2(test[0])[0][*]", Ok(array.clone())),
+            ("array2(test[0])[*][0]", Ok(array.clone())),
+            ("array2(test[0])[*][*]", Ok(array)),
+            ("array2(test[0])[9][*]", Err(Type::array(Type::Bytes))),
+            ("array2(test[0])[*][9]", Ok(Array::new(Type::Bytes).into())),
+        ] {
+            let (index, rest) = FilterParser::new(&SCHEME)
+                .lex_as::<IndexExpr>(expression)
+                .unwrap();
+            assert!(rest.is_empty());
+            assert_eq!(index.compile().execute(&ctx), expected, "{expression}");
+        }
+    }
+
+    #[test]
+    fn test_terminal_map_each_preserves_function_result_and_error_types() {
+        fn echo<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            args.next()?.ok()
+        }
+
+        let map_type = Type::map(Type::Bytes);
+        let mut builder = SchemeBuilder::new();
+        for (field, function, ty) in [
+            ("map", "echo_map", map_type),
+            ("maps", "echo_maps", Type::array(map_type)),
+        ] {
+            builder.add_optional_field(field, ty).unwrap();
+            builder
+                .add_function(
+                    function,
+                    SimpleFunctionDefinition {
+                        params: Box::new([SimpleFunctionParam {
+                            arg_kind: SimpleFunctionArgKind::Field,
+                            val_type: ty,
+                        }]),
+                        opt_params: Box::new([]),
+                        return_type: ty,
+                        implementation: SimpleFunctionImpl::new(echo),
+                    },
+                )
+                .unwrap();
+        }
+        let scheme = builder.build();
+        let map = Map::try_from_iter::<crate::TypeMismatchError, _>(
+            Type::Bytes,
+            [Ok((Box::from(b"key".as_slice()), "value"))],
+        )
+        .unwrap();
+        let missing = ExecutionContext::new(&scheme);
+        let mut present = ExecutionContext::new(&scheme);
+        present
+            .set_field_value_from_name("map", map.clone())
+            .unwrap();
+        present
+            .set_field_value_from_name(
+                "maps",
+                Array::try_from_iter(map_type, [map.clone()]).unwrap(),
+            )
+            .unwrap();
+        for (expression, missing_type) in [
+            ("map[*]", Type::array(Type::Bytes)),
+            ("echo_map(map)[*]", map_type),
+            ("echo_maps(maps)[0][*]", Type::array(Type::Bytes)),
+        ] {
+            let (index, rest) = FilterParser::new(&scheme)
+                .lex_as::<IndexExpr>(expression)
+                .unwrap();
+            assert!(rest.is_empty());
+            let compiled = index.compile();
+            assert_eq!(
+                compiled.execute(&present),
+                Ok(LhsValue::Map(map.clone())),
+                "{expression}"
+            );
+            assert_eq!(
+                compiled.execute(&missing),
+                Err(missing_type),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
     fn test_function_call_with_missing_argument_then_index_access() {
         let expr = assert_ok!(
             FilterParser::new(&SCHEME).lex_as(r#"array(test[0])[0]"#),
@@ -986,6 +1655,321 @@ mod tests {
             assert_eq!(std::str::from_utf8(&bytes).unwrap(), format!("[{i}][{j}]"));
             j = (j + 1) % 10;
             i += (j == 0) as u32;
+        }
+    }
+    #[test]
+    fn test_native_custom_comparators_can_consume_collections() {
+        use crate::{DefaultCompiler, EvaluationContext, HasScheme, ListMatcher, ListRef};
+        use std::collections::BTreeMap;
+
+        struct Request {
+            scheme: Scheme,
+            rows: Vec<Vec<Vec<String>>>,
+            maps: Vec<BTreeMap<Box<[u8]>, String>>,
+        }
+        impl HasScheme for Request {
+            fn scheme(&self) -> &Scheme {
+                &self.scheme
+            }
+        }
+        impl EvaluationContext for Request {
+            type UserData = ();
+
+            fn get_user_data(&self) -> &() {
+                &()
+            }
+
+            fn get_list_matcher(&self, _: ListRef<'_>) -> &dyn ListMatcher {
+                unreachable!()
+            }
+        }
+        crate::wirefilter_fields! {
+            impl NativeFields for Request {
+                "rows" => {
+                    fn(request: &Request) -> &Vec<Vec<Vec<String>>> {
+                        &request.rows
+                    }
+                },
+                "maps" => {
+                    fn(request: &Request) -> &Vec<BTreeMap<Box<[u8]>, String>> {
+                        &request.maps
+                    }
+                },
+            }
+        }
+        struct Nonempty;
+        impl<F: ContextFamily<UserData = ()>> Compare<(), F> for Nonempty {
+            fn compare<'ctx, 'data: 'ctx>(
+                &self,
+                value: &LhsValue<'ctx>,
+                _: &'ctx F::Context<'data>,
+            ) -> bool {
+                match value {
+                    LhsValue::Array(values) => !values.is_empty(),
+                    LhsValue::Map(values) => !values.is_empty(),
+                    _ => panic!("custom comparator requires a complete collection"),
+                }
+            }
+        }
+        let scheme = crate::Scheme! {
+            rows: Array(Array(Array(Bytes))),
+            maps: Array(Map(Bytes)),
+        }
+        .build();
+        let native = Request {
+            scheme: scheme.clone(),
+            rows: vec![vec![vec![], vec!["value".into()]], vec![]],
+            maps: vec![
+                BTreeMap::new(),
+                BTreeMap::from([(b"key".as_slice().into(), "value".into())]),
+            ],
+        };
+        NativeFields::validate_scheme(&scheme).unwrap();
+        let mut stored = ExecutionContext::new(&scheme);
+        stored
+            .set_field_value(scheme.get_field("rows").unwrap(), (&native.rows).into_lhs())
+            .unwrap();
+        stored
+            .set_field_value(scheme.get_field("maps").unwrap(), (&native.maps).into_lhs())
+            .unwrap();
+        for (name, indexes) in [
+            ("rows", vec![]),
+            ("rows", vec![FieldIndex::ArrayIndex(8)]),
+            ("rows", vec![FieldIndex::MapEach]),
+            ("rows", vec![FieldIndex::MapEach, FieldIndex::MapEach]),
+            ("maps", vec![FieldIndex::MapEach]),
+        ] {
+            for missing in [false, true] {
+                let index = IndexExpr {
+                    identifier: IdentifierExpr::Field(scheme.get_field(name).unwrap().to_owned()),
+                    indexes: indexes.clone().into_boxed_slice(),
+                };
+                let expected = index.clone().compile_with(
+                    &mut DefaultCompiler::<()>::new(),
+                    missing,
+                    Nonempty,
+                );
+                let actual = index.compile_with(
+                    &mut DefaultCompiler::<(), NativeFields>::new(),
+                    missing,
+                    Nonempty,
+                );
+                match (expected, actual) {
+                    (CompiledExpr::One(expected), CompiledExpr::One(actual)) => {
+                        assert_eq!(expected.execute(&stored), actual.execute(&native));
+                    }
+                    (CompiledExpr::Vec(expected), CompiledExpr::Vec(actual)) => {
+                        assert_eq!(expected.execute(&stored), actual.execute(&native));
+                    }
+                    _ => panic!("comparison cardinality changed"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_native_indexed_value_expressions_match_stored_values() {
+        use crate::{DefaultCompiler, EvaluationContext, HasScheme, ListMatcher, ListRef};
+        use std::collections::BTreeMap;
+
+        type Rows = BTreeMap<Box<[u8]>, Vec<Vec<Box<str>>>>;
+        type Groups = Vec<BTreeMap<Box<[u8]>, Vec<Box<str>>>>;
+        struct Request {
+            scheme: Scheme,
+            rows: Option<Rows>,
+            groups: Option<Groups>,
+        }
+        impl HasScheme for Request {
+            fn scheme(&self) -> &Scheme {
+                &self.scheme
+            }
+        }
+        impl EvaluationContext for Request {
+            type UserData = ();
+
+            fn get_user_data(&self) -> &() {
+                &()
+            }
+
+            fn get_list_matcher(&self, _: ListRef<'_>) -> &dyn ListMatcher {
+                unreachable!()
+            }
+        }
+        crate::wirefilter_fields! {
+            impl NativeFields for Request {
+                "rows" => {
+                    fn(request: &Request) -> Option<&Rows> {
+                        request.rows.as_ref()
+                    }
+                },
+                "groups" => {
+                    fn(request: &Request) -> Option<&Groups> {
+                        request.groups.as_ref()
+                    }
+                },
+            }
+        }
+        let mut builder = SchemeBuilder::new();
+        builder
+            .add_optional_field("rows", Type::map(Type::array(Type::array(Type::Bytes))))
+            .unwrap();
+        builder
+            .add_optional_field("groups", Type::array(Type::map(Type::array(Type::Bytes))))
+            .unwrap();
+        let scheme = builder.build();
+        NativeFields::validate_scheme(&scheme).unwrap();
+
+        for present in [true, false] {
+            let native = Request {
+                scheme: scheme.clone(),
+                rows: present.then(|| {
+                    BTreeMap::from([
+                        (Box::from(b"z".as_slice()), vec![vec!["z0".into()]]),
+                        (
+                            Box::from(b"selected".as_slice()),
+                            vec![vec!["s0".into(), "s1".into()], vec![], vec!["s2".into()]],
+                        ),
+                        (Box::from(b"empty".as_slice()), vec![]),
+                        (Box::from(b"a".as_slice()), vec![vec!["a0".into()]]),
+                    ])
+                }),
+                groups: present.then(|| {
+                    vec![
+                        BTreeMap::from([
+                            (Box::from(b"z".as_slice()), vec!["z1".into()]),
+                            (
+                                Box::from(b"values".as_slice()),
+                                vec!["v0".into(), "v1".into()],
+                            ),
+                            (Box::from(b"empty".as_slice()), vec![]),
+                            (Box::from(b"a".as_slice()), vec!["a1".into()]),
+                        ]),
+                        BTreeMap::new(),
+                        BTreeMap::from([(Box::from(b"values".as_slice()), vec!["v2".into()])]),
+                    ]
+                }),
+            };
+            let mut stored = ExecutionContext::new(&scheme);
+            if let Some(rows) = &native.rows {
+                stored
+                    .set_field_value_from_name("rows", rows.into_lhs())
+                    .unwrap();
+            }
+            if let Some(groups) = &native.groups {
+                stored
+                    .set_field_value_from_name("groups", groups.into_lhs())
+                    .unwrap();
+            }
+
+            for expression in [
+                "rows",
+                r#"rows["selected"]"#,
+                r#"rows["selected"][0]"#,
+                r#"rows["selected"][0][1]"#,
+                r#"rows["selected"][0][*]"#,
+                r#"rows["selected"][*]"#,
+                r#"rows["selected"][*][*]"#,
+                r#"rows["selected"][*][0]"#,
+                r#"rows["selected"][*][9]"#,
+                r#"rows["selected"][9]"#,
+                r#"rows["selected"][9][*]"#,
+                r#"rows["selected"][9][0]"#,
+                r#"rows["empty"][*]"#,
+                r#"rows["empty"][*][*]"#,
+                r#"rows["empty"][*][0]"#,
+                r#"rows["missing"]"#,
+                r#"rows["missing"][*]"#,
+                r#"rows["missing"][0][*]"#,
+                r#"rows["missing"][*][*]"#,
+                r#"rows["missing"][*][0]"#,
+                "rows[*]",
+                "rows[*][*]",
+                "rows[*][*][*]",
+                "rows[*][0][*]",
+                "groups",
+                "groups[0]",
+                "groups[0][*]",
+                "groups[0][*][*]",
+                "groups[0][*][0]",
+                r#"groups[0]["values"][*]"#,
+                r#"groups[0]["values"][1]"#,
+                r#"groups[0]["missing"][*]"#,
+                "groups[1][*]",
+                "groups[1][*][*]",
+                "groups[9][*]",
+                "groups[9][*][*]",
+                "groups[9][*][0]",
+                r#"groups[9]["values"][*]"#,
+                r#"groups[*]["values"][*]"#,
+                r#"groups[*]["values"][0]"#,
+                r#"groups[*]["missing"][*]"#,
+                "groups[*][*][*]",
+            ] {
+                let (index, rest) = FilterParser::new(&scheme)
+                    .lex_as::<IndexExpr>(expression)
+                    .unwrap();
+                assert!(rest.is_empty(), "{expression}");
+                let expected = index
+                    .clone()
+                    .compile_with_compiler(&mut DefaultCompiler::<()>::new());
+                let actual =
+                    index.compile_with_compiler(&mut DefaultCompiler::<(), NativeFields>::new());
+                let expected = expected.execute(&stored);
+                let actual = actual.execute(&native);
+                assert_eq!(actual, expected, "{expression}, present={present}");
+                if !present {
+                    assert!(actual.is_err(), "{expression}");
+                    continue;
+                }
+
+                // Check flattening order and the difference between a missing
+                // selection before `[*]` and a missing optional root.
+                let flat: Option<&[&str]> = match expression {
+                    r#"rows["selected"][*][*]"# => Some(&["s0", "s1", "s2"]),
+                    r#"rows["selected"][*][0]"# => Some(&["s0", "s2"]),
+                    "rows[*][*][*]" => Some(&["a0", "s0", "s1", "s2", "z0"]),
+                    "rows[*][0][*]" => Some(&["a0", "s0", "s1", "z0"]),
+                    "groups[0][*][*]" => Some(&["a1", "v0", "v1", "z1"]),
+                    "groups[0][*][0]" => Some(&["a1", "v0", "z1"]),
+                    r#"groups[*]["values"][*]"# => Some(&["v0", "v1", "v2"]),
+                    r#"groups[*]["values"][0]"# => Some(&["v0", "v2"]),
+                    "groups[*][*][*]" => Some(&["a1", "v0", "v1", "z1", "v2"]),
+                    r#"rows["selected"][*][9]"#
+                    | r#"rows["empty"][*][*]"#
+                    | r#"rows["empty"][*][0]"#
+                    | r#"rows["missing"][*][*]"#
+                    | r#"rows["missing"][*][0]"#
+                    | "groups[1][*][*]"
+                    | "groups[9][*][*]"
+                    | "groups[9][*][0]"
+                    | r#"groups[*]["missing"][*]"# => Some(&[]),
+                    _ => None,
+                };
+                if let Some(values) = flat {
+                    assert_eq!(
+                        actual.as_ref().unwrap(),
+                        &LhsValue::Array(Array::from_iter(values.iter().copied())),
+                        "{expression}",
+                    );
+                }
+                if expression == "groups[0][*]" {
+                    // A single terminal `map[*]` retains its map for the
+                    // mapped function, whose iteration follows byte-key order.
+                    let LhsValue::Map(map) = actual.unwrap() else {
+                        panic!("terminal map[*] must retain the map");
+                    };
+                    let values: Vec<_> = map.into_values().collect();
+                    assert_eq!(
+                        values,
+                        vec![
+                            LhsValue::Array(Array::from_iter(["a1"])),
+                            LhsValue::Array(Array::new(Type::Bytes)),
+                            LhsValue::Array(Array::from_iter(["v0", "v1"])),
+                            LhsValue::Array(Array::from_iter(["z1"])),
+                        ],
+                    );
+                }
+            }
         }
     }
 }

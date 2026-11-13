@@ -362,7 +362,7 @@ impl Expr for LogicalExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U, C::Family> {
         match self {
             LogicalExpr::Comparison(op) => compiler.compile_comparison_expr(op),
             LogicalExpr::Parenthesized(node) => compiler.compile_logical_expr(node.expr),

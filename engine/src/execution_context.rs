@@ -38,12 +38,66 @@ pub struct InvalidListMatcherError {
 ///
 /// It acts as a map in terms of public API, but provides a constant-time
 /// index-based access to values for a filter during execution.
+///
+/// This type implements [`crate::EvaluationContext`] and
+/// [`crate::EvaluationContextMut`], owning its scheme, list matchers, and user data
+/// alongside the field values. Native contexts can use [`crate::NativeContextState`]
+/// to own equivalent state without field-value slots. See [`crate::native`] for
+/// the native context interfaces and an example.
 #[derive(Debug, PartialEq)]
 pub struct ExecutionContext<'e, U = ()> {
     scheme: Scheme,
     values: Box<[Option<LhsValue<'e>>]>,
     list_matchers: Box<[Box<dyn ListMatcher>]>,
     user_data: U,
+}
+
+impl<U> crate::HasScheme for ExecutionContext<'_, U> {
+    #[inline]
+    fn scheme(&self) -> &Scheme {
+        self.scheme()
+    }
+}
+
+impl<U> crate::EvaluationContext for ExecutionContext<'_, U> {
+    type UserData = U;
+
+    #[inline]
+    fn get_user_data(&self) -> &U {
+        self.get_user_data()
+    }
+
+    #[inline]
+    fn get_list_matcher(&self, list: ListRef<'_>) -> &dyn ListMatcher {
+        self.get_list_matcher(list)
+    }
+
+    #[inline]
+    fn get_list_matcher_from_type(&self, ty: &Type) -> Option<&dyn ListMatcher> {
+        self.get_list_matcher_from_type(ty)
+    }
+
+    #[inline]
+    fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
+        self.get_list_matcher_unchecked(list)
+    }
+}
+
+impl<U> crate::EvaluationContextMut for ExecutionContext<'_, U> {
+    #[inline]
+    fn get_user_data_mut(&mut self) -> &mut U {
+        self.get_user_data_mut()
+    }
+
+    #[inline]
+    fn get_list_matcher_mut(&mut self, list: ListRef<'_>) -> &mut dyn ListMatcher {
+        self.get_list_matcher_mut(list)
+    }
+
+    #[inline]
+    fn get_list_matcher_mut_from_type(&mut self, ty: &Type) -> Option<&mut dyn ListMatcher> {
+        self.get_list_matcher_mut_from_type(ty)
+    }
 }
 
 impl<'e, U> ExecutionContext<'e, U> {
@@ -69,6 +123,25 @@ impl<'e, U> ExecutionContext<'e, U> {
                 .map(|list| list.definition().new_matcher())
                 .collect(),
             user_data: f(),
+        }
+    }
+
+    /// Create an empty stored-value snapshot with a context's scheme and lists.
+    ///
+    /// Native runtimes can use this explicitly for consumers that require stored
+    /// values, such as diagnostic serialization. Field getters are not evaluated;
+    /// the caller chooses which fields to materialize. List matchers are cloned
+    /// independently so later changes to either context do not affect the other.
+    pub fn new_from_context(context: &impl crate::EvaluationContext, user_data: U) -> Self {
+        let scheme = context.scheme();
+        Self {
+            scheme: scheme.clone(),
+            values: vec![None; scheme.field_count()].into(),
+            list_matchers: scheme
+                .lists()
+                .map(|list| dyn_clone::clone_box(context.get_list_matcher(list)))
+                .collect(),
+            user_data,
         }
     }
 

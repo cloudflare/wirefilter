@@ -15,7 +15,7 @@ use crate::strict_partial_ord::StrictPartialOrd;
 use crate::types::{
     ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue, Type, TypeMismatchError,
 };
-use crate::{ExecutionContext, Scheme};
+use crate::{ContextFamily, EvaluationContext, Scheme};
 use serde::{Serialize, Serializer};
 use sliceslice::MemchrSearcher;
 use std::cmp::Ordering;
@@ -710,10 +710,17 @@ macro_rules! cast_value {
     };
 }
 
-impl<const STRICT: bool, U> Compare<U> for Wildcard<STRICT> {
+impl<const STRICT: bool, U: 'static, F: ContextFamily<UserData = U>> Compare<U, F>
+    for Wildcard<STRICT>
+{
     #[inline]
-    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
         self.is_match(cast_value!(value, Bytes))
+    }
+
+    #[inline]
+    fn compare_bytes<'e, 'data: 'e>(&self, value: &'e [u8], _: &'e F::Context<'data>) -> bool {
+        self.is_match(value)
     }
 }
 
@@ -724,7 +731,7 @@ fn compile_dynamic_comparison<C, F>(
     missing_one_default: bool,
     missing_both_default: bool,
     compiler: &mut C,
-) -> CompiledExpr<C::U>
+) -> CompiledExpr<C::U, C::Family>
 where
     C: Compiler,
     F: for<'l, 'r> Fn(&LhsValue<'l>, &LhsValue<'r>) -> bool + Copy + Send + Sync + 'static,
@@ -782,7 +789,7 @@ impl Expr for ComparisonExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U, C::Family> {
         let lhs = self.lhs;
         let nil_not_equal_behavior = lhs.identifier.scheme().nil_not_equal_behavior();
 
@@ -790,14 +797,25 @@ impl Expr for ComparisonExpr {
             ComparisonOpExpr::IsTrue => {
                 struct IsTrue;
 
-                impl<U> Compare<U> for IsTrue {
+                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for IsTrue {
                     #[inline]
-                    fn compare<'e>(
+                    fn compare<'e, 'data: 'e>(
                         &self,
                         value: &LhsValue<'e>,
-                        _: &'e ExecutionContext<'e, U>,
+                        _: &'e F::Context<'data>,
                     ) -> bool {
                         *cast_value!(value, Bool)
+                    }
+
+                    #[inline]
+                    fn compare_bool<'e, 'data: 'e>(
+                        &self,
+                        value: bool,
+                        _: &'e F::Context<'data>,
+                    ) -> bool {
+                        let value = &value;
+
+                        *value
                     }
                 }
 
@@ -866,46 +884,55 @@ impl Expr for ComparisonExpr {
                 };
 
                 macro_rules! gen_ordering {
-                    ($op:tt, $def:ident) => {
+                    ($ordering:ident, $op:tt, $def:ident) => {
                         match rhs {
                             LiteralValue::Bytes(bytes) => {
-                                struct BytesOp(BytesExpr);
+                                struct BytesOp(Box<[u8]>);
 
-                                impl<U> Compare<U> for BytesOp {
+                                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for BytesOp {
                                     #[inline]
-                                    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+                                    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
                                         cast_value!(value, Bytes).as_ref() $op self.0.as_ref()
+                                    }
+                                    #[inline]
+                                    fn compare_bytes<'e, 'data: 'e>(&self, value: &'e [u8], _: &'e F::Context<'data>) -> bool {
+                                        value $op self.0.as_ref()
                                     }
                                 }
 
-                                lhs.compile_with(compiler, $def, BytesOp(bytes))
+                                lhs.compile_with(compiler, $def, BytesOp(bytes.into()))
                             }
                             LiteralValue::Int(int) => {
                                 struct IntOp(i64);
 
-                                impl<U> Compare<U> for IntOp {
+                                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for IntOp {
                                     #[inline]
-                                    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+                                    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
                                         *cast_value!(value, Int) $op self.0
+                                    }
+                                    #[inline]
+                                    fn compare_int<'e, 'data: 'e>(&self, value: i64, _: &'e F::Context<'data>) -> bool {
+                                        value $op self.0
                                     }
                                 }
 
                                 lhs.compile_with(compiler, $def, IntOp(int))
                             }
                             LiteralValue::Ip(ip) => {
-                                struct IpOp {
-                                    op: OrderingOp,
-                                    ip: IpAddr,
-                                }
+                                struct IpOp(IpAddr);
 
-                                impl<U> Compare<U> for IpOp {
+                                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for IpOp {
                                     #[inline]
-                                    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
-                                        self.op.matches_opt(cast_value!(value, Ip).strict_partial_cmp(&self.ip))
+                                    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
+                                        OrderingOp::$ordering.matches_opt(cast_value!(value, Ip).strict_partial_cmp(&self.0))
+                                    }
+                                    #[inline]
+                                    fn compare_ip<'e, 'data: 'e>(&self, value: IpAddr, _: &'e F::Context<'data>) -> bool {
+                                        OrderingOp::$ordering.matches_opt(value.strict_partial_cmp(&self.0))
                                     }
                                 }
 
-                                lhs.compile_with(compiler, $def, IpOp { op, ip })
+                                lhs.compile_with(compiler, $def, IpOp(ip))
                             }
                             LiteralValue::Bool(_) | LiteralValue::Array(_) | LiteralValue::Map(_) => unreachable!(),
                         }
@@ -913,12 +940,12 @@ impl Expr for ComparisonExpr {
                 }
 
                 match op {
-                    OrderingOp::NotEqual => gen_ordering!(!=, nil_not_equal_behavior),
-                    OrderingOp::Equal => gen_ordering!(==, false),
-                    OrderingOp::GreaterThanEqual => gen_ordering!(>=, false),
-                    OrderingOp::LessThanEqual => gen_ordering!(<=, false),
-                    OrderingOp::GreaterThan => gen_ordering!(>, false),
-                    OrderingOp::LessThan => gen_ordering!(<, false),
+                    OrderingOp::NotEqual => gen_ordering!(NotEqual, !=, nil_not_equal_behavior),
+                    OrderingOp::Equal => gen_ordering!(Equal, ==, false),
+                    OrderingOp::GreaterThanEqual => gen_ordering!(GreaterThanEqual, >=, false),
+                    OrderingOp::LessThanEqual => gen_ordering!(LessThanEqual, <=, false),
+                    OrderingOp::GreaterThan => gen_ordering!(GreaterThan, >, false),
+                    OrderingOp::LessThan => gen_ordering!(LessThan, <, false),
                 }
             }
             ComparisonOpExpr::Int {
@@ -941,14 +968,25 @@ impl Expr for ComparisonExpr {
 
                 struct BitwiseAnd(i64);
 
-                impl<U> Compare<U> for BitwiseAnd {
+                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for BitwiseAnd {
                     #[inline]
-                    fn compare<'e>(
+                    fn compare<'e, 'data: 'e>(
                         &self,
                         value: &LhsValue<'e>,
-                        _: &'e ExecutionContext<'e, U>,
+                        _: &'e F::Context<'data>,
                     ) -> bool {
                         cast_value!(value, Int) & self.0 != 0
+                    }
+
+                    #[inline]
+                    fn compare_int<'e, 'data: 'e>(
+                        &self,
+                        value: i64,
+                        _: &'e F::Context<'data>,
+                    ) -> bool {
+                        let value = &value;
+
+                        value & self.0 != 0
                     }
                 }
                 lhs.compile_with(compiler, false, BitwiseAnd(rhs))
@@ -975,27 +1013,49 @@ impl Expr for ComparisonExpr {
 
                     struct ArraySearcher<const N: usize>(Avx2Searcher<[u8; N]>);
 
-                    impl<const N: usize, U> Compare<U> for ArraySearcher<N> {
+                    impl<const N: usize, U: 'static, F: ContextFamily<UserData = U>> Compare<U, F>
+                        for ArraySearcher<N>
+                    {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             unsafe { self.0.search_in(cast_value!(value, Bytes)) }
+                        }
+
+                        #[inline]
+                        fn compare_bytes<'e, 'data: 'e>(
+                            &self,
+                            value: &'e [u8],
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            // SAFETY: This searcher is only constructed after USE_AVX2 succeeds.
+                            unsafe { self.0.search_in(value) }
                         }
                     }
 
                     struct BoxSearcher(Avx2Searcher<Box<[u8]>>);
 
-                    impl<U> Compare<U> for BoxSearcher {
+                    impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for BoxSearcher {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             unsafe { self.0.search_in(cast_value!(value, Bytes)) }
+                        }
+
+                        #[inline]
+                        fn compare_bytes<'e, 'data: 'e>(
+                            &self,
+                            value: &'e [u8],
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            // SAFETY: This searcher is only constructed after USE_AVX2 succeeds.
+                            unsafe { self.0.search_in(value) }
                         }
                     }
 
@@ -1079,14 +1139,24 @@ impl Expr for ComparisonExpr {
 
                     struct WasmSearcher(Wasm32Searcher<Box<[u8]>>);
 
-                    impl<U> Compare<U> for WasmSearcher {
+                    impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for WasmSearcher {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             unsafe { self.0.search_in(cast_value!(value, Bytes)) }
+                        }
+
+                        #[inline]
+                        fn compare_bytes<'e, 'data: 'e>(
+                            &self,
+                            value: &'e [u8],
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            // SAFETY: This searcher is only constructed after USE_SIMD128 succeeds.
+                            unsafe { self.0.search_in(value) }
                         }
                     }
 
@@ -1099,7 +1169,9 @@ impl Expr for ComparisonExpr {
 
                 search!(MemmemSearcher::new(bytes))
             }
-            ComparisonOpExpr::Matches(regex) => lhs.compile_with(compiler, false, regex),
+            ComparisonOpExpr::Matches(regex) => {
+                lhs.compile_with(compiler, false, regex.into_compiled())
+            }
             ComparisonOpExpr::Wildcard(wildcard) => lhs.compile_with(compiler, false, wildcard),
             ComparisonOpExpr::StrictWildcard(wildcard) => {
                 lhs.compile_with(compiler, false, wildcard)
@@ -1122,14 +1194,28 @@ impl Expr for ComparisonExpr {
                         v6: RangeSet<Ipv6Addr>,
                     }
 
-                    impl<U> Compare<U> for OneOfIp {
+                    impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for OneOfIp {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             match cast_value!(value, Ip) {
+                                IpAddr::V4(addr) => self.v4.contains(addr),
+                                IpAddr::V6(addr) => self.v6.contains(addr),
+                            }
+                        }
+
+                        #[inline]
+                        fn compare_ip<'e, 'data: 'e>(
+                            &self,
+                            value: IpAddr,
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            let value = &value;
+
+                            match value {
                                 IpAddr::V4(addr) => self.v4.contains(addr),
                                 IpAddr::V6(addr) => self.v6.contains(addr),
                             }
@@ -1143,14 +1229,25 @@ impl Expr for ComparisonExpr {
 
                     struct OneOfInt(RangeSet<i64>);
 
-                    impl<U> Compare<U> for OneOfInt {
+                    impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for OneOfInt {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             self.0.contains(cast_value!(value, Int))
+                        }
+
+                        #[inline]
+                        fn compare_int<'e, 'data: 'e>(
+                            &self,
+                            value: i64,
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            let value = &value;
+
+                            self.0.contains(value)
                         }
                     }
 
@@ -1161,14 +1258,23 @@ impl Expr for ComparisonExpr {
 
                     struct Contains(BTreeSet<Box<[u8]>>);
 
-                    impl<U> Compare<U> for Contains {
+                    impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for Contains {
                         #[inline]
-                        fn compare<'e>(
+                        fn compare<'e, 'data: 'e>(
                             &self,
                             value: &LhsValue<'e>,
-                            _: &'e ExecutionContext<'e, U>,
+                            _: &'e F::Context<'data>,
                         ) -> bool {
                             self.0.contains(cast_value!(value, Bytes).as_ref())
+                        }
+
+                        #[inline]
+                        fn compare_bytes<'e, 'data: 'e>(
+                            &self,
+                            value: &'e [u8],
+                            _: &'e F::Context<'data>,
+                        ) -> bool {
+                            self.0.contains(value.as_ref())
                         }
                     }
 
@@ -1187,12 +1293,12 @@ impl Expr for ComparisonExpr {
                     list: List,
                 }
 
-                impl<U> Compare<U> for InList {
+                impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for InList {
                     #[inline]
-                    fn compare<'e>(
+                    fn compare<'e, 'data: 'e>(
                         &self,
                         value: &LhsValue<'e>,
-                        ctx: &'e ExecutionContext<'e, U>,
+                        ctx: &'e F::Context<'data>,
                     ) -> bool {
                         ctx.get_list_matcher_unchecked(&self.list)
                             .match_value(self.name.as_str(), value)

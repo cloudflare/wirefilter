@@ -10,7 +10,19 @@ pub struct Regex {
     format: RegexFormat,
 }
 
+pub(crate) struct CompiledRegex;
+
+impl CompiledRegex {
+    pub(super) fn is_match(&self, _input: &[u8]) -> bool {
+        unimplemented!("Engine was built without regex support")
+    }
+}
+
 impl Regex {
+    pub(crate) fn into_compiled(self) -> CompiledRegex {
+        CompiledRegex
+    }
+
     /// Creates a new dummy regex.
     pub fn new(
         pattern: impl Into<ArcStr>,
