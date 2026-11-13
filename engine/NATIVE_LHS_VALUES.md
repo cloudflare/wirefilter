@@ -339,3 +339,47 @@ and formatting/diff checks. The saved parent and final benchmark binaries list
 the same 22 focused cases and pass their benchmark smoke checks. Allocation
 diagnostics were rerun after the final comparison-loop adjustment and produce
 identical counts to those reported above.
+
+## Getter helper scope
+
+The getter-scope change is compared with its exact parent `0278c36`. Both
+revisions use the same extended `reader_traversal` harness, with nine typed-native
+cases covering required and optional integer/byte getters, missing optional
+values, flat and nested arrays, and implicit Boolean-array iteration. All 27
+result checks in the complete group pass in both saved executables.
+
+The binaries were built on Linux AArch64 with rustc 1.100.0 and the optimized
+Cargo bench profile, inheriting `[profile.release] lto = true`; codegen units
+were not overridden. The entire `.text` section is byte-for-byte identical,
+with SHA-256 `e3538c2c555f3e057023be3fa11cb9231113a4a5237325187d905c138d7b3997`.
+The eight generated getter callbacks also retain the same addresses and
+instructions; their symbol names change from `Getter::call` to
+`__wirefilter_call`. No instruction-level overhead was introduced in this build.
+This observation is specific to this harness, toolchain, architecture and build
+profile; it does not establish the generated code for every downstream getter.
+
+The saved binaries were then timed sequentially on CPU 0, using identical
+nine-case selection and order, with no concurrent builds: 1 s warm-up, 3 s
+measurement and 40 samples per case. Values are Criterion slope estimates in
+nanoseconds per evaluation; negative changes mean faster evaluation.
+
+| Case | Parent (ns) | Scoped helpers (ns) | Change |
+| --- | ---: | ---: | ---: |
+| `implicit_bool_native` | 240.136 | 248.868 | +3.6% |
+| `native_array` | 129.825 | 127.513 | -1.8% |
+| `native_bytes` | 2.754 | 2.753 | -0.0% |
+| `native_missing_bytes` | 1.591 | 1.601 | +0.6% |
+| `native_missing_scalar` | 1.544 | 1.557 | +0.8% |
+| `native_nested` | 225.574 | 217.084 | -3.8% |
+| `native_optional_bytes` | 2.766 | 2.805 | +1.4% |
+| `native_optional_scalar` | 1.285 | 1.300 | +1.2% |
+| `native_scalar` | 1.257 | 1.320 | +5.0% |
+
+The point estimates vary in both directions, from -3.8% to +5.0%. The largest
+relative increase is 0.063 ns for the required integer getter. These runs do not
+show a consistent evaluation speedup or slowdown, and the generated instructions
+are identical. No build-memory measurement was made.
+
+The change passes workspace tests, all-feature engine tests, the getter
+attribute and hygiene tests without default features, Clippy for all targets
+and features, rustdoc with warnings denied, and formatting checks.

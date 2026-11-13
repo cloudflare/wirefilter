@@ -34,6 +34,9 @@ fn function(ty: Type, implementation: SimpleFunctionImpl) -> SimpleFunctionDefin
 struct NativeContext {
     scheme: Scheme,
     number: i64,
+    optional_number: Option<i64>,
+    text: Box<str>,
+    optional_text: Option<Box<str>>,
     numbers: Vec<i64>,
     matrix: Vec<Vec<i64>>,
     cube: Vec<Vec<Vec<i64>>>,
@@ -61,6 +64,9 @@ impl EvaluationContext for NativeContext {
 wirefilter::wirefilter_fields! {
     impl NativeFields for NativeContext {
         "number" => { fn(ctx: &NativeContext) -> i64 { ctx.number } },
+        "optional_number" => { fn(ctx: &NativeContext) -> Option<i64> { ctx.optional_number } },
+        "text" => { fn(ctx: &NativeContext) -> &str { &ctx.text } },
+        "optional_text" => { fn(ctx: &NativeContext) -> Option<&str> { ctx.optional_text.as_deref() } },
         "numbers" => { fn(ctx: &NativeContext) -> &[i64] { &ctx.numbers } },
         "matrix" => { fn(ctx: &NativeContext) -> &[Vec<i64>] { &ctx.matrix } },
         "cube" => { fn(ctx: &NativeContext) -> &[Vec<Vec<i64>>] { &ctx.cube } },
@@ -76,6 +82,7 @@ fn context() -> (Scheme, ExecutionContext<'static>, NativeContext) {
     let mut builder = SchemeBuilder::new();
     for (name, ty) in [
         ("number", Type::Int),
+        ("text", Type::Bytes),
         ("numbers", numbers),
         ("matrix", matrix),
         ("cube", cube),
@@ -95,10 +102,19 @@ fn context() -> (Scheme, ExecutionContext<'static>, NativeContext) {
             )
             .unwrap();
     }
+    builder
+        .add_optional_field("optional_number", Type::Int)
+        .unwrap();
+    builder
+        .add_optional_field("optional_text", Type::Bytes)
+        .unwrap();
     let scheme = builder.build();
     let native = NativeContext {
         scheme: scheme.clone(),
         number: 63,
+        optional_number: Some(63),
+        text: "target".into(),
+        optional_text: Some("target".into()),
         numbers: (0..64).collect(),
         matrix: (0..8).map(|row| (row * 8..row * 8 + 8).collect()).collect(),
         cube: (0..4)
@@ -150,7 +166,7 @@ fn compile_value_selection(scheme: &Scheme, expression: &str, depth: usize) -> C
 }
 
 pub(super) fn bench(c: &mut Criterion) {
-    let (scheme, context, native) = context();
+    let (scheme, context, mut native) = context();
     let mut group = c.benchmark_group("reader_traversal");
     for (name, expression) in [
         ("function_scalar", "echo_number(number) eq 63"),
@@ -237,6 +253,9 @@ pub(super) fn bench(c: &mut Criterion) {
 
     for (name, expression) in [
         ("native_scalar", "number eq 63"),
+        ("native_optional_scalar", "optional_number eq 63"),
+        ("native_bytes", r#"text eq "target""#),
+        ("native_optional_bytes", r#"optional_text eq "target""#),
         ("native_array", "any(numbers[*] eq 63)"),
         ("native_nested", "any(matrix[*][*] eq 63)"),
     ] {
@@ -283,6 +302,21 @@ pub(super) fn bench(c: &mut Criterion) {
                 group.bench_function(name, |b| b.iter(|| expression.execute(black_box(&native))));
             }
         }
+    }
+    native.optional_number = None;
+    native.optional_text = None;
+    for (name, expression) in [
+        ("native_missing_scalar", "optional_number eq 63"),
+        ("native_missing_bytes", r#"optional_text eq "target""#),
+    ] {
+        let filter = scheme
+            .parse(expression)
+            .unwrap()
+            .compile_with_compiler(&mut DefaultCompiler::<(), NativeFields>::new());
+        assert!(!filter.execute(&native).unwrap(), "{name}");
+        group.bench_function(name, |b| {
+            b.iter(|| filter.execute(black_box(&native)).unwrap())
+        });
     }
     group.finish();
 }

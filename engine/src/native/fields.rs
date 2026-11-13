@@ -359,64 +359,53 @@ macro_rules! wirefilter_fields {
         [$argument:ident: $argument_type:ty] [$($field:ident: $field_type:ty)?]
         [$return_type:ty] [$provider:ty] $body:block
     ) => {{
-        struct Getter;
-        impl Getter {
-            // An associated function preserves the declared return type and early
-            // returns without shadowing application functions called by the body.
-            $(#[$attribute])*
-            fn value<'__wirefilter_ctx, $data: '__wirefilter_ctx>(
-                $argument: &'__wirefilter_ctx $argument_type,
-                __wirefilter_field: &$crate::Field,
-            ) -> $return_type {
-                $(let $field: &$field_type = __wirefilter_field;)?
-                $body
-            }
+        // The parameter shadows this function's name inside the body. Reusing
+        // that caller-provided identifier avoids introducing a helper name that
+        // could shadow application items referenced by the body or return type.
+        $(#[$attribute])*
+        fn $argument<'__wirefilter_ctx, $data: '__wirefilter_ctx>(
+            $argument: &'__wirefilter_ctx $argument_type,
+            __wirefilter_field: &$crate::Field,
+        ) -> $return_type {
+            $(let $field: &$field_type = __wirefilter_field;)?
+            $body
+        }
 
-            fn call<'__wirefilter_ctx, $data>(
+        // Keep the callback's name outside the body function's scope.
+        {
+            fn __wirefilter_call<'__wirefilter_ctx, $data>(
                 context: $crate::ContextRef<'__wirefilter_ctx, $data, $family>,
                 field: &$crate::Field,
             ) -> $crate::RequiredFieldGetterResult<'__wirefilter_ctx, $data, $provider> {
-                $crate::RequiredFieldGetterResult::new(Self::value(context.context(), field))
+                $crate::RequiredFieldGetterResult::new($argument(context.context(), field))
             }
+            $crate::RequiredFieldGetterFn::<$family, $provider>::new(__wirefilter_call)
         }
-        $crate::RequiredFieldGetterFn::<$family, $provider>::new(Getter::call)
     }};
     (
         @impl_getter [$family:ident] [$data:lifetime] [$(#[$attribute:meta])*]
         [$argument:ident: $argument_type:ty] [$($field:ident: $field_type:ty)?]
         [$return_type:ty] [$provider:ty] $body:block
     ) => {{
-        struct Getter;
-        impl Getter {
-            $(#[$attribute])*
-            fn value<'__wirefilter_ctx, $data: '__wirefilter_ctx>(
-                $argument: &'__wirefilter_ctx $argument_type,
-                __wirefilter_field: &$crate::Field,
-            ) -> Option<$return_type> {
-                $(let $field: &$field_type = __wirefilter_field;)?
-                $body
-            }
+        // Preserve the same name isolation as the plain-return getter.
+        $(#[$attribute])*
+        fn $argument<'__wirefilter_ctx, $data: '__wirefilter_ctx>(
+            $argument: &'__wirefilter_ctx $argument_type,
+            __wirefilter_field: &$crate::Field,
+        ) -> Option<$return_type> {
+            $(let $field: &$field_type = __wirefilter_field;)?
+            $body
+        }
 
-            fn call<'__wirefilter_ctx, $data>(
+        {
+            fn __wirefilter_call<'__wirefilter_ctx, $data>(
                 context: $crate::ContextRef<'__wirefilter_ctx, $data, $family>,
                 field: &$crate::Field,
             ) -> $crate::OptionalFieldGetterResult<'__wirefilter_ctx, $data, $provider> {
-                $crate::OptionalFieldGetterResult::new($crate::FieldGetter::get(&Self, context.context(), field))
+                $crate::OptionalFieldGetterResult::new($argument(context.context(), field))
             }
+            $crate::FieldGetterFn::<$family, $provider>::new(__wirefilter_call)
         }
-        impl $crate::FieldGetter<$family> for Getter {
-            type Provider = $provider;
-
-            #[inline]
-            fn get<'__wirefilter_ctx, $data: '__wirefilter_ctx>(
-                &self,
-                $argument: &'__wirefilter_ctx $argument_type,
-                __wirefilter_field: &$crate::Field,
-            ) -> Option<$return_type> {
-                Self::value($argument, __wirefilter_field)
-            }
-        }
-        $crate::FieldGetterFn::<$family, $provider>::new(Getter::call)
     }};
     (
         @emit [$($meta:tt)*] [$visibility:vis] [$family:ident] [$data:lifetime]
