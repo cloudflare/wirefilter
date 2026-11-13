@@ -5,9 +5,11 @@ use super::index_expr::IndexExpr;
 use super::parse::FilterParser;
 use super::visitor::{Visitor, VisitorMut};
 use crate::compiler::Compiler;
+use crate::context::ContextFamily;
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::types::{GetType, LhsValue, Type, TypeMismatchError};
+use crate::lhs_types::LhsValue;
+use crate::types::{GetType, Type, TypeMismatchError};
 use serde::Serialize;
 
 lex_enum!(
@@ -366,7 +368,7 @@ impl Expr for LogicalExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U, C::Family> {
         match self {
             LogicalExpr::Comparison(op) => compiler.compile_comparison_expr(op),
             LogicalExpr::Parenthesized(node) => compiler.compile_logical_expr(node.expr),
@@ -443,11 +445,11 @@ impl Expr for LogicalExpr {
     }
 }
 
-fn compile_one_combination<U: 'static>(
+fn compile_one_combination<U: 'static, F: ContextFamily<UserData = U>>(
     op: LogicalOp,
-    first: CompiledOneExpr<U>,
-    items: impl AsRef<[CompiledOneExpr<U>]> + Send + Sync + 'static,
-) -> CompiledExpr<U> {
+    first: CompiledOneExpr<U, F>,
+    items: impl AsRef<[CompiledOneExpr<U, F>]> + Send + Sync + 'static,
+) -> CompiledExpr<U, F> {
     match op {
         LogicalOp::And => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
             first.execute(ctx) && items.as_ref().iter().all(|item| item.execute(ctx))
@@ -464,11 +466,11 @@ fn compile_one_combination<U: 'static>(
     }
 }
 
-fn compile_vec_combination<U: 'static>(
+fn compile_vec_combination<U: 'static, F: ContextFamily<UserData = U>>(
     op: LogicalOp,
-    first: CompiledVecExpr<U>,
-    items: impl AsRef<[CompiledVecExpr<U>]> + Send + Sync + 'static,
-) -> CompiledExpr<U> {
+    first: CompiledVecExpr<U, F>,
+    items: impl AsRef<[CompiledVecExpr<U, F>]> + Send + Sync + 'static,
+) -> CompiledExpr<U, F> {
     match op {
         LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
             let items = items.as_ref().iter().map(|item| item.execute(ctx));

@@ -13,6 +13,7 @@ publish.workspace = true
 
 [features]
 default = ["get-size2", "regex"]
+bytes = ["dep:bytes"]
 get-size2 = ["dep:get-size2"]
 regex = ["dep:regex-automata"]
 
@@ -27,6 +28,7 @@ name = "bench"
 [dependencies]
 arcstr.workspace = true
 backtrace.workspace = true
+bytes = { workspace = true, optional = true }
 cfg-if.workspace = true
 cidr.workspace = true
 dyn-clone.workspace = true
