@@ -13,7 +13,8 @@ pub trait Compiler: Sized {
     type Family: ContextFamily<UserData = Self::U>;
 
     /// Resolve a field while retaining the concrete getter type during compilation.
-    /// The binding takes ownership so the selected getter can retain it without cloning.
+    /// The binding takes ownership so the compiled expression can retain the field
+    /// without cloning it.
     #[inline]
     fn bind_field<B: FieldConsumer<Self::Family>>(
         &mut self,

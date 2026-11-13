@@ -8,7 +8,7 @@ use crate::Field;
 use crate::compiler::Compiler;
 use crate::context::{
     ContextFamily, FieldBindingError, FieldConsumer, FieldGetter, ProviderFamily,
-    StoredContextFamily, StoredFieldGetter,
+    StoredContextFamily,
 };
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
@@ -213,14 +213,10 @@ impl<F: ContextFamily> FieldConsumer<F> for MaterializationCost {
     fn native<G: FieldGetter<F>>(self, field: Field, _: G) -> Result<bool, FieldBindingError> {
         // Stored values also use this interface, but borrowing their containers
         // must not introduce the memoization allocation for native conversion.
-        Ok(matches!(field.get_type(), Type::Array(_) | Type::Map(_))
-            && <<G::Provider as ProviderFamily>::Value<'static, 'static> as IntoLhsValue<
+        Ok(<<G::Provider as ProviderFamily>::Value<'static, 'static> as IntoLhsValue<
                 'static,
-            >>::MATERIALIZES_COLLECTIONS)
-    }
-
-    fn stored<G: StoredFieldGetter<F>>(self, _: G) -> Result<bool, FieldBindingError> {
-        Ok(false)
+            >>::MATERIALIZES_COLLECTIONS
+            && matches!(field.get_type(), Type::Array(_) | Type::Map(_)))
     }
 }
 
@@ -264,39 +260,6 @@ impl<F: ContextFamily> FieldConsumer<F> for ValueConsumer {
                         ty,
                         return_type,
                     )
-                })
-            }
-        })
-    }
-
-    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
-        let Self {
-            indexes,
-            ty,
-            flatten,
-        } = self;
-        Ok(match (flatten, indexes.is_empty()) {
-            (false, true) => CompiledValueExpr::new_with_context(move |ctx| {
-                let ctx = ctx.context();
-                required(getter.get(ctx), getter.field())
-                    .map(LhsValue::as_ref)
-                    .ok_or(ty)
-            }),
-            (false, false) => CompiledValueExpr::new_with_context(move |ctx| {
-                let ctx = ctx.context();
-                required(getter.get(ctx), getter.field())
-                    .and_then(|value| value.get_nested(&indexes))
-                    .map(LhsValue::as_ref)
-                    .ok_or(ty)
-            }),
-            (true, _) => {
-                let return_type = Type::Array(ty.into());
-                CompiledValueExpr::new_with_context(move |ctx| {
-                    let ctx = ctx.context();
-                    let value = required(getter.get(ctx), getter.field()).ok_or(return_type)?;
-                    let mut iter = MapEachIterator::from_indexes(&indexes);
-                    iter.reset(value.as_ref());
-                    Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
                 })
             }
         })
@@ -605,26 +568,6 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
             }
         }
     }
-
-    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
-        let Self {
-            indexes,
-            default,
-            comp,
-        } = self;
-        Ok(if indexes.is_empty() {
-            CompiledOneExpr::new(move |ctx| {
-                required(getter.get(ctx), getter.field())
-                    .map_or(default, |value| comp.compare(value, ctx))
-            })
-        } else {
-            CompiledOneExpr::new(move |ctx| {
-                required(getter.get(ctx), getter.field())
-                    .and_then(|value| value.get_nested(&indexes))
-                    .map_or(default, |value| comp.compare(value, ctx))
-            })
-        })
-    }
 }
 
 impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecComparisonConsumer<P> {
@@ -662,17 +605,6 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecCompa
             }
         }
     }
-
-    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
-        let Self { indexes, comp } = self;
-        Ok(CompiledVecExpr::new(move |ctx| {
-            required(getter.get(ctx), getter.field())
-                .and_then(|value| value.get_nested(&indexes))
-                .map_or(BOOL_ARRAY, |value| {
-                    TypedArray::from_iter(value.iter().unwrap().map(|item| comp.compare(item, ctx)))
-                })
-        }))
-    }
 }
 
 impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComparisonConsumer<P> {
@@ -709,18 +641,6 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComp
                 }
             }
         }
-    }
-
-    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError> {
-        let Self { indexes, comp } = self;
-        Ok(CompiledVecExpr::new(move |ctx| {
-            let mut iter = MapEachIterator::from_indexes(&indexes);
-            match required(getter.get(ctx), getter.field()) {
-                Some(value) => iter.reset(value.as_ref()),
-                None => return TypedArray::default(),
-            }
-            TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
-        }))
     }
 }
 

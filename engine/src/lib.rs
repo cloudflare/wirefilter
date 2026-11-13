@@ -99,7 +99,6 @@ pub use self::context::{
     FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter, FieldGetterFn, HasScheme,
     LhsValueProvider, OptionalFieldGetterResult, OwnedValueProvider, ProviderFamily,
     RequiredFieldGetterFn, RequiredFieldGetterResult, SchemeValidationError, StoredContextFamily,
-    StoredFieldGetter,
 };
 pub use self::execution_context::{
     ExecutionContext, ExecutionContextGuard, InvalidListMatcherError, SetFieldValueError,

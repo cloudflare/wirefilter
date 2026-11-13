@@ -1,4 +1,4 @@
-//! An external context can expose runtime-typed stored values through native binding.
+//! Default and downstream contexts expose runtime-typed values through native binding.
 
 use std::cell::Cell;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -8,7 +8,7 @@ use wirefilter::{
     FieldDefinitionError, FieldGetter, FieldIndex, FunctionArgs, FunctionCallArgExpr, GetType,
     HasScheme, IdentifierExpr, IndexExpr, LhsValue, LhsValueProvider, ListMatcher, ListRef, Map,
     Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
-    SimpleFunctionParam, Type, TypeMismatchError,
+    SimpleFunctionParam, StoredContextFamily, Type, TypeMismatchError,
 };
 
 #[derive(Default)]
@@ -99,14 +99,14 @@ fn assert_filter(
     expected: bool,
 ) {
     let ast = scheme.parse(expression).unwrap();
-    let stored = ast
+    let default = ast
         .clone()
         .compile_with_compiler(&mut DefaultCompiler::<Reads>::new());
     let native = ast.compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new());
     assert_eq!(
-        stored.execute(context).unwrap(),
+        default.execute(context).unwrap(),
         expected,
-        "stored: {expression}"
+        "default: {expression}"
     );
     assert_eq!(
         native.execute(context).unwrap(),
@@ -244,15 +244,18 @@ fn schemes_can_choose_nested_collection_compositions_at_runtime() {
                     true,
                 );
             }
-            let filter = scheme
-                .parse_value("echo(value)")
-                .unwrap()
-                .compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new());
-            let actual = filter.execute(&context).unwrap().unwrap();
+            let ast = scheme.parse_value("echo(value)").unwrap();
+            let default = ast
+                .clone()
+                .compile_with_compiler(&mut DefaultCompiler::<Reads>::new());
+            let custom =
+                ast.compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new());
             let original = context
                 .get_field_value(scheme.get_field("value").unwrap())
                 .unwrap();
-            assert_borrowed_structure(&actual, original);
+            for actual in [default.execute(&context), custom.execute(&context)] {
+                assert_borrowed_structure(&actual.unwrap().unwrap(), original);
+            }
         }
     }
 }
@@ -297,55 +300,69 @@ fn indexed_and_mapped_arguments_preserve_missing_values_and_map_compatibility() 
             ),
         )
         .unwrap();
-    for expression in [
-        r#"echo_array(map["a"])"#,
-        r#"echo_array(map["missing"])"#,
-        r#"echo_bytes(map["a"][0])"#,
-        r#"echo_bytes(map["a"][8])"#,
-        r#"echo_bytes(map["a"][*])"#,
-        "echo_bytes(map[*][*])",
-        "echo_bytes(absent[*][*])",
-        r#"echo_bytes(map["missing"][*])"#,
-        r#"echo_bytes(map["empty"][*])"#,
+    for (expression, expected) in [
+        (
+            r#"echo_array(map["a"])"#,
+            Ok(array(Type::Bytes, [payload.as_str().into()])),
+        ),
+        (r#"echo_array(map["missing"])"#, Err(bytes_array)),
+        (r#"echo_bytes(map["a"][0])"#, Ok(payload.as_str().into())),
+        (r#"echo_bytes(map["a"][8])"#, Err(Type::Bytes)),
+        (
+            r#"echo_bytes(map["a"][*])"#,
+            Ok(array(Type::Bytes, [payload.as_str().into()])),
+        ),
+        (
+            "echo_bytes(map[*][*])",
+            Ok(array(Type::Bytes, [payload.as_str().into()])),
+        ),
+        ("echo_bytes(absent[*][*])", Err(bytes_array)),
+        (r#"echo_bytes(map["missing"][*])"#, Err(bytes_array)),
+        (r#"echo_bytes(map["empty"][*])"#, Ok(array(Type::Bytes, []))),
     ] {
         let ast = scheme.parse_value(expression).unwrap();
-        let stored = ast
+        let default = ast
             .clone()
             .compile_with_compiler(&mut DefaultCompiler::<Reads>::new());
         let native = ast.compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new());
         assert_eq!(
-            native.execute(&context),
-            stored.execute(&context),
-            "{expression}"
+            default.execute(&context).unwrap(),
+            expected,
+            "default: {expression}"
+        );
+        assert_eq!(
+            native.execute(&context).unwrap(),
+            expected,
+            "custom: {expression}"
         );
     }
 
-    let selected = scheme
-        .parse_value(r#"echo_array(map["a"])"#)
-        .unwrap()
-        .compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new())
-        .execute(&context)
-        .unwrap()
-        .unwrap();
+    let ast = scheme.parse_value(r#"echo_array(map["a"])"#).unwrap();
+    let default = ast
+        .clone()
+        .compile_with_compiler(&mut DefaultCompiler::<Reads>::new());
+    let custom = ast.compile_with_compiler(&mut DefaultCompiler::<Reads, NativeFields>::new());
     let LhsValue::Map(original) = context
         .get_field_value(scheme.get_field("map").unwrap())
         .unwrap()
     else {
         unreachable!()
     };
-    assert_borrowed_structure(&selected, original.get(b"a").unwrap());
+    for selected in [default.execute(&context), custom.execute(&context)] {
+        assert_borrowed_structure(&selected.unwrap().unwrap(), original.get(b"a").unwrap());
+    }
 
     struct ObserveMapArgument {
         arguments: usize,
     }
     impl Compiler for ObserveMapArgument {
-        type Family = NativeFields;
+        type Family = StoredContextFamily<Reads>;
         type U = Reads;
 
         fn compile_function_call_arg_expr(
             &mut self,
             node: FunctionCallArgExpr,
-        ) -> CompiledValueExpr<Reads, NativeFields> {
+        ) -> CompiledValueExpr<Reads> {
             self.arguments += 1;
             let value = self.compile_value_expr(node);
             CompiledValueExpr::new_with_context(move |ctx| {
@@ -456,7 +473,7 @@ fn compiler_comparisons_can_borrow_selected_collections() {
                 identifier: IdentifierExpr::Field(scheme.get_field("rows").unwrap().to_owned()),
                 indexes: indexes.clone().into_boxed_slice(),
             };
-            let stored = index.clone().compile_with(
+            let default = index.clone().compile_with(
                 &mut DefaultCompiler::<Reads>::new(),
                 missing_default,
                 OriginalCollection {
@@ -470,12 +487,12 @@ fn compiler_comparisons_can_borrow_selected_collections() {
                     children: children.clone(),
                 },
             );
-            match (stored, native) {
-                (CompiledExpr::One(stored), CompiledExpr::One(native)) => {
-                    assert_eq!(stored.execute(&context), native.execute(&context))
+            match (default, native) {
+                (CompiledExpr::One(default), CompiledExpr::One(native)) => {
+                    assert_eq!(default.execute(&context), native.execute(&context))
                 }
-                (CompiledExpr::Vec(stored), CompiledExpr::Vec(native)) => {
-                    assert_eq!(stored.execute(&context), native.execute(&context))
+                (CompiledExpr::Vec(default), CompiledExpr::Vec(native)) => {
+                    assert_eq!(default.execute(&context), native.execute(&context))
                 }
                 _ => panic!("comparison cardinality changed"),
             }

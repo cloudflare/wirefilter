@@ -7,8 +7,8 @@ use wirefilter::native::values::{self, IntoLhsValue, SliceView};
 use wirefilter::{
     Compiler, ContextFamily, ContextRef, DefaultCompiler, EvaluationContext, Field,
     FieldBindingError, FieldConsumer, FieldGetter, FieldIndex, HasScheme, IdentifierExpr,
-    IndexExpr, LhsValue, ListMatcher, ListRef, ProviderFamily, Scheme, SchemeBuilder,
-    StoredFieldGetter, Type, ValueExpr,
+    IndexExpr, LhsValue, ListMatcher, ListRef, ProviderFamily, Scheme, SchemeBuilder, Type,
+    ValueExpr,
 };
 
 // Cell makes the context invariant in 'data. The descriptor borrows the request
@@ -140,13 +140,6 @@ fn test_same_provider_and_presence_getters_share_a_type_and_preserve_field_selec
                 value.map(IntoLhsValue::into_lhs)
             });
             Ok((TypeId::of::<G>(), read))
-        }
-
-        fn stored<G: StoredFieldGetter<BorrowingFields>>(
-            self,
-            _: G,
-        ) -> Result<Self::Output, FieldBindingError> {
-            unreachable!("this family only binds native getters")
         }
     }
 

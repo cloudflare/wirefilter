@@ -149,7 +149,7 @@ pub trait ContextFamily: Sized + 'static {
     type Context<'data>: EvaluationContext<UserData = Self::UserData>;
 
     /// Resolve a field and pass its concrete getter to the compilation operation.
-    /// Ownership of the logical field transfers to the consumer or stored getter.
+    /// Ownership of the logical field transfers to the consumer.
     fn bind<B: FieldConsumer<Self>>(
         field: Field,
         consumer: B,
@@ -162,8 +162,9 @@ pub trait ContextFamily: Sized + 'static {
     /// expressions. A failed check is an initialization error. Parsing,
     /// compilation, and evaluation do not invoke this method automatically.
     ///
-    /// Stored contexts obtain their field table directly from the scheme and need
-    /// no additional validation. Native families override this method.
+    /// [`ExecutionContext`] obtains its field table directly from the scheme and
+    /// validates inserted values, so its family needs no additional validation.
+    /// Families with separately defined getters override this method.
     fn validate_scheme(_: &Scheme) -> Result<(), SchemeValidationError> {
         Ok(())
     }
@@ -212,16 +213,15 @@ pub trait FieldConsumer<F: ContextFamily>: Sized {
     /// Executable expression produced by this operation.
     type Output;
 
-    /// Compile using a native getter whose concrete type remains known.
+    /// Compile using a getter whose concrete type remains known.
     /// `field` is the original logical field supplied to the binding operation.
+    /// This includes getters borrowing existing [`LhsValue`] fields through
+    /// [`LhsValueProvider`].
     fn native<G: FieldGetter<F>>(
         self,
         field: Field,
         getter: G,
     ) -> Result<Self::Output, FieldBindingError>;
-
-    /// Compile using an existing stored value without rebuilding it on access.
-    fn stored<G: StoredFieldGetter<F>>(self, getter: G) -> Result<Self::Output, FieldBindingError>;
 }
 
 /// A native field's representation across request and access lifetimes.
@@ -451,23 +451,11 @@ impl<F: ContextFamily, P: ProviderFamily> FieldGetter<F> for RequiredFieldGetter
     }
 }
 
-/// Concrete access to an existing stored Wirefilter value.
-pub trait StoredFieldGetter<F: ContextFamily>: Send + Sync + 'static {
-    /// The original logical field supplied to the binding operation.
-    ///
-    /// Its name, type, and optionality apply to the expression even if this
-    /// getter reads another storage location. Consumers borrow this metadata
-    /// rather than retaining another owned copy of the field.
-    fn field(&self) -> &Field;
-
-    /// Borrow a value already retained by the runtime context.
-    fn get<'ctx, 'data: 'ctx>(
-        &self,
-        context: &'ctx F::Context<'data>,
-    ) -> Option<&'ctx LhsValue<'ctx>>;
-}
-
-/// Compatibility family for the ordinary field-table execution context.
+/// Default family for the ordinary field-table [`ExecutionContext`].
+///
+/// Fields use [`LhsValueProvider`] through the same binding interface as native
+/// Rust values. The context owns the field table and validates inserted values
+/// against the scheme; readers borrow the retained values and containers.
 pub struct StoredContextFamily<U = ()>(PhantomData<fn() -> U>);
 
 impl<U: 'static> ContextFamily for StoredContextFamily<U> {
@@ -479,31 +467,30 @@ impl<U: 'static> ContextFamily for StoredContextFamily<U> {
         field: Field,
         consumer: B,
     ) -> Result<B::Output, FieldBindingError> {
-        consumer.stored(StoredGetter::<U>(field, PhantomData))
+        consumer.native(field, ExecutionContextGetter)
     }
 }
 
-struct StoredGetter<U>(Field, PhantomData<fn() -> U>);
+struct ExecutionContextGetter;
 
-impl<U: 'static> StoredFieldGetter<StoredContextFamily<U>> for StoredGetter<U> {
-    #[inline]
-    fn field(&self) -> &Field {
-        &self.0
-    }
+impl<U: 'static> FieldGetter<StoredContextFamily<U>> for ExecutionContextGetter {
+    type Provider = LhsValueProvider;
 
     #[inline]
     fn get<'ctx, 'data: 'ctx>(
         &self,
         context: &'ctx ExecutionContext<'data, U>,
+        field: &Field,
     ) -> Option<&'ctx LhsValue<'ctx>> {
-        context.get_field_value_unchecked(&self.0)
+        context.get_field_value_unchecked(field)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ContextFamily, FieldBindingError, FieldConsumer, SchemeValidationError, StoredFieldGetter,
+        ContextFamily, FieldBindingError, FieldConsumer, FieldGetter, LhsValueProvider,
+        SchemeValidationError,
     };
     use crate::{ExecutionContext, Field, Scheme};
 
@@ -513,7 +500,7 @@ mod tests {
 
         static VALIDATIONS: AtomicUsize = AtomicUsize::new(0);
         struct Family;
-        struct Getter(Field);
+        struct Getter;
         impl ContextFamily for Family {
             type Context<'data> = ExecutionContext<'data>;
             type UserData = ();
@@ -522,7 +509,7 @@ mod tests {
                 field: Field,
                 consumer: B,
             ) -> Result<B::Output, FieldBindingError> {
-                consumer.stored(Getter(field))
+                consumer.native(field, Getter)
             }
 
             fn validate_scheme(scheme: &Scheme) -> Result<(), SchemeValidationError> {
@@ -533,16 +520,15 @@ mod tests {
                 )
             }
         }
-        impl StoredFieldGetter<Family> for Getter {
-            fn field(&self) -> &Field {
-                &self.0
-            }
+        impl FieldGetter<Family> for Getter {
+            type Provider = LhsValueProvider;
 
             fn get<'ctx, 'data: 'ctx>(
                 &self,
                 context: &'ctx ExecutionContext<'data>,
+                field: &Field,
             ) -> Option<&'ctx crate::LhsValue<'ctx>> {
-                context.get_field_value_unchecked(&self.0)
+                context.get_field_value_unchecked(field)
             }
         }
 
@@ -572,9 +558,9 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_stored_getter_uses_logical_field_metadata() {
+    fn test_custom_lhs_value_getter_uses_logical_field_metadata() {
         struct Family;
-        struct Getter(Field);
+        struct Getter;
         impl ContextFamily for Family {
             type Context<'data> = ExecutionContext<'data>;
             type UserData = ();
@@ -583,17 +569,16 @@ mod tests {
                 field: Field,
                 consumer: B,
             ) -> Result<B::Output, FieldBindingError> {
-                consumer.stored(Getter(field))
+                consumer.native(field, Getter)
             }
         }
-        impl StoredFieldGetter<Family> for Getter {
-            fn field(&self) -> &Field {
-                &self.0
-            }
+        impl FieldGetter<Family> for Getter {
+            type Provider = LhsValueProvider;
 
             fn get<'ctx, 'data: 'ctx>(
                 &self,
                 context: &'ctx ExecutionContext<'data>,
+                _: &Field,
             ) -> Option<&'ctx crate::LhsValue<'ctx>> {
                 // Both logical fields read the same optional storage slot.
                 let storage = context.scheme().get_field("storage").unwrap();

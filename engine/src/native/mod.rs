@@ -28,6 +28,9 @@
 //! The default [`ExecutionContext`](crate::ExecutionContext) implements the same
 //! evaluation interfaces and already owns equivalent state alongside its stored
 //! field values. It does not require a separate `NativeContextState`.
+//! Its default [`StoredContextFamily`](crate::StoredContextFamily) binds those
+//! fields through [`LhsValueProvider`](crate::LhsValueProvider), using the same
+//! reader interface as other native fields.
 //!
 //! # Borrowing request data and reusable state
 //!
@@ -125,9 +128,10 @@
 //! values without rebuilding containers. Function arguments borrow selected
 //! values; flattening multiple selections still needs an output container.
 //!
-//! This example uses `ExecutionContext` as the field table. A downstream context
-//! can implement its own table and evaluation state, then provide a getter with
-//! the same return signature.
+//! The default `ExecutionContext` already uses this provider. The explicit
+//! binding below shows how a downstream context can implement its own table and
+//! evaluation state, then provide a getter with the same return signature. The
+//! example reuses `ExecutionContext` as its table to focus on field binding.
 //!
 //! ```
 //! use wirefilter::{

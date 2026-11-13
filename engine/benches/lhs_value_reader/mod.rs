@@ -1,8 +1,8 @@
-//! Compare the same stored context through the legacy and native field readers.
+//! Compare built-in and downstream field getters using the same LhsValue reader.
 //!
-//! `checked_stored` and `lhs_reader` both use the public field accessor, which
-//! checks the scheme on each read. `stored` uses the existing internal accessor.
-//! The checked control distinguishes that accessor cost from reader execution.
+//! `execution_context` uses the default family and internal field accessor.
+//! `public_getter` uses a downstream getter and the public field accessor, which
+//! checks the scheme on each read.
 
 use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
@@ -10,8 +10,7 @@ use wirefilter::{
     Array, Compare, CompiledExpr, ContextFamily, DefaultCompiler, ExecutionContext, Field,
     FieldBindingError, FieldConsumer, FieldGetter, FieldIndex, FunctionArgs, IdentifierExpr,
     IndexExpr, LhsValue, LhsValueProvider, Map, Scheme, SchemeBuilder, SimpleFunctionArgKind,
-    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, StoredFieldGetter, Type,
-    TypeMismatchError,
+    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type, TypeMismatchError,
 };
 
 struct LhsFields;
@@ -39,35 +38,6 @@ impl FieldGetter<LhsFields> for LhsGetter {
         field: &Field,
     ) -> Option<&'ctx LhsValue<'ctx>> {
         context.get_field_value(field.as_ref())
-    }
-}
-
-struct CheckedStoredFields;
-
-impl ContextFamily for CheckedStoredFields {
-    type Context<'data> = ExecutionContext<'data>;
-    type UserData = ();
-
-    fn bind<B: FieldConsumer<Self>>(
-        field: Field,
-        consumer: B,
-    ) -> Result<B::Output, FieldBindingError> {
-        consumer.stored(CheckedGetter(field))
-    }
-}
-
-struct CheckedGetter(Field);
-
-impl StoredFieldGetter<CheckedStoredFields> for CheckedGetter {
-    fn field(&self) -> &Field {
-        &self.0
-    }
-
-    fn get<'ctx, 'data: 'ctx>(
-        &self,
-        context: &'ctx ExecutionContext<'data>,
-    ) -> Option<&'ctx LhsValue<'ctx>> {
-        context.get_field_value(self.0.as_ref())
     }
 }
 
@@ -232,22 +202,15 @@ pub(super) fn bench(c: &mut Criterion) {
         ("mapped_extra_map", "all(has_header(names[*], headers))"),
     ] {
         let ast = scheme.parse(expression).unwrap();
-        let stored = ast.clone().compile();
-        let checked = ast
-            .clone()
-            .compile_with_compiler(&mut DefaultCompiler::<(), CheckedStoredFields>::new());
-        let reader = ast.compile_with_compiler(&mut DefaultCompiler::<(), LhsFields>::new());
-        let expected = stored.execute(&context).unwrap();
-        assert_eq!(expected, checked.execute(&context).unwrap(), "{name}");
-        assert_eq!(expected, reader.execute(&context).unwrap(), "{name}");
-        group.bench_function(BenchmarkId::new("stored", name), |b| {
-            b.iter(|| stored.execute(black_box(&context)).unwrap())
+        let execution_context = ast.clone().compile();
+        let public_getter = ast.compile_with_compiler(&mut DefaultCompiler::<(), LhsFields>::new());
+        let expected = execution_context.execute(&context).unwrap();
+        assert_eq!(expected, public_getter.execute(&context).unwrap(), "{name}");
+        group.bench_function(BenchmarkId::new("execution_context", name), |b| {
+            b.iter(|| execution_context.execute(black_box(&context)).unwrap())
         });
-        group.bench_function(BenchmarkId::new("checked_stored", name), |b| {
-            b.iter(|| checked.execute(black_box(&context)).unwrap())
-        });
-        group.bench_function(BenchmarkId::new("lhs_reader", name), |b| {
-            b.iter(|| reader.execute(black_box(&context)).unwrap())
+        group.bench_function(BenchmarkId::new("public_getter", name), |b| {
+            b.iter(|| public_getter.execute(black_box(&context)).unwrap())
         });
     }
     for (name, field, indexes) in [
@@ -263,46 +226,34 @@ pub(super) fn bench(c: &mut Criterion) {
             identifier: IdentifierExpr::Field(scheme.get_field(field).unwrap().to_owned()),
             indexes: indexes.into_boxed_slice(),
         };
-        let stored = index
-            .clone()
-            .compile_with(&mut DefaultCompiler::<()>::new(), false, Nonempty);
-        let checked = index.clone().compile_with(
-            &mut DefaultCompiler::<(), CheckedStoredFields>::new(),
-            false,
-            Nonempty,
-        );
-        let reader = index.compile_with(
+        let execution_context =
+            index
+                .clone()
+                .compile_with(&mut DefaultCompiler::<()>::new(), false, Nonempty);
+        let public_getter = index.compile_with(
             &mut DefaultCompiler::<(), LhsFields>::new(),
             false,
             Nonempty,
         );
-        match (stored, checked, reader) {
-            (CompiledExpr::One(stored), CompiledExpr::One(checked), CompiledExpr::One(reader)) => {
-                let expected = stored.execute(&context);
-                assert_eq!(expected, checked.execute(&context));
-                assert_eq!(expected, reader.execute(&context));
-                group.bench_function(BenchmarkId::new("stored", name), |b| {
-                    b.iter(|| stored.execute(black_box(&context)))
+        match (execution_context, public_getter) {
+            (CompiledExpr::One(execution_context), CompiledExpr::One(public_getter)) => {
+                let expected = execution_context.execute(&context);
+                assert_eq!(expected, public_getter.execute(&context));
+                group.bench_function(BenchmarkId::new("execution_context", name), |b| {
+                    b.iter(|| execution_context.execute(black_box(&context)))
                 });
-                group.bench_function(BenchmarkId::new("checked_stored", name), |b| {
-                    b.iter(|| checked.execute(black_box(&context)))
-                });
-                group.bench_function(BenchmarkId::new("lhs_reader", name), |b| {
-                    b.iter(|| reader.execute(black_box(&context)))
+                group.bench_function(BenchmarkId::new("public_getter", name), |b| {
+                    b.iter(|| public_getter.execute(black_box(&context)))
                 });
             }
-            (CompiledExpr::Vec(stored), CompiledExpr::Vec(checked), CompiledExpr::Vec(reader)) => {
-                let expected = stored.execute(&context);
-                assert_eq!(expected, checked.execute(&context));
-                assert_eq!(expected, reader.execute(&context));
-                group.bench_function(BenchmarkId::new("stored", name), |b| {
-                    b.iter(|| stored.execute(black_box(&context)))
+            (CompiledExpr::Vec(execution_context), CompiledExpr::Vec(public_getter)) => {
+                let expected = execution_context.execute(&context);
+                assert_eq!(expected, public_getter.execute(&context));
+                group.bench_function(BenchmarkId::new("execution_context", name), |b| {
+                    b.iter(|| execution_context.execute(black_box(&context)))
                 });
-                group.bench_function(BenchmarkId::new("checked_stored", name), |b| {
-                    b.iter(|| checked.execute(black_box(&context)))
-                });
-                group.bench_function(BenchmarkId::new("lhs_reader", name), |b| {
-                    b.iter(|| reader.execute(black_box(&context)))
+                group.bench_function(BenchmarkId::new("public_getter", name), |b| {
+                    b.iter(|| public_getter.execute(black_box(&context)))
                 });
             }
             _ => panic!("comparison cardinality changed"),
