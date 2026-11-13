@@ -12,9 +12,9 @@ use crate::functions::{
     FunctionParamError,
 };
 use crate::lex::{Lex, LexError, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::Array;
+use crate::lhs_types::{Array, LhsValue};
 use crate::scheme::Function;
-use crate::types::{GetType, LhsValue, LiteralValue, Type};
+use crate::types::{GetType, LiteralValue, Type};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
 use std::iter::once;
@@ -54,9 +54,18 @@ impl ValueExpr for FunctionCallArgExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<C::U, C::Family> {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => compiler.compile_index_expr(index_expr),
+            FunctionCallArgExpr::Literal(LiteralValue::Bytes(bytes)) => {
+                // Formatting is only needed by the AST. Keep the payload and
+                // clone it on access so the result can outlive this expression.
+                let bytes: Box<[u8]> = bytes.into();
+                CompiledValueExpr::new(move |_| LhsValue::from(bytes.clone()).into())
+            }
             FunctionCallArgExpr::Literal(literal) => {
                 CompiledValueExpr::new(move |_| LhsValue::from(literal.clone()).into())
             }
@@ -70,7 +79,8 @@ impl ValueExpr for FunctionCallArgExpr {
                     CompiledExpr::One(expr) => {
                         CompiledValueExpr::new(move |ctx| LhsValue::from(expr.execute(ctx)).into())
                     }
-                    CompiledExpr::Vec(expr) => CompiledValueExpr::new(move |ctx| {
+                    CompiledExpr::Vec(expr) => CompiledValueExpr::new_with_context(move |ctx| {
+                        let ctx = ctx.context();
                         let result = expr.execute(ctx);
                         LhsValue::Array(result.into()).into()
                     }),
@@ -91,8 +101,8 @@ impl FunctionCallArgExpr {
 
     /// Returns `true` if re-evaluating this argument for every mapped element
     /// could be costly, i.e. it is a nested function call or a logical
-    /// sub-expression. Literals and plain field accesses are cheap to evaluate
-    /// repeatedly, so memoizing them would only add overhead.
+    /// sub-expression. Literals and stored field accesses are cheap to evaluate
+    /// repeatedly. Field conversion is classified separately at binding.
     fn is_expensive_to_reevaluate(&self) -> bool {
         match self {
             FunctionCallArgExpr::Literal(_) => false,
@@ -267,7 +277,10 @@ impl ValueExpr for FunctionCallExpr {
         visitor.visit_function(&self.function)
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<C::U, C::Family> {
         let return_type = self.return_type();
 
         let Self {
@@ -282,7 +295,7 @@ impl ValueExpr for FunctionCallExpr {
             .compile(&mut args.iter().map(|arg| arg.into()), context);
         // For `map_each`, only bother evaluating the non-mapped arguments once
         // (instead of once per element) when at least one of them is expensive
-        // to re-evaluate. For trivial arguments (literals / plain field
+        // to re-evaluate. For trivial arguments (literals / stored field
         // accesses) inline re-evaluation is just as cheap and avoids a
         // per-call allocation.
         let memoize_extra_args = map_each_count > 0
@@ -290,6 +303,15 @@ impl ValueExpr for FunctionCallExpr {
                 .iter()
                 .skip(1)
                 .any(FunctionCallArgExpr::is_expensive_to_reevaluate);
+        // Field values can require whole-container conversion, including
+        // when an index subsequently selects one scalar. Classify the provider
+        // during compilation so ordinary stored field accesses stay cheap.
+        let memoize_converted_extra_args = map_each_count > 0
+            && !memoize_extra_args
+            && args.iter().skip(1).any(|arg| {
+                matches!(arg, FunctionCallArgExpr::IndexExpr(index)
+                    if index.materializes_collection(compiler))
+            });
         let mut args = args
             .into_iter()
             .map(|arg| compiler.compile_function_call_arg_expr(arg));
@@ -340,7 +362,8 @@ impl ValueExpr for FunctionCallExpr {
             }
 
             if args.is_empty() {
-                CompiledValueExpr::new(move |ctx| {
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
                     compute(
                         first.execute(ctx),
                         &call,
@@ -350,7 +373,8 @@ impl ValueExpr for FunctionCallExpr {
                     )
                 })
             } else if memoize_extra_args {
-                CompiledValueExpr::new(move |ctx| {
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
                     // At least one non-mapped argument is expensive to
                     // re-evaluate, so evaluate all of them once per call and
                     // reuse them (cheaply cloned) for every element instead of
@@ -367,8 +391,31 @@ impl ValueExpr for FunctionCallExpr {
                         |elem| ExactSizeChain::new(once(Ok(elem)), extra_args.iter().cloned()),
                     )
                 })
+            } else if memoize_converted_extra_args {
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
+                    // Preserve lazy argument consumption: empty mapped inputs
+                    // and functions that ignore an argument must not read it.
+                    // Cloning cached LhsValues retains the function interface's
+                    // ownership contract, but conversion runs only once.
+                    let extra_args = std::cell::OnceCell::new();
+                    compute(first.execute(ctx), &call, return_type, |elem| {
+                        let values = extra_args.get_or_init(|| {
+                            (0..args.len())
+                                .map(|_| std::cell::OnceCell::new())
+                                .collect::<Box<[_]>>()
+                        });
+                        ExactSizeChain::new(
+                            once(Ok(elem)),
+                            args.iter()
+                                .zip(values.iter())
+                                .map(|(arg, value)| value.get_or_init(|| arg.execute(ctx)).clone()),
+                        )
+                    })
+                })
             } else {
-                CompiledValueExpr::new(move |ctx| {
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let ctx = ctx.context();
                     compute(
                         first.execute(ctx),
                         &call,
@@ -385,7 +432,8 @@ impl ValueExpr for FunctionCallExpr {
             }
         } else {
             let args = args.collect::<Box<[_]>>();
-            CompiledValueExpr::new(move |ctx| {
+            CompiledValueExpr::new_with_context(move |ctx| {
+                let ctx = ctx.context();
                 match call(&mut args.iter().map(|arg| arg.execute(ctx))) {
                     Some(value) => {
                         debug_assert!(value.get_type() == return_type);
@@ -1509,5 +1557,869 @@ mod tests {
             LexErrorKind::InvalidMapEachAccess,
             "http.headers[*]"
         );
+    }
+    #[test]
+    fn test_indexed_native_function_arguments_materialize_only_the_selection() {
+        use crate::values::{ArrayRead, ArrayValue, IntoLhsValue, MapRead, MapValue, Value};
+        use crate::{EvaluationContext, HasScheme, ListMatcher, ListRef};
+        use std::cell::{Cell, RefCell};
+        use std::collections::BTreeMap;
+
+        struct HeaderValues {
+            values: Vec<Box<[u8]>>,
+            gets: Cell<usize>,
+            iterations: Cell<usize>,
+        }
+        impl Value for HeaderValues {
+            type Read = ArrayRead;
+            type ValueType = crate::values::Array<crate::values::Bytes>;
+        }
+        impl ArrayValue for HeaderValues {
+            type Element = crate::values::Bytes;
+            type Item<'a> = &'a Box<[u8]>;
+            type Iter<'a> = std::slice::Iter<'a, Box<[u8]>>;
+
+            fn get(&self, index: usize) -> Option<Self::Item<'_>> {
+                self.gets.set(self.gets.get() + 1);
+                self.values.get(index)
+            }
+
+            fn iter(&self) -> Self::Iter<'_> {
+                self.iterations.set(self.iterations.get() + 1);
+                self.values.iter()
+            }
+        }
+        struct Headers {
+            entries: BTreeMap<Box<[u8]>, HeaderValues>,
+            keys: RefCell<Vec<Box<[u8]>>>,
+            value_iterations: Cell<usize>,
+            entry_iterations: Cell<usize>,
+        }
+        impl Value for Headers {
+            type Read = MapRead;
+            type ValueType = crate::values::Map<crate::values::Array<crate::values::Bytes>>;
+        }
+        impl MapValue for Headers {
+            type Element = crate::values::Array<crate::values::Bytes>;
+            type Item<'a> = &'a HeaderValues;
+            type Iter<'a> = std::collections::btree_map::Values<'a, Box<[u8]>, HeaderValues>;
+
+            fn get(&self, key: &[u8]) -> Option<Self::Item<'_>> {
+                self.keys.borrow_mut().push(key.into());
+                self.entries.get(key)
+            }
+
+            fn values(&self) -> Self::Iter<'_> {
+                self.value_iterations.set(self.value_iterations.get() + 1);
+                self.entries.values()
+            }
+
+            fn for_each_entry<'a>(&'a self, mut visitor: impl FnMut(&[u8], Self::Item<'a>)) {
+                self.entry_iterations.set(self.entry_iterations.get() + 1);
+                for (key, value) in &self.entries {
+                    visitor(key, value);
+                }
+            }
+        }
+        struct Request {
+            scheme: Scheme,
+            headers: Headers,
+        }
+        impl HasScheme for Request {
+            fn scheme(&self) -> &Scheme {
+                &self.scheme
+            }
+        }
+        impl EvaluationContext for Request {
+            type UserData = ();
+
+            fn get_user_data(&self) -> &() {
+                &()
+            }
+
+            fn get_list_matcher(&self, _: ListRef<'_>) -> &dyn ListMatcher {
+                unreachable!()
+            }
+        }
+        crate::wirefilter_fields! {
+            impl HeaderFields for Request {
+                "http.request.headers" => {
+                    fn(request: &Request) -> &Headers { &request.headers }
+                },
+            }
+        }
+        fn lower_borrowed<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            let LhsValue::Bytes(mut value) = args.next()?.ok()? else {
+                unreachable!()
+            };
+            assert!(matches!(value, crate::Bytes::Borrowed(_)));
+            if value.iter().any(u8::is_ascii_uppercase) {
+                value.to_mut().make_ascii_lowercase();
+            }
+            Some(value.into())
+        }
+        let array_type = Type::array(Type::Bytes);
+        let map_type = Type::map(array_type);
+        let mut builder = crate::SchemeBuilder::new();
+        builder.add_field("http.request.headers", map_type).unwrap();
+        for (name, val_type, implementation) in [
+            (
+                "lower",
+                Type::Bytes,
+                SimpleFunctionImpl::new(lower_borrowed),
+            ),
+            (
+                "echo_array",
+                array_type,
+                SimpleFunctionImpl::new(echo_function),
+            ),
+            ("echo_map", map_type, SimpleFunctionImpl::new(echo_function)),
+        ] {
+            builder
+                .add_function(
+                    name,
+                    SimpleFunctionDefinition {
+                        params: Box::new([SimpleFunctionParam {
+                            arg_kind: SimpleFunctionArgKind::Field,
+                            val_type,
+                        }]),
+                        opt_params: Box::new([]),
+                        return_type: val_type,
+                        implementation,
+                    },
+                )
+                .unwrap();
+        }
+        let scheme = builder.build();
+        HeaderFields::validate_scheme(&scheme).unwrap();
+        let entries: BTreeMap<Box<[u8]>, Vec<Box<[u8]>>> = (0..128)
+            .map(|index| {
+                (
+                    format!("x-bench-{index}").into_bytes().into_boxed_slice(),
+                    vec![format!("value-{index}").into_bytes().into_boxed_slice()],
+                )
+            })
+            .collect();
+        let request = || Request {
+            scheme: scheme.clone(),
+            headers: Headers {
+                entries: entries
+                    .iter()
+                    .map(|(key, values)| {
+                        (
+                            key.clone(),
+                            HeaderValues {
+                                values: values.clone(),
+                                gets: Cell::new(0),
+                                iterations: Cell::new(0),
+                            },
+                        )
+                    })
+                    .collect(),
+                keys: RefCell::new(Vec::new()),
+                value_iterations: Cell::new(0),
+                entry_iterations: Cell::new(0),
+            },
+        };
+        let mut stored = crate::ExecutionContext::new(&scheme);
+        stored
+            .set_field_value_from_name("http.request.headers", (&entries).into_lhs())
+            .unwrap();
+        // Expected accesses per evaluation: key, array lookup, array iteration,
+        // and whether the function needs the complete map.
+        for (expression, expected, key, array_gets, array_iterations, complete_map) in [
+            (
+                r#"any(lower(http.request.headers["x-bench-0"][*])[*] eq "value-0")"#,
+                true,
+                Some(b"x-bench-0".as_slice()),
+                0,
+                1,
+                false,
+            ),
+            (
+                r#"lower(http.request.headers["x-bench-0"][0]) eq "value-0""#,
+                true,
+                Some(b"x-bench-0".as_slice()),
+                1,
+                0,
+                false,
+            ),
+            (
+                r#"lower(http.request.headers["missing"][0]) eq """#,
+                false,
+                Some(b"missing".as_slice()),
+                0,
+                0,
+                false,
+            ),
+            (
+                r#"any(lower(http.request.headers["missing"][*])[*] eq "")"#,
+                false,
+                Some(b"missing".as_slice()),
+                0,
+                0,
+                false,
+            ),
+            (
+                r#"lower(http.request.headers["x-bench-0"][99]) eq """#,
+                false,
+                Some(b"x-bench-0".as_slice()),
+                1,
+                0,
+                false,
+            ),
+            (
+                r#"any(echo_array(http.request.headers["x-bench-0"])[*] eq "value-0")"#,
+                true,
+                Some(b"x-bench-0".as_slice()),
+                0,
+                1,
+                false,
+            ),
+            (
+                r#"echo_map(http.request.headers)["x-bench-0"][0] eq "value-0""#,
+                true,
+                None,
+                0,
+                1,
+                true,
+            ),
+        ] {
+            let native = request();
+            let filter = scheme
+                .parse(expression)
+                .unwrap()
+                .compile_with_compiler(&mut crate::DefaultCompiler::<(), HeaderFields>::new());
+            let stored_filter = scheme.parse(expression).unwrap().compile();
+            for evaluations in 1..=4 {
+                assert_eq!(filter.execute(&native).unwrap(), expected, "{expression}");
+                assert_eq!(
+                    stored_filter.execute(&stored).unwrap(),
+                    expected,
+                    "{expression}"
+                );
+                assert_eq!(
+                    native.headers.keys.borrow().as_slice(),
+                    key.map_or_else(Vec::new, |key| vec![Box::<[u8]>::from(key); evaluations]),
+                    "{expression}",
+                );
+                assert_eq!(
+                    native.headers.value_iterations.get(),
+                    evaluations * usize::from(complete_map),
+                    "{expression}"
+                );
+                assert_eq!(
+                    native.headers.entry_iterations.get(),
+                    evaluations * usize::from(complete_map),
+                    "{expression}"
+                );
+                for (name, values) in &native.headers.entries {
+                    let selected = name.as_ref() == b"x-bench-0";
+                    assert_eq!(
+                        values.gets.get(),
+                        evaluations * if selected { array_gets } else { 0 },
+                        "{expression}: {name:?}"
+                    );
+                    assert_eq!(
+                        values.iterations.get(),
+                        evaluations
+                            * if selected {
+                                array_iterations
+                            } else {
+                                usize::from(complete_map)
+                            },
+                        "{expression}: {name:?}"
+                    );
+                }
+            }
+        }
+
+        let native = request();
+        let filter = scheme
+            .parse_value(r#"lower(http.request.headers["x-bench-0"][0])"#)
+            .unwrap()
+            .compile_with_compiler(&mut crate::DefaultCompiler::<(), HeaderFields>::new());
+        let value = filter.execute(&native).unwrap().unwrap();
+        let LhsValue::Bytes(crate::Bytes::Borrowed(value)) = value else {
+            panic!("selected header payload should remain borrowed");
+        };
+        assert!(std::ptr::eq(
+            value,
+            native.headers.entries[b"x-bench-0".as_slice()].values[0].as_ref()
+        ));
+
+        for (selection, array_index) in
+            [("[*][0]", Some(0)), ("[*][*]", None), ("[*][99]", Some(99))]
+        {
+            for empty_map in [false, true] {
+                let mut native = request();
+                if empty_map {
+                    native.headers.entries.clear();
+                } else {
+                    native
+                        .headers
+                        .entries
+                        .get_mut(b"x-bench-1".as_slice())
+                        .unwrap()
+                        .values
+                        .clear();
+                    native
+                        .headers
+                        .entries
+                        .get_mut(b"x-bench-2".as_slice())
+                        .unwrap()
+                        .values
+                        .push(b"second-value".as_slice().into());
+                }
+                let entries: BTreeMap<_, _> = native
+                    .headers
+                    .entries
+                    .iter()
+                    .map(|(key, values)| (key.clone(), values.values.clone()))
+                    .collect();
+                let mut stored = crate::ExecutionContext::new(&scheme);
+                stored
+                    .set_field_value_from_name("http.request.headers", (&entries).into_lhs())
+                    .unwrap();
+                let expression = format!("lower(http.request.headers{selection})");
+                let filter = scheme
+                    .parse_value(&expression)
+                    .unwrap()
+                    .compile_with_compiler(&mut crate::DefaultCompiler::<(), HeaderFields>::new());
+                let stored_filter = scheme.parse_value(&expression).unwrap().compile();
+                let expected: Vec<_> = native
+                    .headers
+                    .entries
+                    .values()
+                    .flat_map(|values| match array_index {
+                        Some(index) => values.values.get(index).into_iter().collect::<Vec<_>>(),
+                        None => values.values.iter().collect(),
+                    })
+                    .collect();
+
+                for evaluations in 1..=4 {
+                    let value = filter.execute(&native).unwrap().unwrap();
+                    assert_eq!(
+                        value,
+                        stored_filter.execute(&stored).unwrap().unwrap(),
+                        "{expression}"
+                    );
+                    let LhsValue::Array(values) = value else {
+                        panic!("flattened selection should return an array");
+                    };
+                    assert_eq!(values.len(), expected.len(), "{expression}");
+                    for (actual, expected) in values.into_iter().zip(&expected) {
+                        let LhsValue::Bytes(crate::Bytes::Borrowed(actual)) = actual else {
+                            panic!("selected header payload should remain borrowed");
+                        };
+                        assert!(std::ptr::eq(actual, expected.as_ref()), "{expression}");
+                    }
+                    assert!(native.headers.keys.borrow().is_empty(), "{expression}");
+                    assert_eq!(
+                        native.headers.value_iterations.get(),
+                        evaluations,
+                        "{expression}"
+                    );
+                    assert_eq!(native.headers.entry_iterations.get(), 0, "{expression}");
+                    for values in native.headers.entries.values() {
+                        assert_eq!(
+                            values.gets.get(),
+                            evaluations * usize::from(array_index.is_some()),
+                            "{expression}"
+                        );
+                        assert_eq!(
+                            values.iterations.get(),
+                            evaluations * usize::from(array_index.is_none()),
+                            "{expression}"
+                        );
+                    }
+                }
+            }
+        }
+
+        struct PreserveMap<F> {
+            argument_hooks: usize,
+            index_hooks: usize,
+            family: std::marker::PhantomData<F>,
+        }
+        impl<F> PreserveMap<F> {
+            fn new() -> Self {
+                Self {
+                    argument_hooks: 0,
+                    index_hooks: 0,
+                    family: std::marker::PhantomData,
+                }
+            }
+        }
+        impl<F: crate::ContextFamily<UserData = ()>> crate::Compiler for PreserveMap<F> {
+            type Family = F;
+            type U = ();
+
+            fn compile_function_call_arg_expr(
+                &mut self,
+                node: FunctionCallArgExpr,
+            ) -> CompiledValueExpr<Self::U, Self::Family> {
+                self.argument_hooks += 1;
+                let value = self.compile_value_expr(node);
+                CompiledValueExpr::new_with_context(move |ctx| {
+                    let result = value.execute(ctx.context());
+                    assert!(matches!(&result, Ok(LhsValue::Map(_))));
+                    result
+                })
+            }
+
+            fn compile_index_expr(
+                &mut self,
+                node: IndexExpr,
+            ) -> CompiledValueExpr<Self::U, Self::Family> {
+                let terminal_map = node.indexes.as_ref() == [FieldIndex::MapEach];
+                let value = self.compile_value_expr(node);
+                if terminal_map {
+                    self.index_hooks += 1;
+                    CompiledValueExpr::new_with_context(move |ctx| {
+                        let result = value.execute(ctx.context());
+                        assert!(matches!(&result, Ok(LhsValue::Map(_))));
+                        result
+                    })
+                } else {
+                    value
+                }
+            }
+        }
+
+        // A single terminal `[*]` preserves the map visible to compiler hooks,
+        // even though the mapped function consumes only its values.
+        for (expression, argument_hooks) in [
+            ("echo_array(http.request.headers[*])", 1),
+            ("echo_array(echo_map(http.request.headers)[*])", 2),
+        ] {
+            let mut native_compiler = PreserveMap::<HeaderFields>::new();
+            let native_filter = scheme
+                .parse_value(expression)
+                .unwrap()
+                .compile_with_compiler(&mut native_compiler);
+            let mut stored_compiler = PreserveMap::<crate::ExecutionContextFamily<()>>::new();
+            let stored_filter = scheme
+                .parse_value(expression)
+                .unwrap()
+                .compile_with_compiler(&mut stored_compiler);
+            assert_eq!(native_compiler.argument_hooks, argument_hooks);
+            assert_eq!(native_compiler.index_hooks, 1);
+            assert_eq!(stored_compiler.argument_hooks, argument_hooks);
+            assert_eq!(stored_compiler.index_hooks, 1);
+            let native = request();
+            assert_eq!(
+                native_filter.execute(&native).unwrap(),
+                stored_filter.execute(&stored).unwrap()
+            );
+            assert_eq!(native.headers.entry_iterations.get(), 1);
+        }
+    }
+
+    #[test]
+    fn test_mapped_native_extra_arguments_convert_once_and_remain_lazy() {
+        use crate::values::{IntoLhsValue, MapRead, MapValue, Value};
+        use crate::{EvaluationContext, HasScheme, ListMatcher, ListRef};
+        use std::cell::Cell;
+        use std::collections::BTreeMap;
+        use std::sync::OnceLock;
+
+        struct CountingMap {
+            entries: BTreeMap<Box<[u8]>, i64>,
+            conversions: Cell<usize>,
+        }
+        impl Value for CountingMap {
+            type Read = MapRead;
+            type ValueType = crate::values::Map<crate::values::Int>;
+        }
+        impl MapValue for CountingMap {
+            type Element = crate::values::Int;
+            type Item<'a> = &'a i64;
+            type Iter<'a> = std::collections::btree_map::Values<'a, Box<[u8]>, i64>;
+
+            fn get(&self, key: &[u8]) -> Option<Self::Item<'_>> {
+                self.entries.get(key)
+            }
+
+            fn values(&self) -> Self::Iter<'_> {
+                self.entries.values()
+            }
+
+            fn for_each_entry<'a>(&'a self, mut visitor: impl FnMut(&[u8], Self::Item<'a>)) {
+                self.conversions.set(self.conversions.get() + 1);
+                for (key, value) in &self.entries {
+                    visitor(key, value);
+                }
+            }
+        }
+        struct Request {
+            scheme: Scheme,
+            numbers: Option<Vec<i64>>,
+            number: i64,
+            boolean: bool,
+            bytes: Box<str>,
+            ip: std::net::IpAddr,
+            scalar_getters: Cell<usize>,
+            map: OnceLock<CountingMap>,
+            provide_map: bool,
+            map_getters: Cell<usize>,
+        }
+        impl HasScheme for Request {
+            fn scheme(&self) -> &Scheme {
+                &self.scheme
+            }
+        }
+        impl EvaluationContext for Request {
+            type UserData = ();
+
+            fn get_user_data(&self) -> &() {
+                &()
+            }
+
+            fn get_list_matcher(&self, _: ListRef<'_>) -> &dyn ListMatcher {
+                unreachable!()
+            }
+        }
+        crate::wirefilter_fields! {
+            impl NativeFields for Request {
+                "numbers" => {
+                    fn(request: &Request) -> Option<&Vec<i64>> {
+                        request.numbers.as_ref()
+                    }
+                },
+                "number" => {
+                    fn(request: &Request) -> i64 {
+                        request.scalar_getters.set(request.scalar_getters.get() + 1);
+                        request.number
+                    }
+                },
+                "boolean" => {
+                    fn(request: &Request) -> bool {
+                        request.scalar_getters.set(request.scalar_getters.get() + 1);
+                        request.boolean
+                    }
+                },
+                "bytes" => {
+                    fn(request: &Request) -> &str {
+                        request.scalar_getters.set(request.scalar_getters.get() + 1);
+                        &request.bytes
+                    }
+                },
+                "ip" => {
+                    fn(request: &Request) -> std::net::IpAddr {
+                        request.scalar_getters.set(request.scalar_getters.get() + 1);
+                        request.ip
+                    }
+                },
+                "map" => {
+                    fn(request: &Request) -> &CountingMap {
+                        request.map_getters.set(request.map_getters.get() + 1);
+                        assert!(request.provide_map, "mandatory map accessed while unavailable");
+                        request.map.get_or_init(|| CountingMap {
+                            entries: BTreeMap::from([(Box::from(b"a".as_slice()), 1)]),
+                            conversions: Cell::new(0),
+                        })
+                    }
+                },
+            }
+        }
+        fn consume_both<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            args.next()?.ok()?;
+            args.next()?.ok()?;
+            Some(true.into())
+        }
+        fn consume_first<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            args.next()?.ok()?;
+            Some(true.into())
+        }
+        fn identity<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
+            args.next()?.ok()
+        }
+        let map_type = Type::map(Type::Int);
+        let mut builder = crate::SchemeBuilder::new();
+        builder
+            .add_optional_field("numbers", Type::array(Type::Int))
+            .unwrap();
+        builder.add_field("map", map_type).unwrap();
+        for (name, ty) in [
+            ("number", Type::Int),
+            ("boolean", Type::Bool),
+            ("bytes", Type::Bytes),
+            ("ip", Type::Ip),
+        ] {
+            builder.add_field(name, ty).unwrap();
+        }
+        for (name, extra, implementation) in [
+            ("map_arg", map_type, SimpleFunctionImpl::new(consume_both)),
+            ("int_arg", Type::Int, SimpleFunctionImpl::new(consume_both)),
+            (
+                "bool_arg",
+                Type::Bool,
+                SimpleFunctionImpl::new(consume_both),
+            ),
+            (
+                "bytes_arg",
+                Type::Bytes,
+                SimpleFunctionImpl::new(consume_both),
+            ),
+            ("ip_arg", Type::Ip, SimpleFunctionImpl::new(consume_both)),
+            (
+                "ignore_map",
+                map_type,
+                SimpleFunctionImpl::new(consume_first),
+            ),
+        ] {
+            builder
+                .add_function(
+                    name,
+                    SimpleFunctionDefinition {
+                        params: Box::new([
+                            SimpleFunctionParam {
+                                arg_kind: SimpleFunctionArgKind::Field,
+                                val_type: Type::Int,
+                            },
+                            SimpleFunctionParam {
+                                arg_kind: SimpleFunctionArgKind::Field,
+                                val_type: extra,
+                            },
+                        ]),
+                        opt_params: Box::new([]),
+                        return_type: Type::Bool,
+                        implementation,
+                    },
+                )
+                .unwrap();
+        }
+        builder
+            .add_function(
+                "echo_map",
+                SimpleFunctionDefinition {
+                    params: Box::new([SimpleFunctionParam {
+                        arg_kind: SimpleFunctionArgKind::Field,
+                        val_type: map_type,
+                    }]),
+                    opt_params: Box::new([]),
+                    return_type: map_type,
+                    implementation: SimpleFunctionImpl::new(identity),
+                },
+            )
+            .unwrap();
+        let scheme = builder.build();
+        NativeFields::validate_scheme(&scheme).unwrap();
+        let request = |numbers, provide_map| Request {
+            scheme: scheme.clone(),
+            numbers,
+            number: 1,
+            boolean: true,
+            bytes: Box::from("value"),
+            ip: std::net::Ipv4Addr::LOCALHOST.into(),
+            scalar_getters: Cell::new(0),
+            map: OnceLock::new(),
+            provide_map,
+            map_getters: Cell::new(0),
+        };
+        let compile = |expression| {
+            scheme
+                .parse(expression)
+                .unwrap()
+                .compile_with_compiler(&mut crate::DefaultCompiler::<(), NativeFields>::new())
+        };
+
+        struct StoredReads;
+        impl crate::Compiler for StoredReads {
+            type Family = crate::ExecutionContextFamily<Self::U>;
+            type U = Cell<usize>;
+
+            fn compile_index_expr(&mut self, node: IndexExpr) -> CompiledValueExpr<Self::U> {
+                let track = matches!(&node.identifier, IdentifierExpr::Field(field) if field.name() == "map");
+                let value = self.compile_value_expr(node);
+                if track {
+                    CompiledValueExpr::<Self::U, Self::Family>::new_with_context(move |ctx| {
+                        let ctx = ctx.context();
+                        let reads = ctx.get_user_data();
+                        reads.set(reads.get() + 1);
+                        value.execute(ctx)
+                    })
+                } else {
+                    value
+                }
+            }
+        }
+        let map = BTreeMap::from([(Box::<[u8]>::from(b"a".as_slice()), 1i64)]);
+        for (expression, conversions_per_call) in [
+            ("any(map_arg(numbers[*], map))", 1),
+            (r#"any(int_arg(numbers[*], map["a"]))"#, 0),
+        ] {
+            let native = request(Some(vec![1, 2, 3]), true);
+            let filter = compile(expression);
+            assert!(native.map.get().is_none());
+            assert_eq!(native.map_getters.get(), 0);
+            for calls in [1, 2] {
+                assert!(filter.execute(&native).unwrap());
+                assert_eq!(native.map_getters.get(), calls);
+                assert_eq!(
+                    native.map.get().unwrap().conversions.get(),
+                    calls * conversions_per_call
+                );
+            }
+            let stored_filter = scheme
+                .parse(expression)
+                .unwrap()
+                .compile_with_compiler(&mut StoredReads);
+            let mut stored = crate::ExecutionContext::new_with(&scheme, || Cell::new(0usize));
+            stored
+                .set_field_value_from_name(
+                    "numbers",
+                    Array::try_from_iter(Type::Int, [1i64, 2, 3]).unwrap(),
+                )
+                .unwrap();
+            stored
+                .set_field_value_from_name("map", (&map).into_lhs())
+                .unwrap();
+            assert!(stored_filter.execute(&stored).unwrap());
+            assert_eq!(
+                stored.get_user_data().get(),
+                3,
+                "stored fields keep their existing cheap access path"
+            );
+
+            for numbers in [Some(Vec::new()), None] {
+                for provide_map in [false, true] {
+                    let native = request(numbers.clone(), provide_map);
+                    assert!(!filter.execute(&native).unwrap());
+                    assert_eq!(native.map_getters.get(), 0);
+                    assert!(native.map.get().is_none());
+                    let mut stored =
+                        crate::ExecutionContext::new_with(&scheme, || Cell::new(0usize));
+                    if let Some(numbers) = &numbers {
+                        stored
+                            .set_field_value_from_name(
+                                "numbers",
+                                Array::try_from_iter(Type::Int, numbers.iter().copied()).unwrap(),
+                            )
+                            .unwrap();
+                    }
+                    assert!(!stored_filter.execute(&stored).unwrap());
+                    assert_eq!(stored.get_user_data().get(), 0);
+                }
+            }
+        }
+        struct CountingBindings<F> {
+            fields: BTreeMap<Box<str>, usize>,
+            family: std::marker::PhantomData<fn() -> F>,
+        }
+        impl<F> CountingBindings<F> {
+            fn new() -> Self {
+                Self {
+                    fields: BTreeMap::new(),
+                    family: std::marker::PhantomData,
+                }
+            }
+        }
+        impl<F: crate::ContextFamily> crate::Compiler for CountingBindings<F> {
+            type Family = F;
+            type U = F::UserData;
+
+            fn bind_field<B: crate::FieldConsumer<F>>(
+                &mut self,
+                field: crate::Field,
+                consumer: B,
+            ) -> Result<B::Output, crate::FieldBindingError> {
+                *self.fields.entry(field.name().into()).or_default() += 1;
+                F::bind(field, consumer)
+            }
+        }
+        // Scalar roots only bind for value compilation. Indexed collection roots
+        // still need classification, even though the argument itself is scalar.
+        for (expression, extra_field, bindings, scalar_getters) in [
+            ("any(int_arg(numbers[*], number))", "number", 1, 3),
+            ("any(bool_arg(numbers[*], boolean))", "boolean", 1, 3),
+            ("any(bytes_arg(numbers[*], bytes))", "bytes", 1, 3),
+            ("any(ip_arg(numbers[*], ip))", "ip", 1, 3),
+            (r#"any(int_arg(numbers[*], map["a"]))"#, "map", 2, 0),
+            // The mapped argument contributes the third binding of numbers.
+            ("any(int_arg(numbers[*], numbers[0]))", "numbers", 3, 0),
+        ] {
+            let native = request(Some(vec![1, 2, 3]), true);
+            let mut native_compiler = CountingBindings::<NativeFields>::new();
+            let native_filter = scheme
+                .parse(expression)
+                .unwrap()
+                .compile_with_compiler(&mut native_compiler);
+            assert_eq!(
+                native_compiler.fields[extra_field], bindings,
+                "{expression}"
+            );
+            assert_eq!(native.scalar_getters.get(), 0);
+            let native_bindings = native_compiler.fields.clone();
+
+            let mut stored_compiler = CountingBindings::<crate::ExecutionContextFamily<()>>::new();
+            let stored_filter = scheme
+                .parse(expression)
+                .unwrap()
+                .compile_with_compiler(&mut stored_compiler);
+            assert_eq!(
+                stored_compiler.fields[extra_field], bindings,
+                "{expression}"
+            );
+            let stored_bindings = stored_compiler.fields.clone();
+            let mut stored = crate::ExecutionContext::new(&scheme);
+            stored
+                .set_field_value_from_name(
+                    "numbers",
+                    Array::try_from_iter(Type::Int, [1i64, 2, 3]).unwrap(),
+                )
+                .unwrap();
+            for (name, value) in [
+                ("number", native.number.into()),
+                ("boolean", native.boolean.into()),
+                ("bytes", native.bytes.as_bytes().into()),
+                ("ip", native.ip.into()),
+                ("map", (&map).into_lhs()),
+            ] {
+                stored.set_field_value_from_name(name, value).unwrap();
+            }
+            for calls in [1, 2] {
+                assert!(native_filter.execute(&native).unwrap(), "{expression}");
+                assert!(stored_filter.execute(&stored).unwrap(), "{expression}");
+                assert_eq!(native.scalar_getters.get(), calls * scalar_getters);
+                assert_eq!(native_compiler.fields, native_bindings);
+                assert_eq!(stored_compiler.fields, stored_bindings);
+            }
+        }
+        // FunctionArgs may leave an extra argument unconsumed even when a mapped
+        // call runs. Its mandatory field must remain unread in that case.
+        let ignored = request(Some(vec![1, 2, 3]), false);
+        assert!(
+            compile("any(ignore_map(numbers[*], map))")
+                .execute(&ignored)
+                .unwrap()
+        );
+        assert_eq!(ignored.map_getters.get(), 0);
+        assert!(ignored.map.get().is_none());
+
+        // Preserve the established eager handling for an existing expensive
+        // function argument, including when the mapped input is empty.
+        let eager_expression = "any(map_arg(numbers[*], echo_map(map)))";
+        let empty = request(Some(Vec::new()), true);
+        assert!(!compile(eager_expression).execute(&empty).unwrap());
+        assert_eq!(empty.map_getters.get(), 1);
+        assert_eq!(empty.map.get().unwrap().conversions.get(), 1);
+        let mut stored = crate::ExecutionContext::new_with(&scheme, || Cell::new(0usize));
+        stored
+            .set_field_value_from_name("numbers", Array::new(Type::Int))
+            .unwrap();
+        stored
+            .set_field_value_from_name("map", (&map).into_lhs())
+            .unwrap();
+        assert!(
+            !scheme
+                .parse(eager_expression)
+                .unwrap()
+                .compile_with_compiler(&mut StoredReads)
+                .execute(&stored)
+                .unwrap()
+        );
+        assert_eq!(stored.get_user_data().get(), 1);
     }
 }

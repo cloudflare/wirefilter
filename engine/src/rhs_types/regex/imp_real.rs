@@ -12,7 +12,23 @@ pub struct Regex {
     format: RegexFormat,
 }
 
+/// Matching state retained by a compiled filter, without the source representation.
+pub(crate) struct CompiledRegex(regex_automata::meta::Regex);
+
+impl CompiledRegex {
+    #[inline]
+    pub(super) fn is_match(&self, input: &[u8]) -> bool {
+        self.0.is_match(input)
+    }
+}
+
 impl Regex {
+    /// Move the existing matcher and its cache into the filter without retaining
+    /// the pattern and formatting used by the AST.
+    pub(crate) fn into_compiled(self) -> CompiledRegex {
+        CompiledRegex(self.regex)
+    }
+
     /// Retrieves the syntax configuration that will be used to build the regex.
     #[inline]
     pub fn syntax_config() -> regex_automata::util::syntax::Config {

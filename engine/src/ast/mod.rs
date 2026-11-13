@@ -12,8 +12,9 @@ use self::visitor::{UsesListVisitor, UsesVisitor, Visitor, VisitorMut};
 use crate::compiler::{Compiler, DefaultCompiler};
 use crate::filter::{CompiledExpr, CompiledValueExpr, Filter, FilterValue};
 use crate::lex::{LexErrorKind, LexResult, LexWith};
+use crate::lhs_types::LhsValue;
 use crate::scheme::{Scheme, UnknownFieldError};
-use crate::types::{GetType, LhsValue, Type, TypeMismatchError};
+use crate::types::{GetType, Type, TypeMismatchError};
 use serde::Serialize;
 use std::fmt::{self, Debug};
 
@@ -26,7 +27,7 @@ pub trait Expr:
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledExpr`] using [`Compiler`].
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U>;
+    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledExpr<C::U, C::Family>;
     /// Compiles current node into a [`CompiledExpr`] using [`DefaultCompiler`].
     fn compile(self) -> CompiledExpr {
         let mut compiler = DefaultCompiler::new();
@@ -43,7 +44,10 @@ pub trait ValueExpr:
     /// Recursively visit all nodes in the AST using a [`VisitorMut`].
     fn walk_mut<'a, V: VisitorMut<'a>>(&'a mut self, visitor: &mut V);
     /// Compiles current node into a [`CompiledValueExpr`] using [`Compiler`].
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U>;
+    fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<C::U, C::Family>;
     /// Compiles current node into a [`CompiledValueExpr`] using [`DefaultCompiler`].
     fn compile(self) -> CompiledValueExpr {
         let mut compiler = DefaultCompiler::new();
@@ -150,7 +154,11 @@ impl FilterAst {
     }
 
     /// Compiles a [`FilterAst`] into a [`Filter`] using a specific [`Compiler`].
-    pub fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> Filter<C::U> {
+    ///
+    /// Field definitions must be validated explicitly during application
+    /// initialization with [`crate::ContextFamily::validate_scheme`]. Compilation
+    /// does not repeat that validation.
+    pub fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> Filter<C::U, C::Family> {
         match compiler.compile_logical_expr(self.op) {
             CompiledExpr::One(one) => Filter::new(one, self.scheme),
             CompiledExpr::Vec(_) => unreachable!(),
@@ -221,7 +229,10 @@ impl ValueExpr for FilterValueExpr {
         }
     }
 
-    fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> CompiledValueExpr<C::U> {
+    fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> CompiledValueExpr<C::U, C::Family> {
         match self {
             Self::Index(expr) => compiler.compile_index_expr(expr),
             Self::Quantifier { op, arg } => {
@@ -336,7 +347,14 @@ impl FilterValueAst {
     }
 
     /// Compiles a [`FilterValueAst`] into a [`FilterValue`] using a specific [`Compiler`].
-    pub fn compile_with_compiler<C: Compiler>(self, compiler: &mut C) -> FilterValue<C::U> {
+    ///
+    /// Field definitions must be validated explicitly during application
+    /// initialization with [`crate::ContextFamily::validate_scheme`]. Compilation
+    /// does not repeat that validation.
+    pub fn compile_with_compiler<C: Compiler>(
+        self,
+        compiler: &mut C,
+    ) -> FilterValue<C::U, C::Family> {
         FilterValue::new(compiler.compile_value_expr(self.op), self.scheme)
     }
 

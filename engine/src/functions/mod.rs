@@ -3,8 +3,9 @@ pub(crate) mod concat;
 pub use self::concat::ConcatFunction;
 use crate::ParserSettings;
 use crate::filter::CompiledValueResult;
+use crate::lhs_types::LhsValue;
 use crate::types::{
-    ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralValue, Type, TypeMismatchError,
+    ExpectedType, ExpectedTypeList, GetType, LiteralValue, Type, TypeMismatchError,
 };
 use std::any::Any;
 use std::convert::TryFrom;
