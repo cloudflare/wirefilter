@@ -43,6 +43,11 @@ pub trait EvaluationContext: HasScheme {
     }
 
     /// Matcher access after the outer filter has checked scheme compatibility.
+    ///
+    /// The default delegates to the checked accessor. Contexts forwarding matcher
+    /// storage to another context, such as [`crate::NativeContextState`], should
+    /// also forward this method to avoid repeating its scheme assertion for each
+    /// list comparison. The supplied list must belong to this context's scheme.
     #[inline]
     fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
         self.get_list_matcher(list.as_ref())

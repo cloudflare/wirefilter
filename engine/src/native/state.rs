@@ -17,6 +17,10 @@ use crate::{
 /// the same interfaces using their existing state. See [`crate::native`] for a
 /// complete example.
 ///
+/// Forward [`EvaluationContext::get_list_matcher_unchecked`] as well as the
+/// checked accessor so list comparisons do not repeat the scheme check already
+/// performed by the filter.
+///
 /// [`crate::ExecutionContext`] already owns equivalent state together with its
 /// stored field values and does not need a separate `NativeContextState`. The
 /// application is responsible for resetting state when reusing it; [`Self::clear`]
@@ -159,7 +163,7 @@ impl<U> EvaluationContextMut for NativeContextState<U> {
 mod tests {
     use super::NativeContextState;
     use crate::{
-        DefaultCompiler, EvaluationContext, EvaluationContextMut, HasScheme, LhsValue,
+        DefaultCompiler, EvaluationContext, EvaluationContextMut, HasScheme, LhsValue, List,
         ListDefinition, ListMatcher, ListRef, Scheme, SchemeBuilder, Type,
     };
     use serde::{Deserialize, Serialize};
@@ -240,6 +244,10 @@ mod tests {
 
         fn get_list_matcher(&self, list: ListRef<'_>) -> &dyn ListMatcher {
             self.0.get_list_matcher(list)
+        }
+
+        fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
+            self.0.get_list_matcher_unchecked(list)
         }
     }
 
@@ -371,6 +379,10 @@ mod tests {
 
         fn get_list_matcher(&self, list: ListRef<'_>) -> &dyn ListMatcher {
             self.state.get_list_matcher(list)
+        }
+
+        fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
+            self.state.get_list_matcher_unchecked(list)
         }
     }
 

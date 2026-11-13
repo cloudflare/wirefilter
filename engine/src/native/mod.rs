@@ -48,8 +48,8 @@
 //!
 //! ```
 //! use wirefilter::{
-//!     DefaultCompiler, EvaluationContext, HasScheme, ListMatcher, ListRef, NativeContextState,
-//!     Scheme, SchemeBuilder, Type,
+//!     DefaultCompiler, EvaluationContext, HasScheme, List, ListMatcher, ListRef,
+//!     NativeContextState, Scheme, SchemeBuilder, Type,
 //! };
 //!
 //! struct Request {
@@ -76,6 +76,10 @@
 //!
 //!     fn get_list_matcher(&self, list: ListRef<'_>) -> &dyn ListMatcher {
 //!         self.state.get_list_matcher(list)
+//!     }
+//!
+//!     fn get_list_matcher_unchecked(&self, list: &List) -> &dyn ListMatcher {
+//!         self.state.get_list_matcher_unchecked(list)
 //!     }
 //! }
 //!

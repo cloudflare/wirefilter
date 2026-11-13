@@ -813,9 +813,7 @@ impl Expr for ComparisonExpr {
                         value: bool,
                         _: &'e F::Context<'data>,
                     ) -> bool {
-                        let value = &value;
-
-                        *value
+                        value
                     }
                 }
 
@@ -984,8 +982,6 @@ impl Expr for ComparisonExpr {
                         value: i64,
                         _: &'e F::Context<'data>,
                     ) -> bool {
-                        let value = &value;
-
                         value & self.0 != 0
                     }
                 }
@@ -1213,9 +1209,7 @@ impl Expr for ComparisonExpr {
                             value: IpAddr,
                             _: &'e F::Context<'data>,
                         ) -> bool {
-                            let value = &value;
-
-                            match value {
+                            match &value {
                                 IpAddr::V4(addr) => self.v4.contains(addr),
                                 IpAddr::V6(addr) => self.v6.contains(addr),
                             }
@@ -1245,9 +1239,7 @@ impl Expr for ComparisonExpr {
                             value: i64,
                             _: &'e F::Context<'data>,
                         ) -> bool {
-                            let value = &value;
-
-                            self.0.contains(value)
+                            self.0.contains(&value)
                         }
                     }
 
@@ -1274,7 +1266,7 @@ impl Expr for ComparisonExpr {
                             value: &'e [u8],
                             _: &'e F::Context<'data>,
                         ) -> bool {
-                            self.0.contains(value.as_ref())
+                            self.0.contains(value)
                         }
                     }
 
