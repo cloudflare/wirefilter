@@ -310,7 +310,7 @@ impl ValueExpr for FunctionCallExpr {
             && !memoize_extra_args
             && args.iter().skip(1).any(|arg| {
                 matches!(arg, FunctionCallArgExpr::IndexExpr(index)
-                    if index.materializes_native_collection(compiler))
+                    if index.materializes_collection(compiler))
             });
         let mut args = args
             .into_iter()
@@ -2002,7 +2002,7 @@ mod tests {
                 .parse_value(expression)
                 .unwrap()
                 .compile_with_compiler(&mut native_compiler);
-            let mut stored_compiler = PreserveMap::<crate::StoredContextFamily<()>>::new();
+            let mut stored_compiler = PreserveMap::<crate::ExecutionContextFamily<()>>::new();
             let stored_filter = scheme
                 .parse_value(expression)
                 .unwrap()
@@ -2231,7 +2231,7 @@ mod tests {
 
         struct StoredReads;
         impl crate::Compiler for StoredReads {
-            type Family = crate::StoredContextFamily<Self::U>;
+            type Family = crate::ExecutionContextFamily<Self::U>;
             type U = Cell<usize>;
 
             fn compile_index_expr(&mut self, node: IndexExpr) -> CompiledValueExpr<Self::U> {
@@ -2357,7 +2357,7 @@ mod tests {
             assert_eq!(native.scalar_getters.get(), 0);
             let native_bindings = native_compiler.fields.clone();
 
-            let mut stored_compiler = CountingBindings::<crate::StoredContextFamily<()>>::new();
+            let mut stored_compiler = CountingBindings::<crate::ExecutionContextFamily<()>>::new();
             let stored_filter = scheme
                 .parse(expression)
                 .unwrap()

@@ -44,6 +44,40 @@ impl FieldValueType for LhsValueType {
 /// Engine reader borrowing existing Wirefilter values and their containers.
 pub struct LhsValueRead;
 
+impl LhsValueRead {
+    /// Compare a selected value while retaining the caller's value ownership.
+    pub(crate) fn compare_one<P: NativePredicate + ?Sized>(
+        value: &LhsValue<'_>,
+        path: &[FieldIndex],
+        predicate: &P,
+    ) -> Option<bool> {
+        value.get_nested(path).map(|value| predicate.lhs(value))
+    }
+
+    /// Compare selections from a possibly nested path.
+    pub(crate) fn compare_vec<P: NativePredicate + ?Sized>(
+        value: &LhsValue<'_>,
+        path: &[FieldIndex],
+        predicate: &P,
+        output: &mut TypedArray<'static, bool>,
+    ) {
+        compare_each(value, path, predicate, output);
+    }
+
+    /// Compare each child of the collection selected by a concrete prefix.
+    /// Keeping the final iteration implicit avoids retaining another path entry.
+    pub(crate) fn compare_items<P: NativePredicate + ?Sized>(
+        value: &LhsValue<'_>,
+        prefix: &[FieldIndex],
+        predicate: &P,
+        output: &mut TypedArray<'static, bool>,
+    ) {
+        if let Some(value) = value.get_nested(prefix) {
+            compare_each(value, &[FieldIndex::MapEach], predicate, output);
+        }
+    }
+}
+
 impl NativeValue for LhsValue<'_> {
     type Read = LhsValueRead;
     type ValueType = LhsValueType;
@@ -86,7 +120,7 @@ impl ReadValue<LhsValue<'_>, LhsValueType> for LhsValueRead {
         path: &Box<[FieldIndex]>,
         predicate: &P,
     ) -> Option<bool> {
-        value.get_nested(path).map(|value| predicate.lhs(value))
+        Self::compare_one(value, path, predicate)
     }
 
     #[inline]
@@ -96,7 +130,7 @@ impl ReadValue<LhsValue<'_>, LhsValueType> for LhsValueRead {
         predicate: &P,
         output: &mut TypedArray<'static, bool>,
     ) {
-        compare_each(value, path, predicate, output);
+        Self::compare_vec(value, path, predicate, output);
     }
 }
 

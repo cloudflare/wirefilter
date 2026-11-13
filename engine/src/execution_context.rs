@@ -39,7 +39,7 @@ pub struct InvalidListMatcherError {
 /// It acts as a map in terms of public API, but provides a constant-time
 /// index-based access to values for a filter during execution.
 ///
-/// The default [`crate::StoredContextFamily`] binds its fields using
+/// The default [`crate::ExecutionContextFamily`] binds its fields using
 /// [`crate::LhsValueProvider`]. It borrows existing values through the same
 /// reader interface used for native Rust fields, without converting the stored
 /// containers. Setters validate values against the field types in the scheme.

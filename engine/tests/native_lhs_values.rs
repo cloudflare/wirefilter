@@ -4,11 +4,11 @@ use std::cell::Cell;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use wirefilter::{
     Array, Compare, CompiledExpr, CompiledValueExpr, Compiler, ContextFamily, DefaultCompiler,
-    EvaluationContext, ExecutionContext, Field, FieldBindingError, FieldConsumer,
-    FieldDefinitionError, FieldGetter, FieldIndex, FunctionArgs, FunctionCallArgExpr, GetType,
-    HasScheme, IdentifierExpr, IndexExpr, LhsValue, LhsValueProvider, ListMatcher, ListRef, Map,
-    Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
-    SimpleFunctionParam, StoredContextFamily, Type, TypeMismatchError,
+    EvaluationContext, ExecutionContext, ExecutionContextFamily, Field, FieldBindingError,
+    FieldConsumer, FieldDefinitionError, FieldGetter, FieldIndex, FunctionArgs,
+    FunctionCallArgExpr, GetType, HasScheme, IdentifierExpr, IndexExpr, LhsValue, LhsValueProvider,
+    ListMatcher, ListRef, Map, Scheme, SchemeBuilder, SimpleFunctionArgKind,
+    SimpleFunctionDefinition, SimpleFunctionImpl, SimpleFunctionParam, Type, TypeMismatchError,
 };
 
 #[derive(Default)]
@@ -27,7 +27,7 @@ impl ContextFamily for NativeFields {
         field: Field,
         consumer: B,
     ) -> Result<B::Output, FieldBindingError> {
-        consumer.native(field, Getter)
+        consumer.consume(field, Getter)
     }
 }
 
@@ -356,7 +356,7 @@ fn indexed_and_mapped_arguments_preserve_missing_values_and_map_compatibility() 
         arguments: usize,
     }
     impl Compiler for ObserveMapArgument {
-        type Family = StoredContextFamily<Reads>;
+        type Family = ExecutionContextFamily<Reads>;
         type U = Reads;
 
         fn compile_function_call_arg_expr(

@@ -23,7 +23,7 @@ impl ContextFamily for LhsFields {
         field: Field,
         consumer: B,
     ) -> Result<B::Output, FieldBindingError> {
-        consumer.native(field, LhsGetter)
+        consumer.consume(field, LhsGetter)
     }
 }
 

@@ -96,9 +96,9 @@ pub use self::ast::{Expr, FilterAst, FilterValueAst, FilterValueExpr, ValueExpr}
 pub use self::compiler::{Compiler, DefaultCompiler};
 pub use self::context::{
     BorrowedValueProvider, ContextFamily, ContextRef, EvaluationContext, EvaluationContextMut,
-    FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter, FieldGetterFn, HasScheme,
-    LhsValueProvider, OptionalFieldGetterResult, OwnedValueProvider, ProviderFamily,
-    RequiredFieldGetterFn, RequiredFieldGetterResult, SchemeValidationError, StoredContextFamily,
+    ExecutionContextFamily, FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter,
+    FieldGetterFn, HasScheme, LhsValueProvider, OptionalFieldGetterResult, OwnedValueProvider,
+    ProviderFamily, RequiredFieldGetterFn, RequiredFieldGetterResult, SchemeValidationError,
 };
 pub use self::execution_context::{
     ExecutionContext, ExecutionContextGuard, InvalidListMatcherError, SetFieldValueError,

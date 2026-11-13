@@ -457,7 +457,7 @@ macro_rules! wirefilter_fields {
             ) -> Result<B::Output, $crate::FieldBindingError> {
                 #[allow(unreachable_patterns)]
                 match field.name() {
-                    $($name => consumer.native(
+                    $($name => consumer.consume(
                         field,
                         $crate::wirefilter_fields!(@getter [$family] [$data] $getter)
                     ),)*

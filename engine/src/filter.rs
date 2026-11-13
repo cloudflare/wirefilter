@@ -5,7 +5,7 @@
 //! their `execute` methods and aggregating results into a single boolean value
 //! as recursion unwinds.
 
-use crate::context::{ContextFamily, ContextRef, HasScheme, StoredContextFamily};
+use crate::context::{ContextFamily, ContextRef, ExecutionContextFamily, HasScheme};
 use crate::lhs_types::TypedArray;
 use crate::scheme::{Scheme, SchemeMismatchError};
 use crate::types::{LhsValue, Type};
@@ -20,7 +20,7 @@ type BoxedClosureToOneBool<F> = Box<
 >;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
-pub struct CompiledOneExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+pub struct CompiledOneExpr<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>>(
     BoxedClosureToOneBool<F>,
     PhantomData<fn() -> U>,
 );
@@ -65,7 +65,7 @@ type BoxedClosureToVecBool<F> = Box<
 >;
 
 /// Boxed closure for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
-pub struct CompiledVecExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+pub struct CompiledVecExpr<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>>(
     BoxedClosureToVecBool<F>,
     PhantomData<fn() -> U>,
 );
@@ -106,7 +106,7 @@ impl<U, F: ContextFamily<UserData = U>> CompiledVecExpr<U, F> {
 }
 
 /// Enum of boxed closure for [`crate::Expr`] AST nodes.
-pub enum CompiledExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
+pub enum CompiledExpr<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>> {
     /// Variant for [`crate::Expr`] AST node that evaluates to a simple [`bool`].
     One(CompiledOneExpr<U, F>),
     /// Variant for [`crate::Expr`] AST node that evaluates to a list of [`bool`].
@@ -169,7 +169,7 @@ type BoxedStoredClosureToValue<U> = Box<
 >;
 
 /// Boxed closure for [`crate::ValueExpr`] AST node that evaluates to an [`LhsValue`].
-pub struct CompiledValueExpr<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>>(
+pub struct CompiledValueExpr<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>>(
     BoxedClosureToValue<F>,
     PhantomData<fn() -> U>,
 );
@@ -248,7 +248,7 @@ impl<U: 'static> CompiledValueExpr<U> {
 /// In the future the underlying representation might change, but for now it
 /// provides the best trade-off between safety and performance of compilation
 /// and execution.
-pub struct Filter<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
+pub struct Filter<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>> {
     root_expr: CompiledOneExpr<U, F>,
     scheme: Scheme,
 }
@@ -282,7 +282,7 @@ impl<U, F: ContextFamily<UserData = U>> Filter<U, F> {
 }
 
 /// An IR for a compiled value expression.
-pub struct FilterValue<U = (), F: ContextFamily<UserData = U> = StoredContextFamily<U>> {
+pub struct FilterValue<U = (), F: ContextFamily<UserData = U> = ExecutionContextFamily<U>> {
     root_expr: CompiledValueExpr<U, F>,
     scheme: Scheme,
 }

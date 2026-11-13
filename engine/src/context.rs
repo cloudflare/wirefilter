@@ -217,7 +217,7 @@ pub trait FieldConsumer<F: ContextFamily>: Sized {
     /// `field` is the original logical field supplied to the binding operation.
     /// This includes getters borrowing existing [`LhsValue`] fields through
     /// [`LhsValueProvider`].
-    fn native<G: FieldGetter<F>>(
+    fn consume<G: FieldGetter<F>>(
         self,
         field: Field,
         getter: G,
@@ -456,9 +456,9 @@ impl<F: ContextFamily, P: ProviderFamily> FieldGetter<F> for RequiredFieldGetter
 /// Fields use [`LhsValueProvider`] through the same binding interface as native
 /// Rust values. The context owns the field table and validates inserted values
 /// against the scheme; readers borrow the retained values and containers.
-pub struct StoredContextFamily<U = ()>(PhantomData<fn() -> U>);
+pub struct ExecutionContextFamily<U = ()>(PhantomData<fn() -> U>);
 
-impl<U: 'static> ContextFamily for StoredContextFamily<U> {
+impl<U: 'static> ContextFamily for ExecutionContextFamily<U> {
     type Context<'data> = ExecutionContext<'data, U>;
     type UserData = U;
 
@@ -467,13 +467,13 @@ impl<U: 'static> ContextFamily for StoredContextFamily<U> {
         field: Field,
         consumer: B,
     ) -> Result<B::Output, FieldBindingError> {
-        consumer.native(field, ExecutionContextGetter)
+        consumer.consume(field, ExecutionContextGetter)
     }
 }
 
 struct ExecutionContextGetter;
 
-impl<U: 'static> FieldGetter<StoredContextFamily<U>> for ExecutionContextGetter {
+impl<U: 'static> FieldGetter<ExecutionContextFamily<U>> for ExecutionContextGetter {
     type Provider = LhsValueProvider;
 
     #[inline]
@@ -509,7 +509,7 @@ mod tests {
                 field: Field,
                 consumer: B,
             ) -> Result<B::Output, FieldBindingError> {
-                consumer.native(field, Getter)
+                consumer.consume(field, Getter)
             }
 
             fn validate_scheme(scheme: &Scheme) -> Result<(), SchemeValidationError> {
@@ -569,7 +569,7 @@ mod tests {
                 field: Field,
                 consumer: B,
             ) -> Result<B::Output, FieldBindingError> {
-                consumer.native(field, Getter)
+                consumer.consume(field, Getter)
             }
         }
         impl FieldGetter<Family> for Getter {
@@ -958,7 +958,7 @@ mod tests {
             fields: Vec::new(),
             family: std::marker::PhantomData,
         };
-        let mut stored_compiler = RecordingCompiler::<super::StoredContextFamily<()>> {
+        let mut stored_compiler = RecordingCompiler::<super::ExecutionContextFamily<()>> {
             fields: Vec::new(),
             family: std::marker::PhantomData,
         };
@@ -1229,7 +1229,7 @@ mod tests {
                 consumer: B,
             ) -> Result<B::Output, FieldBindingError> {
                 assert_eq!(field.name(), "required");
-                consumer.native(field, RequiredGetter)
+                consumer.consume(field, RequiredGetter)
             }
         }
 

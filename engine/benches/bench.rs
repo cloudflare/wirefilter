@@ -1,4 +1,5 @@
 mod lhs_value_reader;
+mod reader_traversal;
 
 use std::alloc::System;
 
@@ -253,6 +254,7 @@ criterion_group! {
         bench_string_matches,
         bench_string_function_comparison,
         lhs_value_reader::bench,
+        reader_traversal::bench,
 }
 
 criterion_main!(field_benchmarks);

@@ -1,10 +1,10 @@
 # Reading stored values through native field bindings
 
 `ExecutionContext` and downstream contexts expose runtime-typed `LhsValue`
-fields through `FieldConsumer::native`. There is one field-binding interface;
-`ExecutionContext` uses `LhsValueProvider` and the same reader available to
-downstream contexts. It continues to own its field table and validate values
-when they are inserted.
+fields through `FieldConsumer::consume`. There is one field-binding interface;
+`ExecutionContextFamily` binds `ExecutionContext` fields through `LhsValueProvider`
+and the same reader available to downstream contexts. `ExecutionContext`
+continues to own its field table and validate values when they are inserted.
 
 ## Interfaces
 
@@ -148,7 +148,7 @@ argument behavior. The benchmark verifies matching results before timing each
 case. A separate path-validation test rejects invalid index types and mismatched
 predicate input types.
 
-Workspace tests and all-feature engine tests pass after unification. Without
+At `9703c08`, workspace tests and all-feature engine tests passed after unification. Without
 default features, two existing tests unconditionally execute regex expressions:
 `ast::field_expr::tests::test_raw_string` and
 `context::tests::test_native_complete_operator_and_collection_paths`. Both also
@@ -188,3 +188,154 @@ array comparison therefore needs one path allocation where the previous stored
 implementation captured an empty path. These are retained compilation costs,
 not allocations added to each evaluation. Specializing empty paths and terminal
 `[*]` paths is a possible follow-up; this change keeps one reader implementation.
+
+## Shared traversal refactor
+
+The refactor uses `FieldConsumer::consume` and `ExecutionContextFamily`, shares
+array-comparison compilation, and reuses `LhsValue` traversal for function results
+and custom collection comparisons. The measurements below compare that change
+with the exact `9703c08` parent. The context-state representation is unchanged.
+
+The new `reader_traversal` benchmark covers 22 cases: scalar/indexed/flat/nested
+function comparisons; borrowed and owned function results; root and flattened
+value results; implicit Boolean-array iteration; ordinary typed native fields;
+and native custom-collection comparison fallbacks. The existing 20-case
+`lhs_value_reader` group remains available. Value-selection cases compile an
+`IndexExpr` directly, matching the expression used inside function arguments;
+top-level value parsing deliberately rejects `[*]` selections.
+
+### Allocations
+
+A standalone counting system allocator measures requested bytes and live blocks
+in debug builds with default features on AArch64/rustc 1.100.0. Schemes and request
+values are constructed before the snapshots. Each case is warmed and repeated
+three times; the counts agree, and dropping each result restores the original
+live bytes and blocks.
+
+**Retained compiled-expression allocations are unchanged in all 26 measured cases.**
+This includes unindexed, indexed, flat and nested function comparisons; root and
+flattened function values; ordinary typed native scalar/array/nested fields; and
+custom native collection comparisons. The empty-path function closures remain
+compact. This does not remove the previously documented `LhsValue` field-reader
+storage overhead.
+
+Per-evaluation changes are:
+
+| Case | Allocation/reallocation operations before → after | Sum of requested bytes before → after | Peak additional live requested bytes before → after |
+| --- | ---: | ---: | ---: |
+| Nested borrowed function comparison | 6 → 4 | 6112 → 5760 | 3232 → 3072 |
+| Nested owned function comparison | 15 → 13 | 9568 → 9216 | 5152 → 6528 |
+| Flatten borrowed function value | 6 → 4 | 6112 → 5760 | 3232 → 3072 |
+| Flatten owned function value | 15 → 13 | 9568 → 9216 | 5152 → 4992 |
+| Nested native custom-collection comparison | 25 → 24 | 5536 → 5376 | 4192 → 4800 |
+
+The other 21 cases have unchanged allocation operations, requested-byte totals
+and peaks. Requested-byte totals include each successful allocation and
+reallocation's requested size; they are neither retained bytes nor process RSS.
+Peak values track live requested storage above the pre-evaluation baseline and
+exclude allocator metadata or any internal transient memory during reallocation.
+
+The owned comparison cases expose a trade-off: borrowing the temporary result
+for comparison keeps its child containers alive until traversal finishes, while
+the former iterator dropped consumed children progressively. Consequently,
+allocation traffic falls but peak requested live memory rises by 1376 bytes for
+the owned nested function fixture and 608 bytes for the custom-collection fixture.
+The consuming value-selection path continues to move owned values into its
+result, so its peak decreases instead. These fixtures use 64 integer elements;
+they do not establish peak-memory behavior for arbitrary function results.
+
+### Evaluation time
+
+The exact `9703c08` parent and the final refactor were built with the same
+extended benchmark harness (apart from adapting the renamed consumer method).
+These are Linux AArch64/rustc 1.100.0 measurements using the optimized Cargo bench
+profile, inheriting `[profile.release] lto = true`. Codegen units were not
+overridden; Cargo defaults apply. Saved binaries ran sequentially on CPU 0, with
+no concurrent Cargo builds. The final focused pair used 40 samples, 1 s warm-up
+and 3 s measurement. The parent was rerun immediately after the final binary;
+the figures below do not reuse the older diagnostic baseline timings.
+
+Values are Criterion slope point estimates in nanoseconds. Negative changes
+mean faster evaluation. This compares against the parent of this refactor,
+not upstream Wirefilter. It measures neither FL2 phase latency/p99 nor rustc
+peak build memory.
+
+| Case | Parent (ns) | Refactor (ns) | Change |
+| --- | ---: | ---: | ---: |
+| `custom_native_flat` | 274.52 | 269.55 | -1.8% |
+| `custom_native_index` | 237.41 | 237.53 | +0.1% |
+| `custom_native_nested` | 730.92 | 681.96 | -6.7% |
+| `custom_native_root` | 235.67 | 235.14 | -0.2% |
+| `function_flat_borrowed` | 264.31 | 242.90 | -8.1% |
+| `function_flat_owned` | 548.15 | 506.14 | -7.7% |
+| `function_index` | 10.59 | 11.37 | +7.4% |
+| `function_nested_borrowed` | 609.87 | 254.37 | -58.3% |
+| `function_nested_owned` | 1026.59 | 748.56 | -27.1% |
+| `function_scalar` | 8.02 | 7.93 | -1.2% |
+| `implicit_bool_array` | 189.62 | 194.37 | +2.5% |
+| `implicit_bool_function_borrowed` | 200.86 | 199.34 | -0.8% |
+| `implicit_bool_function_owned` | 429.94 | 414.51 | -3.6% |
+| `implicit_bool_native` | 262.21 | 271.98 | +3.7% |
+| `native_array` | 158.66 | 144.16 | -9.1% |
+| `native_nested` | 174.92 | 172.05 | -1.6% |
+| `native_scalar` | 1.36 | 1.40 | +2.3% |
+| `value_flat_borrowed` | 7.84 | 7.72 | -1.6% |
+| `value_nested_borrowed` | 593.32 | 426.96 | -28.0% |
+| `value_nested_owned` | 953.25 | 744.67 | -21.9% |
+| `value_root_borrowed` | 7.82 | 7.71 | -1.4% |
+| `value_root_owned` | 467.67 | 470.48 | +0.6% |
+
+Nested function comparisons improved by 58% for borrowed results and 27% for
+owned results. Flattening nested function values improved by 28%/22%, and the
+nested native custom-comparison fallback improved by 7%. These gains accompany
+the allocation reductions above. Indexed scalar function comparison increased
+from 10.59 to 11.37 ns; implicit Boolean-array iteration increased by 2.5% for
+`ExecutionContext` and 3.7% for the typed native context.
+
+These small fixtures have observable run sensitivity. Earlier diagnostic runs
+of the unchanged typed nested benchmark changed direction depending on the
+benchmark filter/order; an assembly audit of that pair found identical comparison
+closure and row-loop instructions after normalizing relocations. The final
+matched full-group run measured 174.92 → 172.05 ns. It does not establish a
+typed-native speedup, and the small scalar/flat-case differences should not be
+extrapolated to whole-phase latency.
+
+An intermediate extraction of the child-comparison loop introduced an extra
+function boundary per visited collection; map iteration was slower in that
+version. The final implementation keeps the recursive loop together; final
+measurements of the affected existing controls are below.
+
+The control subset was rerun as a matched parent/final pair with the identical
+filter and order, using 30 samples, 0.5 s warm-up and 1 s measurement. Earlier
+full-group control timings are not used in this table.
+
+| Case | Internal parent → refactor (ns) | Change | Public parent → refactor (ns) | Change |
+| --- | ---: | ---: | ---: | ---: |
+| `array_each` | 232.49 → 240.87 | +3.6% | 195.04 → 199.70 | +2.4% |
+| `nested_each` | 236.15 → 243.18 | +3.0% | 229.81 → 216.58 | -5.8% |
+| `map_each` | 734.30 → 763.86 | +4.0% | 676.81 → 709.17 | +4.8% |
+| `map_each_function` | 1042.12 → 1023.55 | -1.8% | 972.06 → 960.86 | -1.2% |
+
+The final control pair still shows map iteration 4.0–4.8% slower and flat array
+iteration 2.4–3.6% slower. Nested stored iteration changes direction between the
+two getter modes (+3.0% internal, −5.8% public), while mapped functions are within
+1–2%. The shared traversal therefore improves the targeted function-result cases
+without demonstrating a uniform evaluation speedup. The cause of these remaining
+control differences is not established by the measurements.
+
+Reproduce the focused group with:
+
+```sh
+cargo bench --locked -p wirefilter-engine --bench bench -- \
+  reader_traversal --warm-up-time 1 --measurement-time 3 --sample-size 40
+```
+
+### Validation
+
+The final refactor passes workspace tests, engine tests with all features,
+engine tests without default features (excluding the two existing regex-dependent
+cases listed above), Clippy for all targets/features, rustdoc with warnings denied,
+and formatting/diff checks. The saved parent and final benchmark binaries list
+the same 22 focused cases and pass their benchmark smoke checks. Allocation
+diagnostics were rerun after the final comparison-loop adjustment and produce
+identical counts to those reported above.

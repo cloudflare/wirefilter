@@ -7,20 +7,20 @@ use crate::ExecutionContext;
 use crate::Field;
 use crate::compiler::Compiler;
 use crate::context::{
-    ContextFamily, FieldBindingError, FieldConsumer, FieldGetter, ProviderFamily,
-    StoredContextFamily,
+    ContextFamily, ExecutionContextFamily, FieldBindingError, FieldConsumer, FieldGetter,
+    ProviderFamily,
 };
 use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledValueExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
-use crate::lhs_types::{Array, Map, TypedArray};
-use crate::native::values::{self, FieldValueType, IntoLhsValue, NativePredicate, NativeValue};
+use crate::lhs_types::{Array, TypedArray};
+use crate::native::values::{
+    self, FieldValueType, IntoLhsValue, LhsValueRead, NativePredicate, NativeValue,
+};
 use crate::scheme::{FieldIndex, IndexAccessError};
-use crate::types::{GetType, IntoIter, LhsValue, Type};
+use crate::types::{GetType, LhsValue, Type};
 use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer};
 use std::net::IpAddr;
-
-const BOOL_ARRAY: TypedArray<'_, bool> = TypedArray::new();
 
 /// IndexExpr is an expr that destructures an index into an IdentifierExpr.
 ///
@@ -34,15 +34,6 @@ pub struct IndexExpr {
     pub identifier: IdentifierExpr,
     /// The list of indexes access.
     pub indexes: Box<[FieldIndex]>,
-}
-
-#[allow(clippy::manual_ok_err)]
-#[inline]
-pub fn ok_ref<T, E>(result: &Result<T, E>) -> Option<&T> {
-    match result {
-        Ok(x) => Some(x),
-        Err(_) => None,
-    }
 }
 
 impl ValueExpr for IndexExpr {
@@ -122,9 +113,10 @@ impl ValueExpr for IndexExpr {
                         let return_type = Type::Array(ty.into());
                         CompiledValueExpr::new_with_context(move |ctx| {
                             let ctx = ctx.context();
-                            let mut iter = MapEachIterator::from_indexes(&indexes);
-                            iter.reset(call.execute(ctx).map_err(|_| return_type)?);
-                            Ok(LhsValue::Array(Array::try_from_iter(ty, iter).unwrap()))
+                            let value = call.execute(ctx).map_err(|_| return_type)?;
+                            let mut selected = Vec::new();
+                            value.append_lhs_at(&indexes, &mut selected);
+                            Ok(LhsValue::Array(Array::try_from_vec(ty, selected).unwrap()))
                         })
                     }
                 }
@@ -143,8 +135,18 @@ fn simplify_indexes(indexes: Box<[FieldIndex]>) -> Box<[FieldIndex]> {
     }
 }
 
+fn with_terminal_each(indexes: Box<[FieldIndex]>) -> Vec<FieldIndex> {
+    let mut indexes = indexes.into_vec();
+    if indexes.last() != Some(&FieldIndex::MapEach) {
+        // Boolean-array comparisons can request iteration without an explicit
+        // [*] in the parsed expression. Other field paths already contain it.
+        indexes.push(FieldIndex::MapEach);
+    }
+    indexes
+}
+
 /// Interface used to implement comparison against a value.
-pub trait Compare<U: 'static, F: ContextFamily<UserData = U> = StoredContextFamily<U>>:
+pub trait Compare<U: 'static, F: ContextFamily<UserData = U> = ExecutionContextFamily<U>>:
     Send + Sync + 'static
 {
     /// Returns true if the value matches the comparison.
@@ -191,7 +193,7 @@ fn required<T>(value: Option<T>, field: &Field) -> Option<T> {
     value
 }
 
-fn check_native_field<S: FieldValueType>(field: &Field) -> Result<(), FieldBindingError> {
+fn check_field_type<S: FieldValueType>(field: &Field) -> Result<(), FieldBindingError> {
     let expected = field.get_type();
     if let Some(actual) = S::STATIC_TYPE
         && actual != expected
@@ -210,7 +212,7 @@ struct MaterializationCost;
 impl<F: ContextFamily> FieldConsumer<F> for MaterializationCost {
     type Output = bool;
 
-    fn native<G: FieldGetter<F>>(self, field: Field, _: G) -> Result<bool, FieldBindingError> {
+    fn consume<G: FieldGetter<F>>(self, field: Field, _: G) -> Result<bool, FieldBindingError> {
         // Stored values also use this interface, but borrowing their containers
         // must not introduce the memoization allocation for native conversion.
         Ok(<<G::Provider as ProviderFamily>::Value<'static, 'static> as IntoLhsValue<
@@ -229,12 +231,12 @@ struct ValueConsumer {
 impl<F: ContextFamily> FieldConsumer<F> for ValueConsumer {
     type Output = CompiledValueExpr<F::UserData, F>;
 
-    fn native<G: FieldGetter<F>>(
+    fn consume<G: FieldGetter<F>>(
         self,
         field: Field,
         getter: G,
     ) -> Result<Self::Output, FieldBindingError> {
-        check_native_field::<<G::Provider as ProviderFamily>::ValueType>(&field)?;
+        check_field_type::<<G::Provider as ProviderFamily>::ValueType>(&field)?;
         let Self {
             indexes,
             ty,
@@ -243,23 +245,17 @@ impl<F: ContextFamily> FieldConsumer<F> for ValueConsumer {
         Ok(match (flatten, indexes.is_empty()) {
             (false, true) => CompiledValueExpr::new_with_context(move |ctx| {
                 let ctx = ctx.context();
-                materialize_native_root(getter.get(ctx, &field), &field, ty)
+                read_field_root(getter.get(ctx, &field), &field, ty)
             }),
             (false, false) => CompiledValueExpr::new_with_context(move |ctx| {
                 let ctx = ctx.context();
-                materialize_native_selection(getter.get(ctx, &field), &field, &indexes, ty)
+                read_field_selection(getter.get(ctx, &field), &field, &indexes, ty)
             }),
             (true, _) => {
                 let return_type = Type::Array(ty.into());
                 CompiledValueExpr::new_with_context(move |ctx| {
                     let ctx = ctx.context();
-                    materialize_native_map_each(
-                        getter.get(ctx, &field),
-                        &field,
-                        &indexes,
-                        ty,
-                        return_type,
-                    )
+                    read_field_each(getter.get(ctx, &field), &field, &indexes, ty, return_type)
                 })
             }
         })
@@ -275,13 +271,10 @@ struct OneComparisonConsumer<P> {
     comp: P,
 }
 
-struct VecComparisonConsumer<P> {
-    indexes: Box<[FieldIndex]>,
-    comp: P,
-}
-
-struct IterComparisonConsumer<P> {
-    indexes: Box<[FieldIndex]>,
+// FLAT keeps a single trailing iteration implicit in collection fallbacks.
+// It is selected during compilation, not stored in the evaluation closure.
+struct ArrayComparisonConsumer<P, const FLAT: bool> {
+    indexes: Vec<FieldIndex>,
     comp: P,
 }
 
@@ -320,7 +313,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> NativePredicate
 }
 
 // Share type validation and path-type calculation across getter types.
-fn native_input_type(field: &Field, depth: usize) -> Type {
+fn comparison_input_type(field: &Field, depth: usize) -> Type {
     let mut input_type = field.get_type();
     for _ in 0..depth {
         input_type = input_type
@@ -331,28 +324,23 @@ fn native_input_type(field: &Field, depth: usize) -> Type {
 }
 
 // Prepare paths independently of getter types.
-enum PreparedNativePath<S: FieldValueType> {
-    Native(S::Path),
+enum PreparedFieldPath<S: FieldValueType> {
+    Reader(S::Path),
     Collection(Box<[FieldIndex]>),
 }
 
-fn prepare_native_path<S: FieldValueType>(
+fn prepare_field_path<S: FieldValueType>(
     field: &Field,
-    indexes: Box<[FieldIndex]>,
-    add_map_each: bool,
-) -> Result<PreparedNativePath<S>, FieldBindingError> {
-    check_native_field::<S>(field)?;
-    let input_type = native_input_type(field, indexes.len() + usize::from(add_map_each));
+    indexes: Vec<FieldIndex>,
+) -> Result<PreparedFieldPath<S>, FieldBindingError> {
+    check_field_type::<S>(field)?;
+    let input_type = comparison_input_type(field, indexes.len());
     if needs_collection_conversion::<S>() && matches!(input_type, Type::Array(_) | Type::Map(_)) {
-        return Ok(PreparedNativePath::Collection(indexes));
-    }
-    let mut indexes = indexes.into_vec();
-    if add_map_each {
-        indexes.push(FieldIndex::MapEach);
+        return Ok(PreparedFieldPath::Collection(indexes.into_boxed_slice()));
     }
     let path = S::compile_field_path(field.get_type(), indexes, input_type)
         .map_err(|error| FieldBindingError::Unsupported(error.0))?;
-    Ok(PreparedNativePath::Native(path))
+    Ok(PreparedFieldPath::Reader(path))
 }
 
 // Preserve the constant guards that prevent scalar providers from instantiating
@@ -363,13 +351,13 @@ const fn needs_collection_conversion<S: FieldValueType>() -> bool {
         && matches!(S::STATIC_TYPE, None | Some(Type::Array(_) | Type::Map(_)))
 }
 
-// Keep the execute_native_* helpers separate from getter-specific closures.
+// Keep the execute_* helpers separate from getter-specific closures.
 // Execution depends on the context family, produced value type and comparator,
 // not the getter type, so fields with the same types can share execution code
 // while their closures retain concrete getter calls. Moving these bodies into
 // the closures substantially increased release-build compiler memory and code
 // size. Leave inlining decisions to the compiler.
-fn execute_native_one<F, V, P>(
+fn execute_one<F, V, P>(
     ctx: &F::Context<'_>,
     field: &Field,
     value: Option<V>,
@@ -389,7 +377,7 @@ where
     values::compare_one(&value, path, &predicate).unwrap_or(default)
 }
 
-fn execute_native_vec<F, V, P>(
+fn execute_vec<F, V, P>(
     ctx: &F::Context<'_>,
     field: &Field,
     value: Option<V>,
@@ -409,7 +397,7 @@ where
     output
 }
 
-fn execute_native_collection_one<'ctx, 'data: 'ctx, F, V, P>(
+fn execute_collection_one<'ctx, 'data: 'ctx, F, V, P>(
     ctx: &'ctx F::Context<'data>,
     field: &Field,
     value: Option<V>,
@@ -422,55 +410,40 @@ where
     V: IntoLhsValue<'ctx>,
     P: Compare<F::UserData, F>,
 {
-    required(value, field)
-        .map(IntoLhsValue::into_lhs)
-        .as_ref()
-        .and_then(|value| value.get_nested(indexes))
-        .map_or(default, |value| comp.compare(value, ctx))
-}
-
-fn execute_native_collection_vec<'ctx, 'data: 'ctx, F, V, P>(
-    ctx: &'ctx F::Context<'data>,
-    field: &Field,
-    value: Option<V>,
-    indexes: &[FieldIndex],
-    comp: &P,
-) -> TypedArray<'static, bool>
-where
-    F: ContextFamily,
-    V: IntoLhsValue<'ctx>,
-    P: Compare<F::UserData, F>,
-{
-    let value = required(value, field).map(IntoLhsValue::into_lhs);
-    value
-        .as_ref()
-        .and_then(|value| value.get_nested(indexes))
-        .map_or(BOOL_ARRAY, |value| {
-            TypedArray::from_iter(value.iter().unwrap().map(|item| comp.compare(item, ctx)))
-        })
-}
-
-fn execute_native_collection_iter<'ctx, 'data: 'ctx, F, V, P>(
-    ctx: &'ctx F::Context<'data>,
-    field: &Field,
-    value: Option<V>,
-    indexes: &[FieldIndex],
-    comp: &P,
-) -> TypedArray<'static, bool>
-where
-    F: ContextFamily,
-    V: IntoLhsValue<'ctx>,
-    P: Compare<F::UserData, F>,
-{
     let Some(value) = required(value, field) else {
-        return TypedArray::default();
+        return default;
     };
-    let mut iter = MapEachIterator::from_indexes(indexes);
-    iter.reset(value.into_lhs());
-    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+    let value = value.into_lhs();
+    let predicate = ContextComparison::<F, _> { comp, ctx };
+    LhsValueRead::compare_one(&value, indexes, &predicate).unwrap_or(default)
 }
 
-fn materialize_native_root<'ctx, V: IntoLhsValue<'ctx>>(
+fn execute_collection_vec<'ctx, 'data: 'ctx, F, V, P, const FLAT: bool>(
+    ctx: &'ctx F::Context<'data>,
+    field: &Field,
+    value: Option<V>,
+    indexes: &[FieldIndex],
+    comp: &P,
+) -> TypedArray<'static, bool>
+where
+    F: ContextFamily,
+    V: IntoLhsValue<'ctx>,
+    P: Compare<F::UserData, F>,
+{
+    let mut output = TypedArray::new();
+    if let Some(value) = required(value, field) {
+        let value = value.into_lhs();
+        let predicate = ContextComparison::<F, _> { comp, ctx };
+        if FLAT {
+            LhsValueRead::compare_items(&value, indexes, &predicate, &mut output);
+        } else {
+            LhsValueRead::compare_vec(&value, indexes, &predicate, &mut output);
+        }
+    }
+    output
+}
+
+fn read_field_root<'ctx, V: IntoLhsValue<'ctx>>(
     value: Option<V>,
     field: &Field,
     ty: Type,
@@ -478,7 +451,7 @@ fn materialize_native_root<'ctx, V: IntoLhsValue<'ctx>>(
     required(value, field).map(IntoLhsValue::into_lhs).ok_or(ty)
 }
 
-fn materialize_native_selection<'ctx, V: IntoLhsValue<'ctx>>(
+fn read_field_selection<'ctx, V: IntoLhsValue<'ctx>>(
     value: Option<V>,
     field: &Field,
     indexes: &[FieldIndex],
@@ -489,7 +462,7 @@ fn materialize_native_selection<'ctx, V: IntoLhsValue<'ctx>>(
         .ok_or(ty)
 }
 
-fn materialize_native_map_each<'ctx, V: IntoLhsValue<'ctx>>(
+fn read_field_each<'ctx, V: IntoLhsValue<'ctx>>(
     value: Option<V>,
     field: &Field,
     indexes: &[FieldIndex],
@@ -504,8 +477,8 @@ fn materialize_native_map_each<'ctx, V: IntoLhsValue<'ctx>>(
     Ok(LhsValue::Array(Array::try_from_vec(ty, values).unwrap()))
 }
 
-// Both vector consumers construct the same small native execution closure.
-fn compile_native_vec<F, G, P>(
+// Field array comparisons share this getter-specific execution closure.
+fn compile_field_vec<F, G, P>(
     field: Field,
     getter: G,
     path: <<G::Provider as ProviderFamily>::ValueType as FieldValueType>::Path,
@@ -517,14 +490,14 @@ where
     P: Compare<F::UserData, F>,
 {
     CompiledVecExpr::new(move |ctx| {
-        execute_native_vec::<F, _, P>(ctx, &field, getter.get(ctx, &field), &path, &comp)
+        execute_vec::<F, _, P>(ctx, &field, getter.get(ctx, &field), &path, &comp)
     })
 }
 
 impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneComparisonConsumer<P> {
     type Output = CompiledOneExpr<F::UserData, F>;
 
-    fn native<G: FieldGetter<F>>(
+    fn consume<G: FieldGetter<F>>(
         self,
         field: Field,
         getter: G,
@@ -534,26 +507,20 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
             default,
             comp,
         } = self;
-        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
-            &field, indexes, false,
+        let prepared = prepare_field_path::<<G::Provider as ProviderFamily>::ValueType>(
+            &field,
+            indexes.into_vec(),
         )?;
         match prepared {
-            PreparedNativePath::Native(path) => Ok(CompiledOneExpr::new(move |ctx| {
-                execute_native_one::<F, _, P>(
-                    ctx,
-                    &field,
-                    getter.get(ctx, &field),
-                    &path,
-                    &comp,
-                    default,
-                )
+            PreparedFieldPath::Reader(path) => Ok(CompiledOneExpr::new(move |ctx| {
+                execute_one::<F, _, P>(ctx, &field, getter.get(ctx, &field), &path, &comp, default)
             })),
-            PreparedNativePath::Collection(indexes) => {
+            PreparedFieldPath::Collection(indexes) => {
                 // Retain the constant root-type guard so scalar providers do not
                 // instantiate collection conversion closures behind this boundary.
                 if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
                     Ok(CompiledOneExpr::new(move |ctx| {
-                        execute_native_collection_one::<F, _, P>(
+                        execute_collection_one::<F, _, P>(
                             ctx,
                             &field,
                             getter.get(ctx, &field),
@@ -570,65 +537,34 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for OneCompa
     }
 }
 
-impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for VecComparisonConsumer<P> {
+impl<F: ContextFamily, P: Compare<F::UserData, F>, const FLAT: bool> FieldConsumer<F>
+    for ArrayComparisonConsumer<P, FLAT>
+{
     type Output = CompiledVecExpr<F::UserData, F>;
 
-    fn native<G: FieldGetter<F>>(
+    fn consume<G: FieldGetter<F>>(
         self,
         field: Field,
         getter: G,
     ) -> Result<Self::Output, FieldBindingError> {
         let Self { indexes, comp } = self;
-        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
-            &field, indexes, true,
-        )?;
+        let prepared =
+            prepare_field_path::<<G::Provider as ProviderFamily>::ValueType>(&field, indexes)?;
         match prepared {
-            PreparedNativePath::Native(path) => {
-                Ok(compile_native_vec::<F, G, P>(field, getter, path, comp))
+            PreparedFieldPath::Reader(path) => {
+                Ok(compile_field_vec::<F, G, P>(field, getter, path, comp))
             }
-            PreparedNativePath::Collection(indexes) => {
-                // Retain the constant root-type guard so scalar providers do not
-                // instantiate collection conversion closures behind this boundary.
+            PreparedFieldPath::Collection(indexes) => {
+                // Retain the constant guard to avoid instantiating conversion
+                // helpers for readers that never need collection conversion.
                 if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
+                    let indexes = if FLAT {
+                        simplify_indexes(indexes)
+                    } else {
+                        indexes
+                    };
                     Ok(CompiledVecExpr::new(move |ctx| {
-                        execute_native_collection_vec::<F, _, P>(
-                            ctx,
-                            &field,
-                            getter.get(ctx, &field),
-                            &indexes,
-                            &comp,
-                        )
-                    }))
-                } else {
-                    unreachable!("provider does not require collection conversion")
-                }
-            }
-        }
-    }
-}
-
-impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComparisonConsumer<P> {
-    type Output = CompiledVecExpr<F::UserData, F>;
-
-    fn native<G: FieldGetter<F>>(
-        self,
-        field: Field,
-        getter: G,
-    ) -> Result<Self::Output, FieldBindingError> {
-        let Self { indexes, comp } = self;
-        let prepared = prepare_native_path::<<G::Provider as ProviderFamily>::ValueType>(
-            &field, indexes, false,
-        )?;
-        match prepared {
-            PreparedNativePath::Native(path) => {
-                Ok(compile_native_vec::<F, G, P>(field, getter, path, comp))
-            }
-            PreparedNativePath::Collection(indexes) => {
-                // Retain the constant root-type guard so scalar providers do not
-                // instantiate collection conversion closures behind this boundary.
-                if needs_collection_conversion::<<G::Provider as ProviderFamily>::ValueType>() {
-                    Ok(CompiledVecExpr::new(move |ctx| {
-                        execute_native_collection_iter::<F, _, P>(
+                        execute_collection_vec::<F, _, P, FLAT>(
                             ctx,
                             &field,
                             getter.get(ctx, &field),
@@ -646,7 +582,7 @@ impl<F: ContextFamily, P: Compare<F::UserData, F>> FieldConsumer<F> for IterComp
 
 impl IndexExpr {
     /// Determine conversion cost while the field's provider type is known.
-    pub(crate) fn materializes_native_collection<C: Compiler>(&self, compiler: &mut C) -> bool {
+    pub(crate) fn materializes_collection<C: Compiler>(&self, compiler: &mut C) -> bool {
         match &self.identifier {
             // Custom by-value descriptors may still convert before indexing.
             // Conservatively memoize collection-backed arguments even when
@@ -686,13 +622,15 @@ impl IndexExpr {
                     })
                 } else {
                     CompiledOneExpr::new(move |ctx| {
-                        ok_ref(&call.execute(ctx))
-                            .and_then(|val| val.get_nested(&indexes))
-                            .map_or(
-                                default,
-                                #[inline]
-                                |val| comp.compare(val, ctx),
-                            )
+                        let Ok(value) = call.execute(ctx) else {
+                            return default;
+                        };
+                        LhsValueRead::compare_one(
+                            &value,
+                            &indexes,
+                            &ContextComparison::<C::Family, _> { comp: &comp, ctx },
+                        )
+                        .unwrap_or(default)
                     })
                 }
             }
@@ -718,27 +656,33 @@ impl IndexExpr {
             identifier,
             indexes,
         } = self;
-        let indexes = simplify_indexes(indexes);
         match identifier {
             IdentifierExpr::FunctionCallExpr(call) => {
+                // The reader can iterate children without retaining a terminal
+                // [*] entry in function-result closures.
+                let indexes = simplify_indexes(indexes);
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    let comp = &comp;
-                    ok_ref(&call.execute(ctx))
-                        .and_then(|val| val.get_nested(&indexes))
-                        .map_or(
-                            BOOL_ARRAY,
-                            #[inline]
-                            |val: &LhsValue<'_>| {
-                                TypedArray::from_iter(
-                                    val.iter().unwrap().map(|item| comp.compare(item, ctx)),
-                                )
-                            },
-                        )
+                    let mut output = TypedArray::new();
+                    if let Ok(value) = call.execute(ctx) {
+                        LhsValueRead::compare_items(
+                            &value,
+                            &indexes,
+                            &ContextComparison::<C::Family, _> { comp: &comp, ctx },
+                            &mut output,
+                        );
+                    }
+                    output
                 })
             }
             IdentifierExpr::Field(field) => compiler
-                .bind_field(field, VecComparisonConsumer { indexes, comp })
+                .bind_field(
+                    field,
+                    ArrayComparisonConsumer::<_, true> {
+                        indexes: with_terminal_each(indexes),
+                        comp,
+                    },
+                )
                 .expect("field binding or native path preparation failed"),
         }
     }
@@ -754,22 +698,27 @@ impl IndexExpr {
         } = self;
         match identifier {
             IdentifierExpr::Field(field) => compiler
-                .bind_field(field, IterComparisonConsumer { indexes, comp })
+                .bind_field(
+                    field,
+                    ArrayComparisonConsumer::<_, false> {
+                        indexes: indexes.into_vec(),
+                        comp,
+                    },
+                )
                 .expect("field binding or native path preparation failed"),
             IdentifierExpr::FunctionCallExpr(call) => {
                 let call = compiler.compile_function_call_expr(call);
                 CompiledVecExpr::new(move |ctx| {
-                    let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-                    match call.execute(ctx) {
-                        Ok(val) => {
-                            iter.reset(val);
-                        }
-                        _ => {
-                            return TypedArray::default();
-                        }
+                    let mut output = TypedArray::new();
+                    if let Ok(value) = call.execute(ctx) {
+                        LhsValueRead::compare_vec(
+                            &value,
+                            &indexes,
+                            &ContextComparison::<C::Family, _> { comp: &comp, ctx },
+                            &mut output,
+                        );
                     }
-
-                    TypedArray::from_iter(iter.map(|item| comp.compare(&item, ctx)))
+                    output
                 })
             }
         }
@@ -940,104 +889,12 @@ impl Serialize for IndexExpr {
     }
 }
 
-enum FieldIndexIterator<'a, 'b> {
-    ArrayIndex(Option<(Array<'a>, u32)>),
-    MapKey(Option<(Map<'a>, &'b [u8])>),
-    MapEach(IntoIter<'a>),
-}
-
-impl<'a, 'b> FieldIndexIterator<'a, 'b> {
-    fn new(val: LhsValue<'a>, idx: &'b FieldIndex) -> Result<Self, IndexAccessError> {
-        match idx {
-            FieldIndex::ArrayIndex(idx) => match val {
-                LhsValue::Array(arr) => Ok(Self::ArrayIndex(Some((arr, *idx)))),
-                _ => Err(IndexAccessError {
-                    index: FieldIndex::ArrayIndex(*idx),
-                    actual: val.get_type(),
-                }),
-            },
-            FieldIndex::MapKey(key) => match val {
-                LhsValue::Map(map) => Ok(Self::MapKey(Some((map, key.as_bytes())))),
-                _ => Err(IndexAccessError {
-                    index: FieldIndex::MapKey(key.clone()),
-                    actual: val.get_type(),
-                }),
-            },
-            FieldIndex::MapEach => match val {
-                LhsValue::Array(_) | LhsValue::Map(_) => Ok(Self::MapEach(val.into_iter())),
-                _ => Err(IndexAccessError {
-                    index: FieldIndex::MapEach,
-                    actual: val.get_type(),
-                }),
-            },
-        }
-    }
-}
-
-impl<'a> Iterator for FieldIndexIterator<'a, '_> {
-    type Item = LhsValue<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::ArrayIndex(opt) => opt.take().and_then(|(arr, idx)| arr.extract(idx as usize)),
-            Self::MapKey(opt) => opt.take().and_then(|(map, key)| map.extract(key)),
-            Self::MapEach(iter) => iter.next(),
-        }
-    }
-}
-
-struct MapEachIterator<'a, 'b> {
-    indexes: &'b [FieldIndex],
-    stack: Vec<FieldIndexIterator<'a, 'b>>,
-}
-
-impl<'a, 'b> MapEachIterator<'a, 'b> {
-    fn from_indexes(indexes: &'b [FieldIndex]) -> Self {
-        Self {
-            indexes,
-            stack: Vec::with_capacity(indexes.len()),
-        }
-    }
-
-    fn reset(&mut self, val: LhsValue<'a>) {
-        self.stack.clear();
-        let first = self.indexes.first().unwrap();
-        self.stack
-            .push(FieldIndexIterator::new(val, first).unwrap());
-    }
-}
-
-impl<'a> Iterator for MapEachIterator<'a, '_> {
-    type Item = LhsValue<'a>;
-
-    fn next(&mut self) -> Option<LhsValue<'a>> {
-        while !self.stack.is_empty() {
-            assert!(self.stack.len() <= self.indexes.len());
-            if let Some(nxt) = self.stack.last_mut().unwrap().next() {
-                // Check that current iterator is a leaf iterator
-                if self.stack.len() == self.indexes.len() {
-                    // Return a value if a leaf iterator returned a value
-                    return Some(nxt);
-                } else {
-                    self.stack.push(
-                        FieldIndexIterator::new(nxt, &self.indexes[self.stack.len()]).unwrap(),
-                    );
-                }
-            } else {
-                // Last iterator is finished, remove it
-                self.stack.pop();
-            }
-        }
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ast::field_expr::IdentifierExpr;
     use crate::{
-        Array, FieldIndex, FilterParser, FunctionArgs, FunctionCallArgExpr, FunctionCallExpr,
+        Array, FieldIndex, FilterParser, FunctionArgs, FunctionCallArgExpr, FunctionCallExpr, Map,
         Scheme, SchemeBuilder, SimpleFunctionArgKind, SimpleFunctionDefinition, SimpleFunctionImpl,
         SimpleFunctionParam,
     };
@@ -1534,10 +1391,9 @@ mod tests {
 
         for i in 0..10 {
             let indexes = [FieldIndex::ArrayIndex(i), FieldIndex::MapEach];
-            let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-
-            iter.reset(arr.clone());
-            for (j, elem) in iter.enumerate() {
+            let mut selected = Vec::new();
+            arr.clone().append_lhs_at(&indexes, &mut selected);
+            for (j, elem) in selected.into_iter().enumerate() {
                 let bytes = match elem {
                     LhsValue::Bytes(bytes) => bytes,
                     _ => unreachable!(),
@@ -1546,10 +1402,9 @@ mod tests {
             }
 
             let indexes = [FieldIndex::MapEach, FieldIndex::ArrayIndex(i)];
-            let mut iter = MapEachIterator::from_indexes(&indexes[..]);
-
-            iter.reset(arr.clone());
-            for (j, elem) in iter.enumerate() {
+            let mut selected = Vec::new();
+            arr.clone().append_lhs_at(&indexes, &mut selected);
+            for (j, elem) in selected.into_iter().enumerate() {
                 let bytes = match elem {
                     LhsValue::Bytes(bytes) => bytes,
                     _ => unreachable!(),
@@ -1559,12 +1414,12 @@ mod tests {
         }
 
         let indexes = [FieldIndex::MapEach, FieldIndex::MapEach];
-        let mut iter = MapEachIterator::from_indexes(&indexes[..]);
+        let mut selected = Vec::new();
+        arr.append_lhs_at(&indexes, &mut selected);
         let mut i = 0;
         let mut j = 0;
 
-        iter.reset(arr.clone());
-        for elem in iter {
+        for elem in selected {
             let bytes = match elem {
                 LhsValue::Bytes(bytes) => bytes,
                 _ => unreachable!(),

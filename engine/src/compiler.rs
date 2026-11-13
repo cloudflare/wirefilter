@@ -1,7 +1,7 @@
 use crate::{
-    ComparisonExpr, CompiledExpr, CompiledValueExpr, ContextFamily, Expr, Field, FieldBindingError,
-    FieldConsumer, FunctionCallArgExpr, FunctionCallExpr, IndexExpr, LogicalExpr,
-    StoredContextFamily, ValueExpr,
+    ComparisonExpr, CompiledExpr, CompiledValueExpr, ContextFamily, ExecutionContextFamily, Expr,
+    Field, FieldBindingError, FieldConsumer, FunctionCallArgExpr, FunctionCallExpr, IndexExpr,
+    LogicalExpr, ValueExpr,
 };
 
 /// Trait used to drive the compilation of a [`crate::FilterAst`] into a [`crate::Filter`].
@@ -80,7 +80,7 @@ pub trait Compiler: Sized {
 }
 
 /// Default compiler
-pub struct DefaultCompiler<U = (), F = StoredContextFamily<U>> {
+pub struct DefaultCompiler<U = (), F = ExecutionContextFamily<U>> {
     _marker: std::marker::PhantomData<fn() -> (U, F)>,
 }
 

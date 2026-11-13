@@ -28,7 +28,7 @@
 //! The default [`ExecutionContext`](crate::ExecutionContext) implements the same
 //! evaluation interfaces and already owns equivalent state alongside its stored
 //! field values. It does not require a separate `NativeContextState`.
-//! Its default [`StoredContextFamily`](crate::StoredContextFamily) binds those
+//! Its default [`ExecutionContextFamily`](crate::ExecutionContextFamily) binds those
 //! fields through [`LhsValueProvider`](crate::LhsValueProvider), using the same
 //! reader interface as other native fields.
 //!
@@ -150,7 +150,7 @@
 //!         field: Field,
 //!         consumer: B,
 //!     ) -> Result<B::Output, FieldBindingError> {
-//!         consumer.native(field, Getter)
+//!         consumer.consume(field, Getter)
 //!     }
 //! }
 //!

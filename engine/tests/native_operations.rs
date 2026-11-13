@@ -125,7 +125,7 @@ fn test_same_provider_and_presence_getters_share_a_type_and_preserve_field_selec
     impl FieldConsumer<BorrowingFields> for ReadConsumer {
         type Output = (TypeId, ReadValue);
 
-        fn native<G: FieldGetter<BorrowingFields>>(
+        fn consume<G: FieldGetter<BorrowingFields>>(
             self,
             field: Field,
             getter: G,
