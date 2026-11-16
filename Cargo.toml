@@ -16,6 +16,7 @@ edition = "2024"
 publish = true
 
 [workspace.dependencies]
+ahash = { version = "0.8.12", default-features = false }
 arcstr = "1.2.0"
 backtrace = "0.3.76"
 cbindgen = "0.29.4"
@@ -27,6 +28,7 @@ erased-serde = "0.4.10"
 fnv = "1.0.7"
 get-size2 = "0.11.0"
 getrandom = "0.4.3"
+indexmap = "2.14.2"
 indoc = "2.0.7"
 js-sys = "0.3.104"
 libc = "0.2.189"

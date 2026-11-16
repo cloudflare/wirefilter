@@ -1188,7 +1188,7 @@ fn test_type_deserialize() {
 
 #[test]
 fn test_size_of_lhs_value() {
-    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 48);
+    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 40);
 }
 
 #[cfg(feature = "get-size2")]
@@ -1247,6 +1247,15 @@ fn test_array_lhs_value_get_size() {
 fn test_map_lhs_value_get_size() {
     let stack_size = std::mem::size_of::<LhsValue<'static>>();
 
+    let empty_map = Map::new(Type::Bytes);
+    let map_allocation_size =
+        std::mem::size_of::<indexmap::IndexMap<Bytes<'_>, LhsValue<'_>, ahash::RandomState>>();
+    assert_eq!(LhsValue::Map(empty_map.as_ref()).get_size(), stack_size);
+    assert_eq!(
+        LhsValue::Map(empty_map).get_size(),
+        stack_size + map_allocation_size
+    );
+
     let owned_map_of_borrowed = Map::try_from_iter(
         Type::Bytes,
         [Ok::<_, TypeMismatchError>((
@@ -1259,10 +1268,8 @@ fn test_map_lhs_value_get_size() {
         LhsValue::Map(owned_map_of_borrowed.as_ref()).get_size(),
         stack_size
     );
-    assert_eq!(
-        LhsValue::Map(owned_map_of_borrowed).get_size(),
-        stack_size + std::mem::size_of::<Bytes<'_>>() + b"key".len() + stack_size
-    );
+    let borrowed_entries_size = LhsValue::Map(owned_map_of_borrowed).get_size();
+    assert!(borrowed_entries_size > stack_size);
 
     let owned_map_of_owned = Map::try_from_iter(
         Type::Bytes,
@@ -1278,6 +1285,6 @@ fn test_map_lhs_value_get_size() {
     );
     assert_eq!(
         LhsValue::Map(owned_map_of_owned).get_size(),
-        stack_size + std::mem::size_of::<Bytes<'_>>() + b"key".len() + stack_size + b"owned".len()
+        borrowed_entries_size + b"key".len() + b"owned".len()
     );
 }

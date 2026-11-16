@@ -3,20 +3,22 @@ use super::array::InnerArray;
 use crate::TypeMismatchError;
 use crate::lhs_types::{AsRefIterator, Bytes};
 use crate::types::{CompoundType, GetType, IntoValue, LhsValue, LhsValueSeed, Type};
+use ahash::RandomState;
 #[cfg(feature = "get-size2")]
 use get_size2::{GetSize, GetSizeTracker};
+use indexmap::IndexMap;
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
-use std::collections::BTreeMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-type MapData<'a> = BTreeMap<Bytes<'a>, LhsValue<'a>>;
+type MapData<'a> = IndexMap<Bytes<'a>, LhsValue<'a>, RandomState>;
 
 #[derive(Debug, Clone)]
 pub(crate) enum InnerMap<'a> {
-    Owned(MapData<'a>),
+    // Boxing avoids increasing the size of every LhsValue.
+    Owned(Box<MapData<'a>>),
     Borrowed(&'a MapData<'a>),
 }
 
@@ -32,17 +34,17 @@ impl GetSize for InnerMap<'_> {
 
 impl<'a> InnerMap<'a> {
     #[inline]
-    const fn new() -> Self {
-        Self::Owned(BTreeMap::new())
+    fn new() -> Self {
+        Self::Owned(Box::default())
     }
 
     fn to_mut(&mut self) -> &mut MapData<'a> {
         if let Self::Borrowed(map) = self {
-            *self = Self::Owned(
+            *self = Self::Owned(Box::new(
                 map.iter()
                     .map(|(key, value)| (Bytes::Borrowed(key), value.as_ref()))
                     .collect(),
-            );
+            ));
         }
         match self {
             Self::Owned(map) => map,
@@ -92,14 +94,19 @@ impl Default for InnerMap<'_> {
 impl Hash for InnerMap<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::Owned(map) => map.hash(state),
-            Self::Borrowed(map) => map.hash(state),
+        // Equality ignores insertion order, so combine entry hashes commutatively.
+        // Fixed seeds make this independent of each map's lookup hasher.
+        let entry_hasher = RandomState::with_seeds(0, 0, 0, 0);
+        let mut entries_hash = 0_u64;
+        for entry in self.iter() {
+            entries_hash = entries_hash.wrapping_add(entry_hasher.hash_one(entry));
         }
+        self.len().hash(state);
+        entries_hash.hash(state);
     }
 }
 
-/// A map of string to [`Type`].
+/// A map of string to [`Type`] that preserves insertion order.
 #[derive(Debug, Clone)]
 pub struct Map<'a> {
     val_type: CompoundType,
@@ -118,7 +125,7 @@ impl<'a> Map<'a> {
     pub fn new(val_type: impl Into<CompoundType>) -> Self {
         Self {
             val_type: val_type.into(),
-            data: InnerMap::Owned(BTreeMap::new()),
+            data: InnerMap::new(),
         }
     }
 
@@ -142,16 +149,17 @@ impl<'a> Map<'a> {
         Map {
             val_type: self.val_type,
             data: match self.data {
-                InnerMap::Owned(map) => InnerMap::Owned(
-                    map.into_iter()
+                InnerMap::Owned(map) => InnerMap::Owned(Box::new(
+                    (*map)
+                        .into_iter()
                         .map(|(key, val)| (key.into_owned().into(), val.into_owned()))
                         .collect(),
-                ),
-                InnerMap::Borrowed(map) => InnerMap::Owned(
+                )),
+                InnerMap::Borrowed(map) => InnerMap::Owned(Box::new(
                     map.iter()
                         .map(|(key, value)| (key.to_owned(), value.as_ref().into_owned()))
                         .collect(),
-                ),
+                )),
             },
         }
     }
@@ -178,7 +186,7 @@ impl<'a> Map<'a> {
     pub fn into_values(self) -> MapValuesIntoIter<'a> {
         let Map { data, .. } = self;
         match data {
-            InnerMap::Owned(map) => MapValuesIntoIter::Owned(map.into_iter()),
+            InnerMap::Owned(map) => MapValuesIntoIter::Owned((*map).into_iter()),
             InnerMap::Borrowed(map) => {
                 MapValuesIntoIter::Borrowed(AsRefIterator::new(map.values()))
             }
@@ -188,12 +196,12 @@ impl<'a> Map<'a> {
     pub(crate) fn extract(self, key: &[u8]) -> Option<LhsValue<'a>> {
         let Self { data, .. } = self;
         match data {
-            InnerMap::Owned(mut map) => map.remove(key),
+            InnerMap::Owned(mut map) => map.shift_remove(key),
             InnerMap::Borrowed(map) => map.get(key).map(LhsValue::as_ref),
         }
     }
 
-    /// Creates an iterator visiting all key-value pairs in arbitrary order.
+    /// Creates an iterator visiting all key-value pairs in insertion order.
     #[inline]
     pub fn iter(&self) -> MapIter<'a, '_> {
         self.data.iter()
@@ -223,7 +231,7 @@ impl<'a> Map<'a> {
             .collect::<Result<MapData<'_>, _>>()
             .map(|map| Map {
                 val_type,
-                data: InnerMap::Owned(map),
+                data: InnerMap::Owned(Box::new(map)),
             })
     }
 }
@@ -266,7 +274,7 @@ impl Hash for Map<'_> {
 }
 
 /// An iterator over the entries of a Map.
-pub struct MapIter<'a, 'b>(std::collections::btree_map::Iter<'b, Bytes<'a>, LhsValue<'a>>);
+pub struct MapIter<'a, 'b>(indexmap::map::Iter<'b, Bytes<'a>, LhsValue<'a>>);
 
 impl<'a, 'b> Iterator for MapIter<'a, 'b> {
     type Item = (&'b [u8], &'b LhsValue<'a>);
@@ -290,8 +298,8 @@ impl ExactSizeIterator for MapIter<'_, '_> {
 }
 
 pub enum MapValuesIntoIter<'a> {
-    Owned(std::collections::btree_map::IntoIter<Bytes<'a>, LhsValue<'a>>),
-    Borrowed(AsRefIterator<'a, std::collections::btree_map::Values<'a, Bytes<'a>, LhsValue<'a>>>),
+    Owned(indexmap::map::IntoIter<Bytes<'a>, LhsValue<'a>>),
+    Borrowed(AsRefIterator<'a, indexmap::map::Values<'a, Bytes<'a>, LhsValue<'a>>>),
 }
 
 impl<'a> Iterator for MapValuesIntoIter<'a> {
@@ -322,10 +330,11 @@ impl ExactSizeIterator for MapValuesIntoIter<'_> {
 }
 
 enum MapIntoIterImpl<'a> {
-    Owned(std::collections::btree_map::IntoIter<Bytes<'a>, LhsValue<'a>>),
-    Borrowed(std::collections::btree_map::Iter<'a, Bytes<'a>, LhsValue<'a>>),
+    Owned(indexmap::map::IntoIter<Bytes<'a>, LhsValue<'a>>),
+    Borrowed(indexmap::map::Iter<'a, Bytes<'a>, LhsValue<'a>>),
 }
 
+/// An iterator yielding map entries in insertion order, preserving key ownership.
 pub struct MapIntoIter<'a>(MapIntoIterImpl<'a>);
 
 impl<'a> Iterator for MapIntoIter<'a> {
@@ -347,7 +356,7 @@ impl<'a> IntoIterator for Map<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         match self.data {
-            InnerMap::Owned(map) => MapIntoIter(MapIntoIterImpl::Owned(map.into_iter())),
+            InnerMap::Owned(map) => MapIntoIter(MapIntoIterImpl::Owned((*map).into_iter())),
             InnerMap::Borrowed(map) => MapIntoIter(MapIntoIterImpl::Borrowed(map.iter())),
         }
     }
@@ -380,18 +389,9 @@ impl Serialize for Map<'_> {
             }
             map.end()
         } else {
-            // Keys have to be sorted in order to have reproducible output
-            let mut keys = Vec::new();
-            for (key, _) in self.data.iter() {
-                keys.push(key)
-            }
-            keys.sort();
             let mut seq = serializer.serialize_seq(Some(self.len()))?;
-            for key in keys {
-                seq.serialize_element(&[
-                    &LhsValue::Bytes(key.into()),
-                    self.data.get(key).unwrap(),
-                ])?;
+            for (key, value) in self.data.iter() {
+                seq.serialize_element(&[&LhsValue::Bytes(key.into()), value])?;
             }
             seq.end()
         }
@@ -506,18 +506,16 @@ where
     V: IntoValue<'a>,
 {
     map: InnerMap<'a>,
-    _marker: std::marker::PhantomData<BTreeMap<Bytes<'a>, V>>,
+    _marker: std::marker::PhantomData<IndexMap<Bytes<'a>, V, RandomState>>,
 }
 
 impl<'a, V: IntoValue<'a>> TypedMap<'a, V> {
     /// Creates a new empty typed map.
     #[inline]
-    pub const fn new() -> Self {
-        const {
-            Self {
-                map: InnerMap::Owned(BTreeMap::new()),
-                _marker: std::marker::PhantomData,
-            }
+    pub fn new() -> Self {
+        Self {
+            map: InnerMap::new(),
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -618,7 +616,9 @@ impl<'a, V: IntoValue<'a>> FromIterator<(Bytes<'a>, V)> for TypedMap<'a, V> {
         T: IntoIterator<Item = (Bytes<'a>, V)>,
     {
         Self {
-            map: InnerMap::Owned(iter.into_iter().map(|(k, v)| (k, v.into_value())).collect()),
+            map: InnerMap::Owned(Box::new(
+                iter.into_iter().map(|(k, v)| (k, v.into_value())).collect(),
+            )),
             _marker: std::marker::PhantomData,
         }
     }
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_size_of_map() {
-        assert_eq!(std::mem::size_of::<Map<'_>>(), 40);
+        assert_eq!(std::mem::size_of::<Map<'_>>(), 24);
     }
 
     #[test]
@@ -876,7 +876,68 @@ mod tests {
         assert_eq!(map.len(), 2);
         assert_eq!(map.get(b"z"), Some(&LhsValue::Int(3)));
         assert_eq!(map.get(b"a"), Some(&LhsValue::Int(4)));
-        assert_eq!(serde_json::to_string(&map).unwrap(), r#"{"a":4,"z":3}"#);
+        assert_eq!(serde_json::to_string(&map).unwrap(), r#"{"z":3,"a":4}"#);
+    }
+
+    #[test]
+    fn test_iteration_preserves_insertion_order() {
+        let map = Map::try_from_iter(
+            Type::Int,
+            [("z", 1), ("a", 2), ("m", 3), ("z", 4)]
+                .map(|(key, value)| Ok::<_, TypeMismatchError>((key.into(), value))),
+        )
+        .unwrap();
+        let expected_keys = [b"z".as_slice(), b"a", b"m"];
+        for map in [
+            map.clone(),
+            map.as_ref(),
+            map.clone().into_owned(),
+            map.as_ref().into_owned(),
+        ] {
+            assert_eq!(
+                map.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+                expected_keys
+            );
+            assert_eq!(
+                map.clone()
+                    .into_iter()
+                    .map(|(key, _)| key)
+                    .collect::<Vec<_>>(),
+                expected_keys.map(Bytes::Borrowed)
+            );
+            assert_eq!(
+                map.into_values().collect::<Vec<_>>(),
+                [LhsValue::Int(4), LhsValue::Int(2), LhsValue::Int(3)]
+            );
+        }
+    }
+
+    #[test]
+    fn test_deserialize_preserves_insertion_order() {
+        let original = Map::from(TypedMap::from_iter([("z".into(), 1), ("a".into(), 2)]));
+        for json in [r#"{"m":3,"z":4}"#, r#"[["m",3],["z",4]]"#] {
+            let mut map = original.as_ref();
+            map.deserialize(&mut serde_json::Deserializer::from_str(json))
+                .unwrap();
+            assert_eq!(
+                serde_json::to_string(&map).unwrap(),
+                r#"{"z":4,"a":2,"m":3}"#
+            );
+        }
+    }
+
+    #[test]
+    fn test_hash_ignores_insertion_order() {
+        let first = Map::from(TypedMap::from_iter([("z".into(), 1), ("a".into(), 2)]));
+        let second = Map::from(TypedMap::from_iter([("a".into(), 2), ("z".into(), 1)]));
+        assert_eq!(first, second);
+        let hasher = RandomState::default();
+        assert_eq!(hasher.hash_one(&first), hasher.hash_one(&second));
+        assert_eq!(hasher.hash_one(&first), hasher.hash_one(first.as_ref()));
+        assert_eq!(
+            hasher.hash_one(&first),
+            hasher.hash_one(first.as_ref().into_owned())
+        );
     }
 
     #[test]
