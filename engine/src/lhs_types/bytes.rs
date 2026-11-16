@@ -13,6 +13,10 @@ pub enum Bytes<'a> {
     Borrowed(&'a [u8]),
     /// Owned byte string.
     Owned(Box<[u8]>),
+    /// Byte string backed by an existing shared buffer.
+    /// Newly allocated byte strings use [`Self::Owned`].
+    #[cfg(feature = "bytes")]
+    Shared(bytes::Bytes),
 }
 
 #[cfg(feature = "get-size2")]
@@ -20,6 +24,8 @@ impl GetSize for Bytes<'_> {
     fn get_heap_size_with_tracker<T: GetSizeTracker>(&self, tracker: T) -> (usize, T) {
         match self {
             Self::Owned(bytes) => bytes.get_heap_size_with_tracker(tracker),
+            #[cfg(feature = "bytes")]
+            Self::Shared(bytes) => bytes.get_heap_size_with_tracker(tracker),
             Self::Borrowed(_) => (0, tracker),
         }
     }
@@ -32,15 +38,19 @@ impl<'a> Bytes<'a> {
         match self {
             Self::Borrowed(b) => Bytes::Owned(Box::from(*b)),
             Self::Owned(b) => Bytes::Owned(b.clone()),
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => Bytes::Shared(b.clone()),
         }
     }
 
-    /// Converts self into a fully owned byte string.
+    /// Converts borrowed data to owned storage, retaining owned and shared buffers.
     #[inline]
-    pub fn into_owned(self) -> Box<[u8]> {
+    pub fn into_owned(self) -> Bytes<'static> {
         match self {
-            Self::Borrowed(b) => Box::from(b),
-            Self::Owned(b) => b,
+            Self::Borrowed(b) => Bytes::Owned(Box::from(b)),
+            Self::Owned(b) => Bytes::Owned(b),
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => Bytes::Shared(b),
         }
     }
 
@@ -48,12 +58,26 @@ impl<'a> Bytes<'a> {
     /// and returns a mutable reference to the bytes.
     #[inline]
     pub fn to_mut(&mut self) -> &mut [u8] {
-        if let Self::Borrowed(b) = self {
-            *self = Self::Owned(Box::from(*b));
+        if !matches!(self, Self::Owned(_)) {
+            *self = Self::Owned(Box::from(self.as_ref()));
         }
         match self {
             Self::Owned(b) => b,
             Self::Borrowed(_) => unreachable!(),
+            #[cfg(feature = "bytes")]
+            Self::Shared(_) => unreachable!(),
+        }
+    }
+
+    /// Converts this byte string into a mutable vector, reusing its allocation
+    /// when possible. Shared data is copied if its allocation cannot be reused.
+    #[inline]
+    pub fn into_vec(self) -> Vec<u8> {
+        match self {
+            Self::Borrowed(b) => b.to_vec(),
+            Self::Owned(b) => b.into_vec(),
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => b.into(),
         }
     }
 
@@ -69,6 +93,8 @@ impl<'a> Bytes<'a> {
                 vec.truncate(len);
                 *data = Box::from(vec);
             }
+            #[cfg(feature = "bytes")]
+            Self::Shared(data) => data.truncate(len),
         }
     }
 }
@@ -81,6 +107,8 @@ impl Deref for Bytes<'_> {
         match self {
             Self::Borrowed(b) => b,
             Self::Owned(b) => b,
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => b,
         }
     }
 }
@@ -91,6 +119,8 @@ impl AsRef<[u8]> for Bytes<'_> {
         match self {
             Self::Borrowed(b) => b,
             Self::Owned(b) => b,
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => b,
         }
     }
 }
@@ -101,6 +131,8 @@ impl Borrow<[u8]> for Bytes<'_> {
         match self {
             Self::Borrowed(b) => b,
             Self::Owned(b) => b,
+            #[cfg(feature = "bytes")]
+            Self::Shared(b) => b,
         }
     }
 }
@@ -130,6 +162,14 @@ impl From<Vec<u8>> for Bytes<'static> {
     #[inline]
     fn from(value: Vec<u8>) -> Self {
         Bytes::Owned(value.into_boxed_slice())
+    }
+}
+
+#[cfg(feature = "bytes")]
+impl From<bytes::Bytes> for Bytes<'static> {
+    #[inline]
+    fn from(value: bytes::Bytes) -> Self {
+        Bytes::Shared(value)
     }
 }
 
@@ -350,6 +390,156 @@ impl<'de> Deserialize<'de> for Bytes<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "bytes")]
+    use crate::{LhsValue, TypedMap};
+    #[cfg(feature = "bytes")]
+    use std::hash::BuildHasher;
+
+    #[test]
+    fn test_into_owned_storage() {
+        let mut borrowed = b"borrowed".to_vec();
+        let copied: Bytes<'static> = Bytes::Borrowed(&borrowed).into_owned();
+        borrowed[0] = b'X';
+        assert!(matches!(copied, Bytes::Owned(_)));
+        assert_eq!(copied, b"borrowed");
+
+        let owned = Bytes::from(b"owned".to_vec());
+        let ptr = owned.as_ptr();
+        let moved: Bytes<'static> = owned.into_owned();
+        assert!(matches!(moved, Bytes::Owned(_)));
+        assert_eq!(moved.as_ptr(), ptr);
+        assert_eq!(moved, b"owned");
+    }
+
+    #[test]
+    fn test_into_vec_storage() {
+        let mut borrowed = b"borrowed".to_vec();
+        let copied = Bytes::Borrowed(&borrowed).into_vec();
+        borrowed[0] = b'X';
+        assert_eq!(copied, b"borrowed");
+
+        let owned = Bytes::from(b"owned".to_vec());
+        let ptr = owned.as_ptr();
+        let moved = owned.into_vec();
+        assert_eq!(moved.as_ptr(), ptr);
+        assert_eq!(moved, b"owned");
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_clone() {
+        let original = bytes::Bytes::from(b"shared".to_vec());
+        let bytes = Bytes::from(original.clone());
+        let cloned = bytes.clone();
+        let owned: Bytes<'static> = bytes.to_owned();
+        let moved: Bytes<'static> = bytes.into_owned();
+
+        for value in [cloned, owned, moved] {
+            assert!(matches!(value, Bytes::Shared(_)));
+            assert_eq!(value.as_ptr(), original.as_ptr());
+            assert_eq!(value, b"shared");
+        }
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_into_vec() {
+        let unique = bytes::Bytes::from(b"unique".to_vec());
+        let ptr = unique.as_ptr();
+        let moved = Bytes::Shared(unique).into_vec();
+        assert_eq!(moved.as_ptr(), ptr);
+        assert_eq!(moved, b"unique");
+
+        let shared = bytes::Bytes::from(b"shared".to_vec());
+        let mut copied = Bytes::Shared(shared.clone()).into_vec();
+        copied[0] = b'X';
+        assert_eq!(copied, b"Xhared");
+        assert_eq!(shared.as_ref(), b"shared");
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_mutation() {
+        let original = bytes::Bytes::from(b"shared".to_vec());
+        let mut bytes = Bytes::from(original.clone());
+        bytes.to_mut().make_ascii_uppercase();
+
+        assert!(matches!(bytes, Bytes::Owned(_)));
+        assert_eq!(bytes, b"SHARED");
+        assert_eq!(original.as_ref(), b"shared");
+        assert_eq!(bytes.clone().into_owned().as_ref(), b"SHARED");
+        assert_eq!(Bytes::from(original).into_owned().as_ref(), b"shared");
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_truncate() {
+        let original = bytes::Bytes::from(b"shared".to_vec());
+        let mut bytes = Bytes::from(original.clone());
+        bytes.truncate(3);
+        assert!(matches!(bytes, Bytes::Shared(_)));
+        assert_eq!(bytes.as_ptr(), original.as_ptr());
+        assert_eq!(bytes, b"sha");
+        bytes.truncate(6);
+        assert_eq!(bytes, b"sha");
+        bytes.truncate(0);
+        assert!(bytes.is_empty());
+        assert_eq!(original.as_ref(), b"shared");
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_traits() {
+        let hasher = std::collections::hash_map::RandomState::new();
+        for slice in [b"shared".as_slice(), b"\x00\xff"] {
+            let bytes = Bytes::from(bytes::Bytes::copy_from_slice(slice));
+            assert_eq!(bytes.deref(), slice);
+            assert_eq!(bytes.as_ref(), slice);
+            assert_eq!(Borrow::<[u8]>::borrow(&bytes), slice);
+            assert_eq!(bytes, Bytes::Borrowed(slice));
+            assert_eq!(hasher.hash_one(&bytes), hasher.hash_one(slice));
+            let json = serde_json::to_string(&bytes).unwrap();
+            assert_eq!(
+                json,
+                serde_json::to_string(&Bytes::Borrowed(slice)).unwrap()
+            );
+            assert_eq!(serde_json::from_str::<Bytes<'_>>(&json).unwrap(), bytes);
+        }
+    }
+
+    #[cfg(feature = "bytes")]
+    #[test]
+    fn test_shared_bytes_into_owned_value() {
+        let original = bytes::Bytes::from(b"shared".to_vec());
+        let value: LhsValue<'_> = original.clone().into();
+        let LhsValue::Bytes(Bytes::Shared(bytes)) = value.into_owned() else {
+            panic!("shared value changed storage");
+        };
+        assert_eq!(bytes.as_ptr(), original.as_ptr());
+
+        let map = TypedMap::from_iter([(original.clone().into(), original.clone())]);
+        let value: LhsValue<'_> = map.into();
+        let LhsValue::Map(map) = value.into_owned() else {
+            panic!("expected a map");
+        };
+        let (Bytes::Shared(key), LhsValue::Bytes(Bytes::Shared(value))) =
+            map.into_iter().next().unwrap()
+        else {
+            panic!("shared map entry changed storage");
+        };
+        assert_eq!(key.as_ptr(), original.as_ptr());
+        assert_eq!(value.as_ptr(), original.as_ptr());
+    }
+
+    #[cfg(all(feature = "bytes", feature = "get-size2"))]
+    #[test]
+    fn test_shared_bytes_get_size() {
+        let bytes = Bytes::from(bytes::Bytes::from(b"shared".to_vec()));
+        assert_eq!(
+            bytes.get_size(),
+            std::mem::size_of_val(&bytes) + bytes.len()
+        );
+    }
 
     #[test]
     fn test_bytes_deserialize() {
