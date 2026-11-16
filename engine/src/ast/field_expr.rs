@@ -8,7 +8,7 @@ use crate::filter::{CompiledExpr, CompiledOneExpr, CompiledVecExpr};
 use crate::lex::{Lex, LexErrorKind, LexResult, LexWith, expect, skip_space, span};
 use crate::lhs_types::TypedArray;
 use crate::range_set::RangeSet;
-use crate::rhs_types::{BytesExpr, ExplicitIpRange, ListName, Regex, Wildcard};
+use crate::rhs_types::{BytesExpr, CompiledWildcard, ExplicitIpRange, ListName, Regex, Wildcard};
 use crate::scheme::{Field, Identifier, List};
 use crate::searcher::{EmptySearcher, MemmemSearcher};
 use crate::strict_partial_ord::StrictPartialOrd;
@@ -710,6 +710,13 @@ macro_rules! cast_value {
     };
 }
 
+impl<U> Compare<U> for CompiledWildcard {
+    #[inline]
+    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+        self.is_match(cast_value!(value, Bytes))
+    }
+}
+
 impl<const STRICT: bool, U> Compare<U> for Wildcard<STRICT> {
     #[inline]
     fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
@@ -869,7 +876,7 @@ impl Expr for ComparisonExpr {
                     ($op:tt, $def:ident) => {
                         match rhs {
                             LiteralValue::Bytes(bytes) => {
-                                struct BytesOp(BytesExpr);
+                                struct BytesOp(Box<[u8]>);
 
                                 impl<U> Compare<U> for BytesOp {
                                     #[inline]
@@ -878,7 +885,7 @@ impl Expr for ComparisonExpr {
                                     }
                                 }
 
-                                lhs.compile_with(compiler, $def, BytesOp(bytes))
+                                lhs.compile_with(compiler, $def, BytesOp(bytes.into()))
                             }
                             LiteralValue::Int(int) => {
                                 struct IntOp(i64);
@@ -1099,10 +1106,14 @@ impl Expr for ComparisonExpr {
 
                 search!(MemmemSearcher::new(bytes))
             }
-            ComparisonOpExpr::Matches(regex) => lhs.compile_with(compiler, false, regex),
-            ComparisonOpExpr::Wildcard(wildcard) => lhs.compile_with(compiler, false, wildcard),
+            ComparisonOpExpr::Matches(regex) => {
+                lhs.compile_with(compiler, false, regex.into_compiled())
+            }
+            ComparisonOpExpr::Wildcard(wildcard) => {
+                lhs.compile_with(compiler, false, wildcard.into_compiled())
+            }
             ComparisonOpExpr::StrictWildcard(wildcard) => {
-                lhs.compile_with(compiler, false, wildcard)
+                lhs.compile_with(compiler, false, wildcard.into_compiled())
             }
             ComparisonOpExpr::OneOf(values) => match values {
                 LiteralSet::Ip(ranges) => {
@@ -4195,14 +4206,17 @@ mod tests {
             }
         );
 
-        let expr = expr.compile();
-        let ctx = &mut ExecutionContext::new(&SCHEME);
+        #[cfg(feature = "regex")]
+        {
+            let expr = expr.compile();
+            let ctx = &mut ExecutionContext::new(&SCHEME);
 
-        ctx.set_field_value(field("http.host"), "axb").unwrap();
-        assert_eq!(expr.execute_one(ctx), true);
+            ctx.set_field_value(field("http.host"), "axb").unwrap();
+            assert_eq!(expr.execute_one(ctx), true);
 
-        ctx.set_field_value(field("http.host"), "axc").unwrap();
-        assert_eq!(expr.execute_one(ctx), false);
+            ctx.set_field_value(field("http.host"), "axc").unwrap();
+            assert_eq!(expr.execute_one(ctx), false);
+        }
 
         // Wildcard operator
         let wildcard = Wildcard::new(

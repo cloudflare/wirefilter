@@ -58,6 +58,9 @@ fn validate_wildcard(
     Ok(())
 }
 
+/// A wildcard matcher retaining its source pattern for AST serialization.
+///
+/// Matching is case-sensitive when `STRICT` is `true` and case-insensitive otherwise.
 #[derive(Clone)]
 pub struct Wildcard<const STRICT: bool> {
     compiled_wildcard: wildcard::Wildcard<'static>,
@@ -66,7 +69,27 @@ pub struct Wildcard<const STRICT: bool> {
     pattern: BytesExpr,
 }
 
+/// Matching state without the source representation retained by the AST.
+pub struct CompiledWildcard(wildcard::Wildcard<'static>);
+
+impl CompiledWildcard {
+    /// Returns whether this wildcard matches the input.
+    pub fn is_match(&self, input: &[u8]) -> bool {
+        self.0.is_match(input)
+    }
+}
+
 impl<const STRICT: bool> Wildcard<STRICT> {
+    /// Consumes this wildcard, retaining its matcher without the source pattern
+    /// and formatting used by the AST. Case sensitivity is preserved.
+    pub fn into_compiled(self) -> CompiledWildcard {
+        CompiledWildcard(self.compiled_wildcard)
+    }
+
+    /// Compiles a pattern, limiting the number of `*` metacharacters.
+    ///
+    /// Returns an error for invalid patterns, consecutive `*` metacharacters,
+    /// or patterns exceeding `wildcard_star_limit`.
     pub fn new(
         pattern: BytesExpr,
         wildcard_star_limit: usize,

@@ -64,15 +64,22 @@ impl ValueExpr for IndexExpr {
             indexes,
         } = self;
 
-        let last = match map_each_count {
-            0 => Some(indexes.len()),
+        let flatten = match map_each_count {
+            0 => false,
             1 if indexes.last() == Some(&FieldIndex::MapEach) => {
                 ty = Type::Array(ty.into());
-                Some(indexes.len() - 1)
+                false
             }
-            _ => None,
+            _ => true,
         };
-        if last == Some(0) {
+        // Terminal map-each operators select the parent container on this path. Resolve
+        // that selection now rather than retaining a separate end offset.
+        let indexes = if flatten {
+            indexes
+        } else {
+            simplify_indexes(indexes)
+        };
+        if !flatten && indexes.is_empty() {
             // Fast path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
@@ -82,12 +89,12 @@ impl ValueExpr for IndexExpr {
                 }),
                 IdentifierExpr::FunctionCallExpr(call) => compiler.compile_function_call_expr(call),
             }
-        } else if let Some(last) = last {
+        } else if !flatten {
             // Average path
             match identifier {
                 IdentifierExpr::Field(f) => CompiledValueExpr::new(move |ctx| {
                     ctx.get_field_value_unchecked(&f)
-                        .and_then(|value| value.get_nested(&indexes[..last]))
+                        .and_then(|value| value.get_nested(&indexes))
                         .map(LhsValue::as_ref)
                         .ok_or(ty)
                 }),
@@ -96,7 +103,7 @@ impl ValueExpr for IndexExpr {
                     CompiledValueExpr::new(move |ctx| {
                         call.execute(ctx)
                             .ok()
-                            .and_then(|val| val.extract_nested(&indexes[..last]))
+                            .and_then(|val| val.extract_nested(&indexes))
                             .ok_or(ty)
                     })
                 }
@@ -611,6 +618,44 @@ mod tests {
             .unwrap();
         builder.build()
     });
+
+    #[test]
+    fn compiled_terminal_map_each_preserves_parent_containers() {
+        let mut builder = SchemeBuilder::new();
+        builder
+            .add_field("maps", Type::Array(Type::Map(Type::Bytes.into()).into()))
+            .unwrap();
+        let scheme = builder.build();
+        let map = Map::try_from_iter::<crate::TypeMismatchError, _>(
+            Type::Bytes,
+            [Ok((b"key".as_slice().into(), "value"))],
+        )
+        .unwrap();
+        let array = Array::try_from_iter(Type::Map(Type::Bytes.into()), [map.clone()]).unwrap();
+        let mut ctx = ExecutionContext::new(&scheme);
+        ctx.set_field_value_from_name("maps", array).unwrap();
+        for input in ["maps[0]", "maps[0][*]"] {
+            let (expr, rest) = FilterParser::new(&scheme)
+                .lex_as::<IndexExpr>(input)
+                .unwrap();
+            assert!(rest.is_empty());
+            assert_eq!(
+                expr.compile().execute(&ctx),
+                Ok(LhsValue::Map(map.as_ref()))
+            );
+        }
+        for input in ["maps[1]", "maps[1][*]"] {
+            let (expr, _) = FilterParser::new(&scheme)
+                .lex_as::<IndexExpr>(input)
+                .unwrap();
+            let expected = if input.ends_with("[*]") {
+                Type::Array(Type::Bytes.into())
+            } else {
+                Type::Map(Type::Bytes.into())
+            };
+            assert_eq!(expr.compile().execute(&ctx), Err(expected));
+        }
+    }
 
     #[test]
     fn test_array_indices() {

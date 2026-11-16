@@ -15,5 +15,5 @@ pub use self::int::IntRange;
 pub use self::ip::{ExplicitIpRange, IpCidr, IpRange};
 pub use self::list::ListName;
 pub use self::map::UninhabitedMap;
-pub use self::regex::{Error as RegexError, Regex, RegexFormat};
-pub use self::wildcard::{Wildcard, WildcardError};
+pub use self::regex::{CompiledRegex, Error as RegexError, Regex, RegexFormat};
+pub use self::wildcard::{CompiledWildcard, Wildcard, WildcardError};

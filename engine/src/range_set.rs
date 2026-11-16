@@ -6,7 +6,8 @@ use std::ops::RangeInclusive;
 /// RangeSet provides a set-like interface that allows to search for items while
 /// being constructed from and storing inclusive ranges in a compact fashion.
 pub struct RangeSet<T> {
-    ranges: Box<[RangeInclusive<T>]>,
+    // Only endpoints are needed for lookup, not RangeInclusive's iterator state.
+    ranges: Box<[(T, T)]>,
 }
 
 impl<T: Ord + Copy> From<Vec<RangeInclusive<T>>> for RangeSet<T> {
@@ -27,7 +28,7 @@ impl<T: Ord + Copy> From<Vec<RangeInclusive<T>>> for RangeSet<T> {
             }
         });
         RangeSet {
-            ranges: ranges.into_boxed_slice(),
+            ranges: ranges.into_iter().map(RangeInclusive::into_inner).collect(),
         }
     }
 }
@@ -47,15 +48,51 @@ impl<T> RangeSet<T> {
         Q: ?Sized + Ord,
     {
         self.ranges
-            .binary_search_by(|range| {
-                if range.start().borrow() > value {
+            .binary_search_by(|(start, end)| {
+                if start.borrow() > value {
                     Ordering::Greater
-                } else if range.end().borrow() >= value {
+                } else if end.borrow() >= value {
                     Ordering::Equal
                 } else {
                     Ordering::Less
                 }
             })
             .is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RangeSet;
+
+    #[test]
+    fn merges_overlapping_ranges_and_preserves_gaps() {
+        let ranges = [8..=10, 2..=4, 3..=6, 2..=3, 9..=9];
+        let set: RangeSet<_> = ranges.clone().into_iter().collect();
+
+        assert_eq!(&*set.ranges, &[(2, 6), (8, 10)]);
+        for value in 0..=12 {
+            assert_eq!(
+                set.contains(&value),
+                ranges.iter().any(|range| range.contains(&value)),
+                "membership of {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn includes_singletons_and_integer_limits() {
+        let set: RangeSet<_> = [i64::MIN..=i64::MIN, 0..=0, i64::MAX..=i64::MAX]
+            .into_iter()
+            .collect();
+
+        for value in [i64::MIN, 0, i64::MAX] {
+            assert!(set.contains(&value));
+        }
+        for value in [i64::MIN + 1, -1, 1, i64::MAX - 1] {
+            assert!(!set.contains(&value));
+        }
+        let empty: RangeSet<i64> = [].into_iter().collect();
+        assert!(!empty.contains(&0));
     }
 }

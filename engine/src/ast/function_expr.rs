@@ -58,7 +58,23 @@ impl ValueExpr for FunctionCallArgExpr {
         match self {
             FunctionCallArgExpr::IndexExpr(index_expr) => compiler.compile_index_expr(index_expr),
             FunctionCallArgExpr::Literal(literal) => {
-                CompiledValueExpr::new(move |_| LhsValue::from(literal.clone()).into())
+                // Match during compilation so each closure retains only its payload,
+                // dropping the LiteralValue enum tag and byte literal formatting.
+                match literal {
+                    LiteralValue::Bytes(bytes) => {
+                        let bytes: Box<[u8]> = bytes.into();
+                        CompiledValueExpr::new(move |_| LhsValue::from(bytes.clone()).into())
+                    }
+                    LiteralValue::Int(value) => {
+                        CompiledValueExpr::new(move |_| LhsValue::Int(value).into())
+                    }
+                    LiteralValue::Ip(value) => {
+                        CompiledValueExpr::new(move |_| LhsValue::Ip(value).into())
+                    }
+                    LiteralValue::Bool(value) => match value {},
+                    LiteralValue::Array(value) => match value {},
+                    LiteralValue::Map(value) => match value {},
+                }
             }
             // The function argument is an expression compiled as either an
             // CompiledExpr::One or CompiledExpr::Vec.
@@ -594,6 +610,52 @@ mod tests {
     use crate::types::{LiteralSet, Type, TypeMismatchError};
     use std::convert::TryFrom;
     use std::sync::LazyLock;
+
+    #[test]
+    fn compiled_literal_arguments_keep_only_the_payload() {
+        let scheme = crate::SchemeBuilder::new().build();
+        let ctx = crate::ExecutionContext::new(&scheme);
+        for (literal, size) in [
+            (LiteralValue::Int(i64::MIN), std::mem::size_of::<i64>()),
+            (
+                LiteralValue::Ip("192.0.2.1".parse().unwrap()),
+                std::mem::size_of::<std::net::IpAddr>(),
+            ),
+            (
+                LiteralValue::Ip("2001:db8::1".parse().unwrap()),
+                std::mem::size_of::<std::net::IpAddr>(),
+            ),
+            (
+                LiteralValue::Bytes(BytesExpr::new(b"a\xffb".as_slice(), BytesFormat::Raw(3))),
+                std::mem::size_of::<Box<[u8]>>(),
+            ),
+        ] {
+            let expected = LhsValue::from(literal.clone());
+            let compiled = FunctionCallArgExpr::Literal(literal).compile();
+            for _ in 0..2 {
+                assert_eq!(compiled.execute(&ctx), Ok(expected.clone()));
+            }
+            let value = compiled.execute(&ctx);
+            let closure = compiled.into_boxed_closure();
+            assert_eq!(std::mem::size_of_val(&*closure), size);
+            drop(closure);
+            assert_eq!(value, Ok(expected));
+        }
+    }
+
+    #[test]
+    fn compiled_byte_literal_returns_independent_owned_values() {
+        let scheme = crate::SchemeBuilder::new().build();
+        let ctx = crate::ExecutionContext::new(&scheme);
+        let compiled =
+            FunctionCallArgExpr::Literal(LiteralValue::Bytes("original".to_owned().into()))
+                .compile();
+        let LhsValue::Bytes(mut first) = compiled.execute(&ctx).unwrap() else {
+            unreachable!()
+        };
+        first.to_mut()[0] = b'X';
+        assert_eq!(compiled.execute(&ctx), Ok(LhsValue::from("original")));
+    }
 
     fn regex_replace<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
         args.next()?.ok()

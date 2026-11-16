@@ -156,7 +156,11 @@ impl<'i, 's> LexWith<'i, &FilterParser<'s>> for QuantifierArgExpr {
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize)]
 #[serde(untagged)]
 pub enum LogicalExpr {
-    /// Logical conjunction expression
+    /// Logical conjunction expression.
+    ///
+    /// The parser creates combinations with at least two elements. Single-element
+    /// combinations can only come from manually crafted nodes and compile directly
+    /// to their child expression.
     Combining {
         /// Logical operator
         op: LogicalOp,
@@ -402,89 +406,118 @@ impl Expr for LogicalExpr {
                 }
             },
             LogicalExpr::Combining { op, items } => {
-                let items = items.into_iter();
-                let mut items = items.map(|item| compiler.compile_logical_expr(item));
+                let mut items = items
+                    .into_iter()
+                    .map(|item| compiler.compile_logical_expr(item));
                 let first = items.next().unwrap();
+                if items.len() == 0 {
+                    return first;
+                }
                 match first {
                     CompiledExpr::One(first) => {
-                        let items = items
-                            .map(|item| match item {
-                                CompiledExpr::One(one) => one,
-                                CompiledExpr::Vec(_) => unreachable!(),
-                            })
-                            .collect::<Box<[_]>>();
-                        match op {
-                            LogicalOp::And => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                first.execute(ctx) && items.iter().all(|item| item.execute(ctx))
-                            })),
-                            LogicalOp::Or => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                first.execute(ctx) || items.iter().any(|item| item.execute(ctx))
-                            })),
-                            LogicalOp::Xor => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
-                                items
-                                    .iter()
-                                    .fold(first.execute(ctx), |acc, item| acc ^ item.execute(ctx))
-                            })),
+                        let mut items = items.map(|item| match item {
+                            CompiledExpr::One(one) => one,
+                            CompiledExpr::Vec(_) => unreachable!(),
+                        });
+                        // Keep the second child inline for binary combinations.
+                        if items.len() == 1 {
+                            compile_one_combination(op, first, [items.next().unwrap()])
+                        } else {
+                            compile_one_combination(op, first, items.collect::<Box<[_]>>())
                         }
                     }
                     CompiledExpr::Vec(first) => {
-                        let items = items
-                            .map(|item| match item {
-                                CompiledExpr::One(_) => unreachable!(),
-                                CompiledExpr::Vec(vec) => vec,
-                            })
-                            .collect::<Box<[_]>>();
-                        match op {
-                            LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left = *left && *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
-                                }
-                                output
-                            })),
-                            LogicalOp::Or => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left = *left || *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
-                                }
-                                output
-                            })),
-                            LogicalOp::Xor => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
-                                let items = items.iter().map(|item| item.execute(ctx));
-                                let mut output = first.execute(ctx);
-                                for values in items {
-                                    output.iter_mut().zip(values.iter()).for_each(
-                                        |(left, right)| {
-                                            *left ^= *right;
-                                        },
-                                    );
-                                    if values.len() < output.len() {
-                                        output.truncate(values.len());
-                                    }
-                                }
-                                output
-                            })),
+                        let mut items = items.map(|item| match item {
+                            CompiledExpr::One(_) => unreachable!(),
+                            CompiledExpr::Vec(vec) => vec,
+                        });
+                        if items.len() == 1 {
+                            compile_vec_combination(op, first, [items.next().unwrap()])
+                        } else {
+                            compile_vec_combination(op, first, items.collect::<Box<[_]>>())
                         }
                     }
                 }
             }
         }
+    }
+}
+
+fn compile_one_combination<U: 'static>(
+    op: LogicalOp,
+    first: CompiledOneExpr<U>,
+    items: impl AsRef<[CompiledOneExpr<U>]> + Send + Sync + 'static,
+) -> CompiledExpr<U> {
+    match op {
+        LogicalOp::And => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+            first.execute(ctx) && items.as_ref().iter().all(|item| item.execute(ctx))
+        })),
+        LogicalOp::Or => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+            first.execute(ctx) || items.as_ref().iter().any(|item| item.execute(ctx))
+        })),
+        LogicalOp::Xor => CompiledExpr::One(CompiledOneExpr::new(move |ctx| {
+            items
+                .as_ref()
+                .iter()
+                .fold(first.execute(ctx), |acc, item| acc ^ item.execute(ctx))
+        })),
+    }
+}
+
+fn compile_vec_combination<U: 'static>(
+    op: LogicalOp,
+    first: CompiledVecExpr<U>,
+    items: impl AsRef<[CompiledVecExpr<U>]> + Send + Sync + 'static,
+) -> CompiledExpr<U> {
+    match op {
+        LogicalOp::And => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+            let items = items.as_ref().iter().map(|item| item.execute(ctx));
+            let mut output = first.execute(ctx);
+            for values in items {
+                output
+                    .iter_mut()
+                    .zip(values.iter())
+                    .for_each(|(left, right)| {
+                        *left = *left && *right;
+                    });
+                if values.len() < output.len() {
+                    output.truncate(values.len());
+                }
+            }
+            output
+        })),
+        LogicalOp::Or => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+            let items = items.as_ref().iter().map(|item| item.execute(ctx));
+            let mut output = first.execute(ctx);
+            for values in items {
+                output
+                    .iter_mut()
+                    .zip(values.iter())
+                    .for_each(|(left, right)| {
+                        *left = *left || *right;
+                    });
+                if values.len() < output.len() {
+                    output.truncate(values.len());
+                }
+            }
+            output
+        })),
+        LogicalOp::Xor => CompiledExpr::Vec(CompiledVecExpr::new(move |ctx| {
+            let items = items.as_ref().iter().map(|item| item.execute(ctx));
+            let mut output = first.execute(ctx);
+            for values in items {
+                output
+                    .iter_mut()
+                    .zip(values.iter())
+                    .for_each(|(left, right)| {
+                        *left ^= *right;
+                    });
+                if values.len() < output.len() {
+                    output.truncate(values.len());
+                }
+            }
+            output
+        })),
     }
 }
 
