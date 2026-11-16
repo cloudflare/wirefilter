@@ -44,12 +44,15 @@
 //!     ctx.set_field_value(scheme.get_field("port").unwrap(), 443)?;
 //!
 //!     // Execute the filter with given runtime values.
+//!     # if cfg!(feature = "regex") {
 //!     println!("Filter matches: {:?}", filter.execute(&ctx)?); // true
 //!
 //!     // Amend one of the runtime values and execute the filter again.
 //!     ctx.set_field_value(scheme.get_field("port").unwrap(), 8080)?;
 //!
 //!     println!("Filter matches: {:?}", filter.execute(&ctx)?); // false
+//!     //
+//!     # }
 //!
 //!     Ok(())
 //! }
@@ -67,6 +70,7 @@ mod scheme;
 
 mod ast;
 mod compiler;
+pub mod context;
 mod execution_context;
 mod filter;
 mod functions;
@@ -78,6 +82,7 @@ mod rhs_types;
 mod searcher;
 mod strict_partial_ord;
 mod types;
+pub mod values;
 
 pub use self::ast::field_expr::{
     ComparisonExpr, ComparisonOpExpr, ComparisonRhs, IdentifierExpr, IntOp, IntRhs, OrderingOp,
@@ -92,6 +97,16 @@ pub use self::ast::parse::{FilterParser, ParseError, ParserSettings};
 pub use self::ast::visitor::{Visitor, VisitorMut};
 pub use self::ast::{Expr, FilterAst, FilterValueAst, FilterValueExpr, ValueExpr};
 pub use self::compiler::{Compiler, DefaultCompiler};
+// The exported field macro calls this helper from downstream crates.
+#[doc(hidden)]
+pub use self::context::fields::validate_field_definitions;
+pub use self::context::state::ContextState;
+pub use self::context::{
+    BorrowedValueProvider, ContextFamily, ContextRef, EvaluationContext, EvaluationContextMut,
+    ExecutionContextFamily, FieldBindingError, FieldConsumer, FieldDefinitionError, FieldGetter,
+    FieldGetterFn, HasScheme, LhsValueProvider, OptionalFieldGetterResult, OwnedValueProvider,
+    ProviderFamily, RequiredFieldGetterFn, RequiredFieldGetterResult, SchemeValidationError,
+};
 pub use self::execution_context::{
     ExecutionContext, ExecutionContextGuard, InvalidListMatcherError, SetFieldValueError,
 };
@@ -105,7 +120,7 @@ pub use self::functions::{
     SimpleFunctionImpl, SimpleFunctionOptParam, SimpleFunctionParam,
 };
 pub use self::lex::LexErrorKind;
-pub use self::lhs_types::{Array, Bytes, Map, MapIter, TypedArray, TypedMap};
+pub use self::lhs_types::{Array, Bytes, LhsValue, Map, MapIter, TypedArray, TypedMap};
 pub use self::list_matcher::{
     AlwaysList, AlwaysListMatcher, ListDefinition, ListMatcher, NeverList, NeverListMatcher,
 };
@@ -123,6 +138,6 @@ pub use self::scheme::{
     ListRef, Scheme, SchemeBuilder, SchemeMismatchError, UnknownFieldError,
 };
 pub use self::types::{
-    CompoundType, ExpectedType, ExpectedTypeList, GetType, LhsValue, LiteralSet, LiteralValue,
-    Type, TypeMismatchError,
+    CompoundType, ExpectedType, ExpectedTypeList, GetType, LiteralSet, LiteralValue, Type,
+    TypeMismatchError,
 };

@@ -18,6 +18,7 @@ struct RecordingCompiler {
 }
 
 impl Compiler for RecordingCompiler {
+    type Family = wirefilter::ExecutionContextFamily<()>;
     type U = ();
 
     fn compile_comparison_expr(&mut self, _: ComparisonExpr) -> CompiledExpr {

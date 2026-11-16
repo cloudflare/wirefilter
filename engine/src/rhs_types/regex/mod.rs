@@ -1,6 +1,6 @@
 use crate::lex::{LexErrorKind, LexResult, LexWith, span};
 use crate::rhs_types::bytes::lex_raw_string_as_str;
-use crate::{Compare, ExecutionContext, FilterParser, LhsValue};
+use crate::{Compare, ContextFamily, FilterParser, LhsValue};
 use cfg_if::cfg_if;
 use serde::{Serialize, Serializer};
 use std::fmt::{self, Debug, Display, Formatter};
@@ -146,23 +146,33 @@ pub enum Error {
     Other(Box<str>),
 }
 
-impl<U> Compare<U> for Regex {
+impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for Regex {
     #[inline]
-    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
         self.is_match(match value {
             LhsValue::Bytes(bytes) => bytes,
             _ => unreachable!(),
         })
     }
+
+    #[inline]
+    fn compare_bytes<'e, 'data: 'e>(&self, value: &'e [u8], _: &'e F::Context<'data>) -> bool {
+        self.is_match(value)
+    }
 }
 
-impl<U> Compare<U> for CompiledRegex {
+impl<U: 'static, F: ContextFamily<UserData = U>> Compare<U, F> for CompiledRegex {
     #[inline]
-    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+    fn compare<'e, 'data: 'e>(&self, value: &LhsValue<'e>, _: &'e F::Context<'data>) -> bool {
         self.is_match(match value {
             LhsValue::Bytes(bytes) => bytes,
             _ => unreachable!(),
         })
+    }
+
+    #[inline]
+    fn compare_bytes<'e, 'data: 'e>(&self, value: &'e [u8], _: &'e F::Context<'data>) -> bool {
+        self.is_match(value)
     }
 }
 
