@@ -32,7 +32,8 @@ cidr.workspace = true
 dyn-clone.workspace = true
 erased-serde.workspace = true
 fnv.workspace = true
-get-size2 = { workspace = true, optional = true }
+get-size2 = { workspace = true, features = ["indexmap"], optional = true }
+indexmap.workspace = true
 memchr.workspace = true
 rand.workspace = true
 regex-automata = { workspace = true, optional = true }
@@ -45,6 +46,13 @@ wildcard.workspace = true
 criterion.workspace = true
 indoc.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+# Bare wasm has no OS randomness source for ahash's default runtime seeding.
+ahash = { workspace = true, features = ["compile-time-rng"] }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+ahash = { workspace = true, features = ["runtime-rng"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 # By default, getrandom doesn't have any source of randomness on wasm32-unknown.
