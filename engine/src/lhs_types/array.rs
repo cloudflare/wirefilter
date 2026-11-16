@@ -678,6 +678,7 @@ impl<'a, V: IntoValue<'a>> TypedArray<'a, TypedMap<'a, V>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Bytes;
 
     #[test]
     fn test_size_of_array() {
@@ -719,8 +720,8 @@ mod tests {
         assert_eq!(*array.get(1).unwrap(), ["d", "e", "f"]);
     }
 
-    fn key(s: &str) -> Box<[u8]> {
-        s.as_bytes().to_vec().into_boxed_slice()
+    fn key(s: &str) -> Bytes<'_> {
+        s.as_bytes().to_vec().into()
     }
 
     #[test]
