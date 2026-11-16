@@ -3,6 +3,7 @@ use get_size2::{GetSize, GetSizeTracker};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
@@ -254,6 +255,20 @@ impl PartialEq<String> for Bytes<'_> {
 
 impl Eq for Bytes<'_> {}
 
+impl PartialOrd for Bytes<'_> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Bytes<'_> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
 impl Hash for Bytes<'_> {
     #[inline]
     fn hash<H: Hasher>(&self, h: &mut H) {
@@ -350,6 +365,18 @@ impl<'de> Deserialize<'de> for Bytes<'de> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_bytes_ordering() {
+        let borrowed = Bytes::Borrowed(b"key");
+        let owned = Bytes::from(b"key".to_vec());
+        let smaller_owned = Bytes::from(b"a".to_vec());
+        assert_eq!(borrowed.cmp(&owned), Ordering::Equal);
+        assert_eq!(owned.cmp(&borrowed), Ordering::Equal);
+        assert!(smaller_owned < borrowed);
+        assert!(owned < Bytes::Borrowed(b"z"));
+        assert!(Bytes::Borrowed(b"ke") < owned);
+    }
 
     #[test]
     fn test_bytes_deserialize() {
