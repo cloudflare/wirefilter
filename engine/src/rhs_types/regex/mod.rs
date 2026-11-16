@@ -156,10 +156,67 @@ impl<U> Compare<U> for Regex {
     }
 }
 
+impl<U> Compare<U> for CompiledRegex {
+    #[inline]
+    fn compare<'e>(&self, value: &LhsValue<'e>, _: &'e ExecutionContext<'e, U>) -> bool {
+        self.is_match(match value {
+            LhsValue::Bytes(bytes) => bytes,
+            _ => unreachable!(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{ParserSettings, SchemeBuilder};
+
+    #[test]
+    fn test_compiled_filter_releases_regex_source() {
+        use crate::{ComparisonOpExpr, LogicalExpr, Type};
+        use arcstr::ArcStr;
+
+        let mut builder = SchemeBuilder::new();
+        builder.add_field("text", Type::Bytes).unwrap();
+        let scheme = builder.build();
+        for literal in [r#""a.b""#, r###"r##"a.b"##"###] {
+            let expression = format!("text matches {literal}");
+            let ast = scheme.parse(&expression).unwrap();
+            let LogicalExpr::Comparison(comparison) = ast.expression() else {
+                unreachable!();
+            };
+            let ComparisonOpExpr::Matches(regex) = &comparison.op else {
+                unreachable!();
+            };
+            let pattern = regex.pattern().clone();
+            assert_eq!(ArcStr::strong_count(&pattern), Some(2));
+            let filter = ast.compile();
+            assert_eq!(ArcStr::strong_count(&pattern), Some(1));
+
+            #[cfg(feature = "regex")]
+            {
+                let mut ctx = crate::ExecutionContext::new(&scheme);
+                for (value, expected) in [(b"a\xffb".as_slice(), true), (b"ac", false)] {
+                    ctx.set_field_value_from_name("text", value).unwrap();
+                    assert_eq!(filter.execute(&ctx).unwrap(), expected);
+                }
+            }
+            drop(filter);
+        }
+    }
+
+    #[cfg(not(feature = "regex"))]
+    #[test]
+    #[should_panic(expected = "Engine was built without regex support")]
+    fn test_compiled_regex_without_feature_panics_on_execution() {
+        let mut builder = SchemeBuilder::new();
+        builder.add_field("text", crate::Type::Bytes).unwrap();
+        let scheme = builder.build();
+        let filter = scheme.parse(r#"text matches "a.b""#).unwrap().compile();
+        let mut ctx = crate::ExecutionContext::new(&scheme);
+        ctx.set_field_value_from_name("text", "axb").unwrap();
+        filter.execute(&ctx).unwrap();
+    }
 
     #[test]
     fn test() {

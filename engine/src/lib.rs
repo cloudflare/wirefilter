@@ -114,8 +114,8 @@ pub use self::panic::{
     panic_catcher_get_backtrace, panic_catcher_set_fallback_mode, panic_catcher_set_hook,
 };
 pub use self::rhs_types::{
-    BytesExpr, BytesFormat, ExplicitIpRange, IntRange, IpCidr, IpRange, Regex, RegexError,
-    RegexFormat,
+    BytesExpr, BytesFormat, CompiledRegex, CompiledWildcard, ExplicitIpRange, IntRange, IpCidr,
+    IpRange, Regex, RegexError, RegexFormat, Wildcard,
 };
 pub use self::scheme::{
     Field, FieldIndex, FieldRedefinitionError, FieldRef, Function, FunctionRedefinitionError,

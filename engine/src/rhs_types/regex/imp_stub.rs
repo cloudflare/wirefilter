@@ -10,7 +10,22 @@ pub struct Regex {
     format: RegexFormat,
 }
 
+/// Dummy compiled regex that cannot be used for matching without regex support.
+pub struct CompiledRegex;
+
+impl CompiledRegex {
+    /// Not implemented and will panic if called.
+    pub fn is_match(&self, _input: &[u8]) -> bool {
+        unimplemented!("Engine was built without regex support")
+    }
+}
+
 impl Regex {
+    /// Consumes this dummy regex, discarding its source pattern and formatting.
+    pub fn into_compiled(self) -> CompiledRegex {
+        CompiledRegex
+    }
+
     /// Creates a new dummy regex.
     pub fn new(
         pattern: impl Into<ArcStr>,
