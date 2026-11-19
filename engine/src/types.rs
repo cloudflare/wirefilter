@@ -693,7 +693,7 @@ impl<'a> LhsValue<'a> {
     pub fn into_owned(self) -> LhsValue<'static> {
         match self {
             LhsValue::Ip(ip) => LhsValue::Ip(ip),
-            LhsValue::Bytes(bytes) => LhsValue::Bytes(Bytes::Owned(bytes.into_owned())),
+            LhsValue::Bytes(bytes) => LhsValue::Bytes(bytes.into_owned()),
             LhsValue::Int(i) => LhsValue::Int(i),
             LhsValue::Bool(b) => LhsValue::Bool(b),
             LhsValue::Array(arr) => LhsValue::Array(arr.into_owned()),
@@ -1188,7 +1188,10 @@ fn test_type_deserialize() {
 
 #[test]
 fn test_size_of_lhs_value() {
-    assert_eq!(std::mem::size_of::<LhsValue<'_>>(), 40);
+    assert_eq!(
+        std::mem::size_of::<LhsValue<'_>>(),
+        if cfg!(feature = "bytes") { 48 } else { 40 }
+    );
 }
 
 #[cfg(feature = "get-size2")]

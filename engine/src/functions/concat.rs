@@ -64,10 +64,7 @@ fn concat_impl<'a>(args: FunctionArgs<'_, 'a>) -> Option<LhsValue<'a>> {
                 return Some(LhsValue::Array(concat_array(array, args)));
             }
             Ok(LhsValue::Bytes(bytes)) => {
-                return Some(LhsValue::Bytes(concat_bytes(
-                    bytes.into_owned().into(),
-                    args,
-                )));
+                return Some(LhsValue::Bytes(concat_bytes(bytes.into_vec(), args)));
             }
             Err(_) => (),
             _ => unreachable!(),

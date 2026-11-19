@@ -152,7 +152,7 @@ impl<'a> Map<'a> {
                 InnerMap::Owned(map) => InnerMap::Owned(Box::new(
                     (*map)
                         .into_iter()
-                        .map(|(key, val)| (key.into_owned().into(), val.into_owned()))
+                        .map(|(key, val)| (key.into_owned(), val.into_owned()))
                         .collect(),
                 )),
                 InnerMap::Borrowed(map) => InnerMap::Owned(Box::new(
@@ -344,7 +344,7 @@ impl<'a> Iterator for MapIntoIter<'a> {
         match self {
             MapIntoIter(MapIntoIterImpl::Owned(iter)) => iter.next(),
             MapIntoIter(MapIntoIterImpl::Borrowed(iter)) => {
-                iter.next().map(|(k, v)| ((&**k).into(), v.as_ref()))
+                iter.next().map(|(k, v)| (Bytes::Borrowed(k), v.as_ref()))
             }
         }
     }
