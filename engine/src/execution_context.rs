@@ -101,6 +101,17 @@ impl<'e, U> ExecutionContext<'e, U> {
         }
     }
 
+    /// Clears a field's runtime value, returning the previous value.
+    pub fn clear_field_value(
+        &mut self,
+        field: FieldRef<'_>,
+    ) -> Result<Option<LhsValue<'e>>, SchemeMismatchError> {
+        if self.scheme != *field.scheme() {
+            return Err(SchemeMismatchError);
+        }
+        Ok(self.values[field.index()].take())
+    }
+
     /// Sets a runtime value for a given field name.
     pub fn set_field_value_from_name<'v: 'e, V: Into<LhsValue<'v>>>(
         &mut self,
@@ -532,6 +543,35 @@ impl<U> Serialize for ExecutionContext<'_, U> {
         }
         map.end()
     }
+}
+
+#[test]
+fn test_clear_field_value() {
+    let scheme = Scheme! { body: Bytes, flag: Bool }.build();
+    let foreign_scheme = Scheme! { body: Bytes }.build();
+    let body = scheme.get_field("body").unwrap();
+    let flag = scheme.get_field("flag").unwrap();
+    let mut ctx = ExecutionContext::<()>::new(&scheme);
+    ctx.set_field_value(body, "payload").unwrap();
+    ctx.set_field_value(flag, true).unwrap();
+
+    assert_eq!(
+        ctx.clear_field_value(foreign_scheme.get_field("body").unwrap()),
+        Err(SchemeMismatchError),
+    );
+    assert_eq!(ctx.get_field_value(body), Some(&LhsValue::from("payload")));
+    assert_eq!(
+        ctx.clear_field_value(body),
+        Ok(Some(LhsValue::from("payload")))
+    );
+    assert_eq!(ctx.get_field_value(body), None);
+    assert_eq!(ctx.get_field_value(flag), Some(&LhsValue::Bool(true)));
+    assert_eq!(ctx.clear_field_value(body), Ok(None));
+    ctx.set_field_value(body, "replacement").unwrap();
+    assert_eq!(
+        ctx.get_field_value(body),
+        Some(&LhsValue::from("replacement"))
+    );
 }
 
 #[test]
